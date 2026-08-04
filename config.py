@@ -72,7 +72,7 @@ init_url = r"http://localhost:8990"
     {
         "id": "eastmoney_2",
         "名称": "跳空高开",
-        "页面URL": "https://xuangu.eastmoney.com/Result?id=xc12539b7961c100b68e&a=edit_way",
+        "页面URL": "https://xuangu.eastmoney.com/Result?id=xc130976a8770800ef4c&a=edit_way",
         "监听目标": ["/api/smart-tag/stock/v3/pw/search-code"],
         "监控时间段": [["09:20", "11:31"], ["13:00", "15:01"]],
         "监控频率秒": 30,
