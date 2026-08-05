@@ -1,30 +1,54 @@
 
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 
-# 前往https://tushare.pro/注册获取token
-ts_token = 'xxx'
+
+project_root = Path(__file__).resolve().parent
+load_dotenv(project_root / ".env", override=False)
+
+
+def _required_env(name):
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"缺少必需环境变量 {name}，请在项目根目录 .env 中配置")
+    return value
+
+
+def _required_int_env(name):
+    value = _required_env(name)
+    try:
+        return int(value)
+    except ValueError as error:
+        raise RuntimeError(f"环境变量 {name} 必须是整数") from error
+
+
+project_path = str(project_root)
+
+mysql_localhost_host = _required_env("MYSQL_HOST")
+mysql_localhost_port = _required_int_env("MYSQL_PORT")
+mysql_localhost_user = _required_env("MYSQL_USER")
+mysql_localhost_password = _required_env("MYSQL_PASSWORD")
+mysql_localhost_database = _required_env("MYSQL_DATABASE")
+
 ts_token_list = [
-    'xxx',
-    'xxx2']
-project_path = str(Path(__file__).resolve().parent)
-# mysql
-mysql_localhost_port = 3306
-mysql_localhost_host = 'localhost'
-mysql_localhost_user = 'root'
-mysql_localhost_password = 'root'
-mysql_localhost_database = 'stock_trading_lab'
+    token.strip()
+    for token in os.getenv("TUSHARE_TOKENS", "").split(",")
+    if token.strip()
+]
+ts_token = ts_token_list[0] if ts_token_list else ""
 
 
 
 # 通达信客户端安装目录。实时监控脚本会从这里加载 PYPlugins/user/tqcenter.py。
-tdx_root = r"D:\new_tdx64"
+tdx_root = os.getenv("TDX_ROOT", "").strip()
 
 # 通达信行情缓存刷新间隔，单位：秒。
 # 全局监控和竞价监控共用这个配置；20 表示最多每 20 秒主动 refresh_cache 一次。
 tdx_cache_refresh_interval_seconds = 20
 
-deepseek_api_key = r"xxx"
+deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
 
 init_url = r"http://localhost:8990"
 

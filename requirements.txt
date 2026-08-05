@@ -239,6 +239,8 @@ python-dateutil==2.9.0.post0
     # via
     #   pandas
     #   stock-trading-lab
+python-dotenv==1.2.2
+    # via stock-trading-lab
 pytz==2025.2
     # via
     #   pandas
