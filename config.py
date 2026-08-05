@@ -1,11 +1,13 @@
 
+from pathlib import Path
+
+
 # 前往https://tushare.pro/注册获取token
 ts_token = 'xxx'
 ts_token_list = [
     'xxx',
     'xxx2']
-# project_path = r"E:\本地路径\code\stock_trading_lab"
-project_path = r"E:\xxx\code\stock_trading_lab"
+project_path = str(Path(__file__).resolve().parent)
 # mysql
 mysql_localhost_port = 3306
 mysql_localhost_host = 'localhost'

@@ -5,11 +5,19 @@ import front_run
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import threading
+from loguru import logger
 
 from utils import db, driver_chrome
-from task import 每日更新, 盘前纪要
+try:
+    from task import 每日更新, 盘前纪要
+except ModuleNotFoundError as error:
+    if error.name != "task":
+        raise
+    每日更新 = None
+    盘前纪要 = None
+    logger.warning("未找到可选 task 包，已禁用每日更新和盘前纪要定时任务")
+
 from 实时监控 import 资金流向, 策略选股, 情绪周期, 热门板块情绪
-from loguru import logger
 import uvicorn
 
 
@@ -54,13 +62,13 @@ def start_scraper():
                 pass
                 # logger.info(f"非交易时段，跳过抓取 | 当前时间 {now.strftime('%H:%M:%S')}")
 
-        if now.weekday() < 5 and (datetime.time(17, 35) <= now.time()):
+        if 每日更新 is not None and now.weekday() < 5 and (datetime.time(17, 35) <= now.time()):
             if not db.redis_con_localhost.exists(f"每日更新.py:{now.strftime('%Y%m%d')}") and \
                     not db.redis_con_localhost.exists(f"run_check:每日更新.py"):
                 Timer(0, 每日更新.tasks, args=[now.strftime('%Y%m%d')]).start()
             pass
 
-        if now.weekday() < 5 and (datetime.time(8, 00) <= now.time()):
+        if 盘前纪要 is not None and now.weekday() < 5 and (datetime.time(8, 00) <= now.time()):
             if not db.redis_con_localhost.exists(f"盘前纪要.py:{now.strftime('%Y%m%d')}") and \
                     not db.redis_con_localhost.exists(f"run_check:盘前纪要.py"):
                 Timer(0, 盘前纪要.韭研公社盘前纪要采集, args=[now.strftime('%Y%m%d')]).start()
@@ -89,8 +97,10 @@ def 启动后台监控线程():
 
 # ====================== 启动服务 ======================
 if __name__ == "__main__":
-    db.redis_con_localhost.delete(f"run_check:每日更新.py")
-    db.redis_con_localhost.delete(f"run_check:盘前纪要.py")
+    if 每日更新 is not None:
+        db.redis_con_localhost.delete("run_check:每日更新.py")
+    if 盘前纪要 is not None:
+        db.redis_con_localhost.delete("run_check:盘前纪要.py")
     # driver_chrome.initTab()
     Timer(0, front_run.run, args=[]).start()
     uvicorn.run(app, host="0.0.0.0", port=8051, reload=False)
