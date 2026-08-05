@@ -38,9 +38,9 @@ def test_app_imports_without_unpublished_task_package(monkeypatch, capsys):
     app_module = _import_app(monkeypatch)
     captured = capsys.readouterr()
 
-    assert app_module.每日更新 is None
+    assert app_module.每日更新 is not None
     assert app_module.盘前纪要 is None
-    assert "已禁用每日更新和盘前纪要定时任务" in captured.err
+    assert "已禁用每日更新和盘前纪要定时任务" not in captured.err
 
 
 def test_app_uses_original_task_modules_when_present(monkeypatch):

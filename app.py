@@ -9,12 +9,24 @@ from loguru import logger
 
 from utils import db, driver_chrome
 try:
-    from task import 每日更新, 盘前纪要
+    from task import 每日更新
 except ModuleNotFoundError as error:
     if error.name != "task":
         raise
     每日更新 = None
+
+try:
+    from task import 盘前纪要
+except ModuleNotFoundError as error:
+    if error.name not in {"task", "task.盘前纪要"}:
+        raise
     盘前纪要 = None
+except ImportError as error:
+    if "cannot import name" not in str(error):
+        raise
+    盘前纪要 = None
+
+if 每日更新 is None and 盘前纪要 is None:
     logger.warning("未找到可选 task 包，已禁用每日更新和盘前纪要定时任务")
 
 from 实时监控 import 资金流向, 策略选股, 情绪周期, 热门板块情绪
