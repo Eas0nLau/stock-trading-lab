@@ -1,0 +1,109 @@
+from sqlalchemy import text
+
+from .helpers import normalize_symbol, normalize_ts_code
+
+
+class MarketDataRepository:
+    def __init__(self, query, engine=None):
+        self._query = query
+        self._engine = engine
+
+    def trading_dates(self, limit=160):
+        rows = self._query(
+            f"SELECT DISTINCT `trade_date` FROM `index_daily` ORDER BY `trade_date` DESC LIMIT {int(limit)}",
+            fetch=True,
+        ) or []
+        return sorted({int(row["trade_date"]) for row in rows if row.get("trade_date")})
+
+    def securities(self, market=None):
+        sql = "SELECT `ts_code`, `symbol`, `name`, `area`, `industry`, `market`, `list_date`, `list_status` FROM `securities`"
+        params = None
+        if market:
+            sql += " WHERE `market` = %s"
+            params = (market,)
+        sql += " ORDER BY `symbol`"
+        return self._query(sql, params=params, fetch=True) or []
+
+    def security_codes(self, market=None):
+        return [row["ts_code"] for row in self.securities(market)]
+
+    def symbol_ts_code_map(self):
+        return {normalize_symbol(row["symbol"]): normalize_ts_code(row["ts_code"]) for row in self.securities()}
+
+    def daily_quotes(self, stock_codes=None, start_date=None, end_date=None):
+        conditions = []
+        params = []
+        if stock_codes:
+            codes = sorted({normalize_ts_code(code) for code in stock_codes if code})
+            conditions.append(f"`ts_code` IN ({','.join(['%s'] * len(codes))})")
+            params.extend(codes)
+        if start_date is not None:
+            conditions.append("`trade_date` >= %s")
+            params.append(int(start_date))
+        if end_date is not None:
+            conditions.append("`trade_date` <= %s")
+            params.append(int(end_date))
+        sql = "SELECT `data_id`, `ts_code`, `trade_date`, `open_price`, `high_price`, `low_price`, `close_price`, `previous_close`, `change_amount`, `change_pct`, `volume`, `turnover`, `total_market_value`, `circulating_market_value`, `free_float_shares`, `free_float_market_value`, `stock_name`, `dde_net_amount` FROM `daily_quotes`"
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY `trade_date`, `ts_code`"
+        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+
+    def daily_quotes_for_date(self, trade_date, stock_codes):
+        return self.daily_quotes(stock_codes, trade_date, trade_date)
+
+    def index_daily(self, start_date=None, end_date=None, limit=None):
+        conditions = []
+        params = []
+        if start_date is not None:
+            conditions.append("`trade_date` >= %s")
+            params.append(int(start_date))
+        if end_date is not None:
+            conditions.append("`trade_date` <= %s")
+            params.append(int(end_date))
+        sql = "SELECT `trade_date`, `open_price`, `close_price`, `high_price`, `low_price`, `volume`, `turnover`, `amplitude_pct`, `change_pct`, `change_amount`, `turnover_rate` FROM `index_daily`"
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY `trade_date`"
+        if limit is not None:
+            sql += f" LIMIT {int(limit)}"
+        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+
+    def upsert_securities(self, rows):
+        return self._write("securities", rows, ("ts_code",))
+
+    def replace_securities(self, rows):
+        rows = list(rows)
+        if not rows:
+            return 0
+        with self._engine.begin() as connection:
+            connection.execute(text("DELETE FROM `securities`"))
+            self._execute_insert(connection, "securities", rows)
+        return len(rows)
+
+    def upsert_daily_quotes(self, rows):
+        return self._write("daily_quotes", rows, ("data_id",))
+
+    def upsert_index_daily(self, rows):
+        return self._write("index_daily", rows, ("trade_date",))
+
+    def _write(self, table, rows, keys):
+        rows = list(rows)
+        if not rows:
+            return 0
+        with self._engine.begin() as connection:
+            self._execute_insert(connection, table, rows, keys)
+        return len(rows)
+
+    @staticmethod
+    def _execute_insert(connection, table, rows, keys=()):
+        columns = list(rows[0])
+        values = ", ".join(f":{column}" for column in columns)
+        updates = ", ".join(
+            f"`{column}` = VALUES(`{column}`)" for column in columns if column not in keys
+        )
+        suffix = f" ON DUPLICATE KEY UPDATE {updates}" if updates else ""
+        connection.execute(
+            text(f"INSERT INTO `{table}` ({', '.join(f'`{column}`' for column in columns)}) VALUES ({values}){suffix}"),
+            rows,
+        )
