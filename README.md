@@ -215,13 +215,16 @@ flowchart LR
 
 | 路径 | 作用 |
 | --- | --- |
-| `app.py` | FastAPI 入口；注册接口并启动资金流向、策略选股和定时任务线程 |
+| `src/stock_lab/` | 正式 Python 包；包含应用启动、配置、基础设施、任务和业务模块 |
+| `app.py` | 兼容启动入口；应用由 `stock_lab.bootstrap.application` 创建 |
 | `front/` | Vue 前端，包含资金流向、策略监控、指数周期和热门板块情绪页面 |
-| `实时监控/` | 网页后端业务、SSE 推送、通达信快照和集合竞价监控 |
-| `task/` | 日线、指数、市值、DDE、板块、情绪、龙虎榜等批量更新任务 |
-| `strategy/` | 独立选股、回测和策略验证脚本 |
-| `游资溢价分析/` | 龙虎榜、营业部数据采集及历史溢价分析 |
-| `utils/` | 数据库、浏览器、行情、账户模拟、回测和通达信公共工具 |
+| `实时监控/` | 迁移期兼容目录；新业务实现不再写入这里 |
+| `task/` | 迁移期批量任务兼容目录 |
+| `strategy/` | 待迁移的独立选股、回测和策略验证脚本 |
+| `游资溢价分析/` | 待迁移的龙虎榜、营业部和历史溢价分析 |
+| `utils/` | 迁移期兼容工具；MySQL 和 Redis 已转发到新基础设施层 |
+| `db/migrations/` | 版本化英文数据库结构和存量数据迁移脚本 |
+| `docs/` | 架构、开发、代码迁移和数据库迁移文档 |
 | `init/` | MySQL/Redis Docker 配置和数据库初始化 SQL |
 | `data/` | 股票基础数据、采集缓存和浏览器用户目录等本地数据 |
 | `output/` | 研究 CSV、策略结果和盘前纪要 INI 等生成物 |
@@ -258,19 +261,19 @@ Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 
 运行前需要准备：
 
-1. Python 3.12，并安装 `requirements.txt` 中的依赖。
-2. Node.js 与 npm，并在 `front/` 中完成依赖安装。
-3. MySQL 8 和 Redis；可使用 `init/docker/` 下的 Compose 文件，并导入 `init/stock_trading_lab.sql`。
-4. 在 `config.py` 中配置 MySQL、Tushare Token、项目路径、浏览器采集、策略和各类阈值。使用通达信功能时还需配置通达信安装目录。
+1. Python 3.12 和 `uv`，运行 `uv sync --all-groups --frozen` 安装依赖。
+2. Node.js 与 npm，运行 `npm --prefix front install` 安装前端依赖。
+3. MySQL 8 和 Redis；新环境使用 `init/stock_trading_lab_v2.sql`，旧库按 `docs/database-migrations.md` 迁移。
+4. 复制 `.env.example` 为 `.env` 并配置 MySQL；可选集成按需要配置。
 5. 确保需要采集的网站可访问；部分页面采集依赖本地浏览器会话。
 
 项目根目录可直接运行：
 
 ```powershell
-.\python312\python.exe app.py
+.\启动项目.ps1
 ```
 
-`app.py` 默认启动 FastAPI 服务（8051 端口），并在后台执行 `npm run dev` 启动 Vite 前端（8990 端口）。Vite 会把 `/api` 请求代理到 FastAPI。
+`app.py` 默认启动 FastAPI 服务（8051 端口），并通过受管理的前端进程启动 Vite（8990 端口）。Vite 会把 `/api` 请求代理到 FastAPI。开发架构和命名规则见 `docs/architecture.md`。
 
 ## 9. 当前边界
 
