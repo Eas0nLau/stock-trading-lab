@@ -95,3 +95,19 @@ class TdxQuoteSubscription:
             finally:
                 self.subscribed_codes = []
                 self.latest_by_code.clear()
+
+
+class TdxClientSession:
+    def __init__(self, root: Path, session_source: Path | None = None):
+        self.root = root
+        self.session_source = session_source
+        self.tq = None
+
+    def __enter__(self):
+        self.tq = load_tq(self.root, self.session_source)
+        return self.tq
+
+    def __exit__(self, exc_type, exc, traceback):
+        if self.tq is not None:
+            close_tq(self.tq)
+        return False

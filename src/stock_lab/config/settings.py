@@ -32,7 +32,7 @@ class Settings:
     deepseek_api_key: str
     tdx_root: str
     init_url: str
-    tdx_cache_refresh_interval_seconds: int
+    tdx_cache_refresh_interval_seconds: float
     browser_close_old_tabs: bool
     fund_flow_interval_seconds: int
     fund_flow_history_top_n: int

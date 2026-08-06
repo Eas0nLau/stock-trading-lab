@@ -4,67 +4,65 @@ from datetime import datetime
 
 from loguru import logger
 
-from stock_lab.config import get_settings
 from stock_lab.infrastructure.tdx import TdxQuoteSubscription, TdxSettings, close_tq, get_market_snapshot, load_tq, refresh_tdx_cache
-from .global_monitor import can_emit_alert, crossed_above
+from .auction_monitor import AuctionState, build_monitor_row, current_auction_phase, process_auction_rows
+from .global_monitor import check_alerts
 from .snapshot import extract_snapshot_row
 
 
-def _codes():
+def configured_codes():
     return [item.strip().upper() for item in os.getenv("TDX_CODES", "000001.SZ").split(",") if item.strip()]
 
 
-def run_global_monitor(max_loops=0, codes=None):
-    tdx = TdxSettings.from_settings(get_settings())
-    tq = load_tq(tdx.root)
-    codes = codes or _codes()
-    subscription = TdxQuoteSubscription()
+def run_global_monitor(settings, codes=None, max_loops=0, interval=2.0, client_factory=load_tq, quote_reader=get_market_snapshot, refresh=refresh_tdx_cache, subscription_factory=TdxQuoteSubscription, sleep=time.sleep, emit=None):
+    tdx = TdxSettings.from_settings(settings)
+    tq = client_factory(tdx.root)
+    codes = list(codes or configured_codes())
+    subscription = subscription_factory()
     subscription.subscribe(tq, codes)
-    previous = {}
-    history = {}
+    previous, history = {}, {}
+    emit = emit or (lambda event: logger.warning(event["message"]))
     try:
-        loops = 0
-        while True:
-            loops += 1
-            refresh_tdx_cache(tq)
-            rows = [extract_snapshot_row(code, subscription.get_latest(code) or get_market_snapshot(tq, code), datetime.now()) for code in codes]
-            for row in rows:
-                code = row["代码"]
-                old = previous.get(code, {})
-                if crossed_above(old.get("最新价"), row.get("最新价"), old.get("开盘价"), row.get("开盘价")) and can_emit_alert(history, code, "open", time.time(), 0):
-                    logger.warning("TDX open-price break: {}", code)
-                previous[code] = row
-            if max_loops and loops >= max_loops:
+        for loop in range(1, max_loops + 1 if max_loops else 2**31):
+            refresh(tq)
+            rows = [extract_snapshot_row(code, subscription.get_latest(code) or quote_reader(tq, code), datetime.now()) for code in codes]
+            check_alerts(rows, previous, history, True, True, 0, emit)
+            if max_loops and loop >= max_loops:
                 return rows
-            time.sleep(2)
+            sleep(interval)
     finally:
         subscription.unsubscribe(tq)
         close_tq(tq)
 
 
-def run_auction_monitor(max_loops=0, codes=None):
+def run_auction_monitor(settings, repository, codes=None, max_loops=0, interval=3.0, client_factory=load_tq, quote_reader=get_market_snapshot, refresh=refresh_tdx_cache, subscription_factory=TdxQuoteSubscription, sleep=time.sleep, clock=None, emit=None):
     from .universe import load_mainboard_non_st_codes
 
-    if codes is None:
-        repository = _market_data_repository()
-        codes = load_mainboard_non_st_codes(repository)
-    return run_global_monitor(max_loops=max_loops, codes=codes)
-
-
-def _market_data_repository():
-    from stock_lab.infrastructure.database import MysqlResources
-    from stock_lab.modules.market_data import MarketDataRepository
-
-    settings = get_settings()
-    resources = MysqlResources.from_settings(settings)
-
-    def query(sql, params=None, fetch=False):
-        connection = resources.get_pool().get_connection()
-        try:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute(sql, params or ())
-            return cursor.fetchall() if fetch else cursor.rowcount
-        finally:
-            connection.close()
-
-    return MarketDataRepository(query)
+    tdx = TdxSettings.from_settings(settings)
+    codes = list(codes or load_mainboard_non_st_codes(repository))
+    tq = client_factory(tdx.root)
+    normalized = codes
+    subscription = subscription_factory()
+    subscription.subscribe(tq, normalized)
+    state, alerted = AuctionState(), set()
+    clock = clock or (lambda: datetime.now().strftime("%H:%M:%S"))
+    emit = emit or (lambda event: logger.warning("TDX auction {} {}", event["signal"], event["code"]))
+    try:
+        loops = 0
+        while True:
+            phase = current_auction_phase(clock())
+            if not phase:
+                if clock() > "09:25:00":
+                    return []
+                sleep(min(interval, 1.0))
+                continue
+            loops += 1
+            refresh(tq)
+            rows = [build_monitor_row(extract_snapshot_row(code, subscription.get_latest(code) or quote_reader(tq, code), datetime.now())) for code in normalized]
+            process_auction_rows(rows, phase, state, alerted, emit)
+            if max_loops and loops >= max_loops:
+                return rows
+            sleep(interval)
+    finally:
+        subscription.unsubscribe(tq)
+        close_tq(tq)
