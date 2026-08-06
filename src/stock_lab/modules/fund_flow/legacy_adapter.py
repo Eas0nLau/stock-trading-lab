@@ -42,6 +42,31 @@ class LegacyFundFlowReadAdapter:
         return result
 
 
+class LegacyFundFlowWriteAdapter:
+    def __init__(self, redis):
+        self.redis = redis
+
+    def save_snapshot(self, flow_type, trade_date, collected_at, records):
+        prefix = LEGACY_REDIS_PREFIXES[flow_type]
+        history_key = f"{prefix}:history:{trade_date}"
+        encoded = json.dumps(records, ensure_ascii=False, separators=(",", ":"))
+        previous = self.redis.lindex(history_key, -1)
+        try:
+            previous_snapshot = json.loads(previous) if previous else []
+        except (TypeError, ValueError):
+            previous_snapshot = []
+        previous_time = next(
+            (item.get("\u65f6\u95f4") for item in previous_snapshot if item.get("\u65f6\u95f4")),
+            "",
+        )
+
+        self.redis.set(f"{prefix}:latest", encoded)
+        if previous_time == collected_at:
+            self.redis.lset(history_key, -1, encoded)
+        else:
+            self.redis.rpush(history_key, encoded)
+
+
 class LegacyFundFlowCollectorAdapter:
     def __init__(self, module=None):
         self._module = module or importlib.import_module("\u5b9e\u65f6\u76d1\u63a7.\u8d44\u91d1\u6d41\u5411")

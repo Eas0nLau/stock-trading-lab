@@ -4,11 +4,21 @@ import threading
 from loguru import logger
 
 from .contracts import translate_legacy_fund_flow
-from .legacy_adapter import LegacyFundFlowCollectorAdapter
+from .legacy_adapter import LegacyFundFlowCollectorAdapter, LegacyFundFlowWriteAdapter
 
 
-def save_legacy_snapshot(repository, flow_type, trade_date, collected_at, records) -> None:
+def save_legacy_snapshot(
+    repository,
+    flow_type,
+    trade_date,
+    collected_at,
+    records,
+    legacy_writer=None,
+) -> None:
     repository.save_history(flow_type, trade_date, translate_legacy_fund_flow(records))
+    if legacy_writer is None:
+        legacy_writer = LegacyFundFlowWriteAdapter(repository.redis)
+    legacy_writer.save_snapshot(flow_type, trade_date, collected_at, records)
     repository.publish_snapshot(flow_type, trade_date, collected_at, len(records))
 
 

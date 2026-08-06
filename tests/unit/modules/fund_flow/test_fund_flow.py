@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from stock_lab.modules.fund_flow.contracts import translate_legacy_fund_flow
 from stock_lab.modules.fund_flow.repository import FundFlowRepository
 
@@ -105,3 +107,33 @@ def test_snapshot_delivery_uses_only_the_in_process_broker():
     assert '"type": "snapshot"' in next(events)
     assert redis.publish_calls == []
     events.close()
+
+
+def test_snapshot_delivery_reaches_multiple_subscribers():
+    repository = FundFlowRepository(FakeRedis())
+    baseline = repository.stream_subscriber_count()
+    first = repository.stream_events()
+    second = repository.stream_events()
+    next(first)
+    next(second)
+
+    repository.publish_snapshot("concept", "20260806", "10:02:00", 2)
+
+    assert '"flow_type": "concept"' in next(first)
+    assert '"flow_type": "concept"' in next(second)
+    first.close()
+    second.close()
+    assert repository.stream_subscriber_count() == baseline
+
+
+def test_stream_removes_subscriber_when_event_encoding_raises():
+    repository = FundFlowRepository(FakeRedis())
+    baseline = repository.stream_subscriber_count()
+    events = repository.stream_events()
+    next(events)
+    repository.publish_snapshot("industry", "20260806", object(), 1)
+
+    with pytest.raises(TypeError):
+        next(events)
+
+    assert repository.stream_subscriber_count() == baseline

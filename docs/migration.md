@@ -20,4 +20,4 @@
 
 前端 `IndexCycle.vue` 和 `HotBoardEmotion.vue` 已使用 `/api/v1/emotion/*` 与英文模型字段。旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 已停止注册，避免读取不再更新的旧表。
 
-`FundFlow.vue` 已使用 `/api/v1/fund-flow/{flow_type}/dates`、`/history/{trade_date}` 和 `/api/v1/fund-flow/stream`，内部模型统一为英文 camelCase。采集快照只写入 `fund_flow:v1:{flow_type}:history:{trade_date}`，日期索引写入 `fund_flow:v1:{flow_type}:dates`，同一采集时间重复写入时替换最后一帧。旧 `fund_flow:history:*` 和 `fund_flow_概念:history:*` 由显式只读 adapter 翻译后提供历史查询，不再追加新数据。旧 `/api/zijin/*` 已停止注册；SSE 由 API 与采集线程所在的单一应用进程内 broker 管理订阅和清理，不使用 Redis Pub/Sub。`实时监控/资金流向.py` 仅保留浏览器采集兼容逻辑，策略选股仍待完成独立迁移。
+`FundFlow.vue` 已使用 `/api/v1/fund-flow/{flow_type}/dates`、`/history/{trade_date}` 和 `/api/v1/fund-flow/stream`，内部模型统一为英文 camelCase。采集快照写入 `fund_flow:v1:{flow_type}:history:{trade_date}`，日期索引写入 `fund_flow:v1:{flow_type}:dates`，同一采集时间重复写入时替换最后一帧。迁移期间，显式 adapter 同步更新旧 `fund_flow:history:*`、`fund_flow_概念:history:*` 和对应 `latest` 键，供情绪周期与历史策略等直接消费者读取；V1 读取也可翻译旧历史。旧 `/api/zijin/*` 已停止注册；SSE 由 API 与采集线程所在的单一应用进程内 broker 管理订阅和清理，不使用 Redis Pub/Sub。`实时监控/资金流向.py` 仅保留浏览器采集兼容逻辑，策略选股仍待完成独立迁移。

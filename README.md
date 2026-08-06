@@ -255,7 +255,7 @@ Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 | 指数情绪 V1 | `/api/v1/emotion/current` | 英文字段，前端已切换 |
 | 热门板块情绪 V1 | `/api/v1/emotion/hot-boards` | 英文字段，前端已切换 |
 
-旧 `/api/zijin/*`、`/api/emotion/*` 和 `/api/hot-board-emotion/*` 不再注册。资金流向浏览器采集逻辑暂留在兼容文件中，通过官方 adapter 只写 V1 Redis；旧 `fund_flow*` 历史键由只读 adapter 继续提供查询。资金流向 SSE 使用应用进程内 broker，由同一进程中的采集线程向 API 订阅者投递；策略选股仍依赖旧监控模块。
+旧 `/api/zijin/*`、`/api/emotion/*` 和 `/api/hot-board-emotion/*` 不再注册。资金流向浏览器采集逻辑暂留在兼容文件中，通过官方 adapter 写入 V1 Redis，并在迁移期同步旧 `fund_flow*` 原始历史键供直接消费者使用。资金流向 SSE 使用应用进程内 broker，由同一进程中的采集线程向 API 订阅者投递；策略选股仍依赖旧监控模块。
 
 ## 8. 运行条件与启动方式
 
