@@ -55,11 +55,21 @@ class StrategyPickCollector:
         return results
 
 
+def create_strategy_pick_collector(redis, *, adapter=None):
+    from stock_lab.config.defaults import DEFAULT_STRATEGY_PICK_STRATEGIES
+
+    from .repository import StrategyPickRepository
+    from .service import StrategyPickService
+
+    repository = StrategyPickRepository(redis)
+    StrategyPickService(repository, default_strategies=DEFAULT_STRATEGY_PICK_STRATEGIES).strategies()
+    return StrategyPickCollector(repository, adapter=adapter)
+
+
 def run_strategy_pick_monitor(stop_event=None, *, collector=None, adapter=None):
     stop_event = stop_event or threading.Event()
     if collector is None:
         from utils import db
-        from .repository import StrategyPickRepository
-        collector = StrategyPickCollector(StrategyPickRepository(db.redis_con_localhost), adapter=adapter)
+        collector = create_strategy_pick_collector(db.redis_con_localhost, adapter=adapter)
     adapter = adapter or collector.adapter
     return adapter.run(stop_event, collector)

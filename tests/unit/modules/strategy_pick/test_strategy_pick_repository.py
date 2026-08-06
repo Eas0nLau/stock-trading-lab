@@ -47,6 +47,42 @@ def test_repository_reads_legacy_latest_when_v1_value_is_missing():
     assert repository.latest("eastmoney_1") == {"strategyId": "eastmoney_1", "stocks": []}
 
 
+def test_repository_does_not_use_global_legacy_latest_for_non_default_strategy():
+    redis = FakeRedis()
+    redis.values["策略选股:latest"] = json.dumps({"策略ID": "eastmoney_1", "股票列表": []}, ensure_ascii=False)
+    repository = StrategyPickRepository(redis)
+
+    assert repository.latest("eastmoney_2") == {}
+
+
+def test_repository_writes_exact_legacy_strategy_config_for_fresh_collector():
+    redis = FakeRedis()
+    repository = StrategyPickRepository(redis)
+    repository.save_strategies([{
+        "id": "eastmoney_1",
+        "name": "新高监控",
+        "pageUrl": "https://example.test/strategy",
+        "listenTargets": ["/api/search"],
+        "monitorPeriods": [["09:20", "11:31"], ["13:00", "15:01"]],
+        "monitorIntervalSeconds": 30,
+        "enabled": True,
+        "createdAt": "2026-08-06 09:00:00",
+        "updatedAt": "2026-08-06 09:01:00",
+    }])
+
+    assert json.loads(redis.values["策略选股:strategies"]) == [{
+        "id": "eastmoney_1",
+        "名称": "新高监控",
+        "页面URL": "https://example.test/strategy",
+        "监听目标": ["/api/search"],
+        "监控时间段": [["09:20", "11:31"], ["13:00", "15:01"]],
+        "监控频率秒": 30,
+        "启用": True,
+        "创建时间": "2026-08-06 09:00:00",
+        "更新时间": "2026-08-06 09:01:00",
+    }]
+
+
 def test_stream_generator_removes_subscriber_when_closed():
     repository = StrategyPickRepository(FakeRedis())
     baseline = repository.stream_subscriber_count()

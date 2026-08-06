@@ -21,6 +21,8 @@ def register_strategy_pick_routes(app: FastAPI, *, repository=None, collector=No
     def get_strategies(): return service.strategies()
     @app.post("/api/v1/strategy-pick/strategies")
     def post_strategy(payload: dict = Body(...)): return service.create_strategy(payload)
+    @app.get("/api/v1/strategy-pick/strategies/{strategy_id}")
+    def get_strategy(strategy_id: str): return service.get_strategy(strategy_id)
     @app.put("/api/v1/strategy-pick/strategies/{strategy_id}")
     def put_strategy(strategy_id: str, payload: dict = Body(...)): return service.update_strategy(strategy_id, payload)
     @app.delete("/api/v1/strategy-pick/strategies/{strategy_id}")

@@ -68,6 +68,16 @@ def test_strategy_pick_v1_exposes_scoped_reads_and_refreshes():
     assert collector.calls == ["eastmoney_1", "all"]
 
 
+def test_strategy_pick_v1_gets_one_strategy():
+    client, _, _, _ = create_client()
+
+    response = client.get("/api/v1/strategy-pick/strategies/eastmoney_1")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "eastmoney_1"
+    assert response.json()["name"] == "新高监控"
+
+
 def test_strategy_pick_v1_stream_uses_english_events_and_cleans_up():
     _, repository, _, _ = create_client()
     stream = repository.stream_events()

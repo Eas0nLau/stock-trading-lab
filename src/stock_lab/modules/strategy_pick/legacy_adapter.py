@@ -3,16 +3,33 @@ import json
 from .contracts import LEGACY_KEY_MAP, translate_legacy_strategy_pick
 
 
+LEGACY_DEFAULT_STRATEGY_ID = "eastmoney_1"
+LEGACY_STRATEGY_CONFIG_KEYS = {
+    "id": "id",
+    "name": "名称",
+    "pageUrl": "页面URL",
+    "listenTargets": "监听目标",
+    "monitorPeriods": "监控时间段",
+    "monitorIntervalSeconds": "监控频率秒",
+    "enabled": "启用",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+}
+
+
 class LegacyStrategyPickReadAdapter:
-    def __init__(self, redis):
+    def __init__(self, redis, default_strategy_id=LEGACY_DEFAULT_STRATEGY_ID):
         self.redis = redis
+        self.default_strategy_id = default_strategy_id
 
     def strategies(self):
         value = _json_value(self.redis.get("策略选股:strategies"), [])
         return translate_legacy_strategy_pick(value)
 
     def latest(self, strategy_id):
-        keys = ["策略选股:latest", f"策略选股:{strategy_id}:latest"]
+        keys = [f"策略选股:{strategy_id}:latest"]
+        if strategy_id == self.default_strategy_id:
+            keys.append("策略选股:latest")
         for key in keys:
             value = _json_value(self.redis.get(key), None)
             if value is not None: return translate_legacy_strategy_pick(value)
@@ -50,7 +67,8 @@ class LegacyStrategyPickWriteAdapter:
             self.redis.set(key, json.dumps(legacy, ensure_ascii=False))
 
     def save_strategies(self, strategies):
-        self.redis.set("策略选股:strategies", json.dumps(_legacy_value(strategies), ensure_ascii=False))
+        payload = [_legacy_strategy_config(strategy) for strategy in strategies]
+        self.redis.set("策略选股:strategies", json.dumps(payload, ensure_ascii=False))
 
     def save_events(self, strategy_id, date, events):
         for event in events:
@@ -85,3 +103,11 @@ def _legacy_value(value):
     if isinstance(value, list): return [_legacy_value(item) for item in value]
     if not isinstance(value, dict): return value
     return {reverse.get(key, key): _legacy_value(nested) for key, nested in value.items()}
+
+
+def _legacy_strategy_config(strategy):
+    return {
+        legacy_key: strategy.get(v1_key)
+        for v1_key, legacy_key in LEGACY_STRATEGY_CONFIG_KEYS.items()
+        if v1_key in strategy
+    }

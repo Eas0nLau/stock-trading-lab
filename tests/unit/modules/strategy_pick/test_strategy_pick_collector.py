@@ -1,6 +1,7 @@
+import json
 import threading
 
-from stock_lab.modules.strategy_pick.collector import LegacyStrategyPickCollectorAdapter, StrategyPickCollector, run_strategy_pick_monitor
+from stock_lab.modules.strategy_pick.collector import LegacyStrategyPickCollectorAdapter, StrategyPickCollector, create_strategy_pick_collector, run_strategy_pick_monitor
 from stock_lab.modules.strategy_pick.repository import StrategyPickRepository
 
 
@@ -65,3 +66,19 @@ def test_legacy_worker_adapter_persists_due_results_through_official_collector()
     adapter.run(stop_event, collector)
 
     assert repository.latest("eastmoney_1")["status"] == "success"
+
+
+def test_fresh_official_collector_projects_default_config_for_legacy_collector():
+    redis = Redis()
+
+    create_strategy_pick_collector(redis, adapter=Adapter())
+
+    strategies = json.loads(redis.values["策略选股:strategies"])
+    first = strategies[0]
+    assert first["id"] == "eastmoney_1"
+    assert first["名称"] == "新高监控"
+    assert first["页面URL"]
+    assert first["监听目标"] == ["/api/smart-tag/stock/v3/pw/search-code"]
+    assert first["监控时间段"] == [["09:20", "11:31"], ["13:00", "15:01"]]
+    assert first["监控频率秒"] == 30
+    assert first["启用"] is True
