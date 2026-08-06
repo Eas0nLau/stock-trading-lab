@@ -5,23 +5,29 @@ from fastapi import FastAPI
 from .contracts import translate_legacy_payload
 
 
-def load_legacy_index_emotion():
-    from 实时监控 import 情绪周期
+def load_current_index_emotion():
+    from utils import db
 
-    return 情绪周期.计算当前情绪周期()
+    from .repository import EmotionRepository
+    from .service import EmotionService
+
+    return EmotionService(EmotionRepository(db.mysql_localhost)).current_index_emotion()
 
 
-def load_legacy_hot_board_emotion(days: int):
-    from 实时监控 import 热门板块情绪
+def load_current_hot_board_emotion(days: int):
+    from utils import db
 
-    return 热门板块情绪.读取热门板块情绪(days=days)
+    from .repository import EmotionRepository
+    from .service import EmotionService
+
+    return EmotionService(EmotionRepository(db.mysql_localhost)).hot_board_emotion(days=days)
 
 
 def register_emotion_routes(
     app: FastAPI,
     *,
-    index_loader: Callable[[], dict] = load_legacy_index_emotion,
-    hot_board_loader: Callable[[int], dict] = load_legacy_hot_board_emotion,
+    index_loader: Callable[[], dict] = load_current_index_emotion,
+    hot_board_loader: Callable[[int], dict] = load_current_hot_board_emotion,
 ) -> None:
     @app.get("/api/v1/emotion/current")
     def get_current_emotion():
