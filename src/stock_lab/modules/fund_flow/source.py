@@ -18,6 +18,8 @@ FLOW_CONFIG = {
     "industry": ("Industry fund flow", "https://data.eastmoney.com/bkzj/hy.html"),
     "concept": ("Concept fund flow", "https://data.eastmoney.com/bkzj/gn.html"),
 }
+LISTENER_POLL_SECONDS = 0.1
+LISTENER_TOTAL_TIMEOUT_SECONDS = 5.0
 
 
 def normalize_concept_name(value):
@@ -104,10 +106,17 @@ class FundFlowSource:
             return None
         self.page = self.page_factory(
             "fund-flow",
-            "https://data.eastmoney.com/bkzj/hy.html",
             use_main_tab=True,
             stop_event=stop_event,
         )
+        if self.page is None or (stop_event is not None and stop_event.is_set()):
+            self.close()
+            return None
+        try:
+            self.page.get("https://data.eastmoney.com/bkzj/hy.html", timeout=0)
+        except Exception:
+            self.close()
+            raise
         if stop_event is not None and stop_event.is_set():
             self.close()
             return None
@@ -178,13 +187,34 @@ class FundFlowSource:
         self.page.get(url, timeout=0)
         if stop_event is not None and stop_event.is_set():
             return []
-        records = parse_fund_flow_packets(
-            self.page.listen.steps(timeout=5),
-            now.strftime("%H:%M:%S"),
-            flow_type,
-            self.settings.concept_exclusions,
-            stop_event=stop_event,
-        )
+        deadline = time.monotonic() + LISTENER_TOTAL_TIMEOUT_SECONDS
+        packets = []
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                return []
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return parse_fund_flow_packets(
+                    packets,
+                    now.strftime("%H:%M:%S"),
+                    flow_type,
+                    self.settings.concept_exclusions,
+                )
+            timeout = min(LISTENER_POLL_SECONDS, remaining)
+            for packet in self.page.listen.steps(timeout=timeout) or ():
+                if stop_event is not None and stop_event.is_set():
+                    return []
+                packets.append(packet)
+            try:
+                records = parse_fund_flow_packets(
+                    packets,
+                    now.strftime("%H:%M:%S"),
+                    flow_type,
+                    self.settings.concept_exclusions,
+                )
+                break
+            except TimeoutError:
+                continue
         if stop_event is not None and stop_event.is_set():
             return []
         save_snapshot(

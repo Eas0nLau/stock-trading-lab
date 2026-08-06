@@ -35,9 +35,8 @@ SAFE_BUILTIN_NAMES = {
 SAFE_BUILTINS = {name: getattr(builtins, name) for name in SAFE_BUILTIN_NAMES}
 SAFE_RUNTIME_IMPORTS = SAFE_IMPORTS | {"_strptime", "calendar", "locale", "time"}
 SAFE_CLASS_BASE_NAMES = {
-    "Exception", "ValueError", "dict", "list", "object", "tuple",
+    "frozenset", "object", "tuple",
 }
-SAFE_CLASS_BASE_ROOTS = {"np", "pd"}
 
 
 def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
@@ -189,6 +188,7 @@ def run_source_selector(strategy_id, display_name, source_path, context):
 
 def _load_selector_namespace(path, context):
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    _validate_protected_base_bindings(tree, path)
     functions = {
         node.name: node
         for node in tree.body
@@ -282,14 +282,53 @@ def _validate_class_definition(node, path):
 
 
 def _is_safe_class_base(node):
+    return isinstance(node, ast.Name) and node.id in SAFE_CLASS_BASE_NAMES
+
+
+def _validate_protected_base_bindings(tree, path):
+    for node in tree.body:
+        names = set()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+            for target in targets:
+                names.update(_target_names(target))
+            value = getattr(node, "value", None)
+            if value is not None:
+                names.update(
+                    item.target.id
+                    for item in ast.walk(value)
+                    if isinstance(item, ast.NamedExpr) and isinstance(item.target, ast.Name)
+                )
+        elif isinstance(node, ast.Import):
+            names.update(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+        protected = names & SAFE_CLASS_BASE_NAMES
+        if protected:
+            name = sorted(protected)[0]
+            raise ResearchExecutionError(
+                f"{path} rebinds protected class base name: {name}"
+            )
+
+
+def _target_names(node):
     if isinstance(node, ast.Name):
-        return node.id in SAFE_CLASS_BASE_NAMES
-    if not isinstance(node, ast.Attribute):
-        return False
-    root = node
-    while isinstance(root, ast.Attribute):
-        root = root.value
-    return isinstance(root, ast.Name) and root.id in SAFE_CLASS_BASE_ROOTS
+        return {node.id}
+    if (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "__builtins__"
+        and isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+    ):
+        return {node.slice.value}
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return {name for item in node.elts for name in _target_names(item)}
+    if isinstance(node, ast.Starred):
+        return _target_names(node.value)
+    return set()
 
 
 def _reachable_functions(functions, root):

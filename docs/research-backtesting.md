@@ -67,9 +67,10 @@ executable class statements are rejected before compilation. Runtime builtins
 are an explicit minimal set, filesystem helpers such as `open` are absent, and
 the guarded import hook permits only required harmless standard-library modules.
 Class decorators and keyword/metaclass expressions are rejected. Base classes
-must be non-executable `Name` or `Attribute` references rooted in the runtime's
-explicit approved base namespace; calls and computed class headers never reach
-`exec`.
+may be omitted or name only the immutable approved builtins `object`, `tuple`,
+and `frozenset`; calls, attributes, and computed class headers never reach
+`exec`. Module assignments, import aliases, functions, and classes may not
+rebind those protected names before class creation.
 
 Run against deterministic built-in fixtures:
 

@@ -1,4 +1,5 @@
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -246,3 +247,94 @@ def test_fund_flow_factory_binds_composed_settings_to_page_factory(monkeypatch):
 
     assert source.settings is settings
     assert source.page_factory.keywords["settings"] is settings
+
+
+def test_listener_wait_stops_within_worker_join_budget():
+    stop_event = threading.Event()
+    waiting = threading.Event()
+    release = threading.Event()
+    timeouts = []
+    errors = []
+
+    class Listen:
+        def start(self, _targets): pass
+
+        def steps(self, timeout=None):
+            timeouts.append(timeout)
+            waiting.set()
+            release.wait(timeout=timeout)
+            return iter(())
+
+    page = SimpleNamespace(
+        listen=Listen(),
+        get=lambda *_args, **_kwargs: None,
+    )
+    source = FundFlowSource(
+        lambda *_args, **_kwargs: page,
+        object(),
+        settings=SimpleNamespace(
+            fund_flow_interval_seconds=30,
+            fund_flow_history_top_n=0,
+            concept_exclusions=(),
+        ),
+        history_service=object(),
+    )
+    source.page = page
+
+    def collect():
+        try:
+            source.collect("industry", stop_event=stop_event)
+        except Exception as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=collect)
+    thread.start()
+    assert waiting.wait(timeout=1)
+    started = time.perf_counter()
+    stop_event.set()
+    thread.join(timeout=0.9)
+    elapsed = time.perf_counter() - started
+    was_alive = thread.is_alive()
+    release.set()
+    thread.join(timeout=1)
+
+    assert not was_alive
+    assert elapsed < 1
+    assert timeouts and max(timeouts) < 0.9
+    assert errors == []
+
+
+def test_navigation_failure_closes_owned_page_once_without_masking_error():
+    failure = ValueError("navigation failed")
+    closed = []
+
+    class Page:
+        listen = SimpleNamespace(stop=lambda: None)
+
+        def get(self, *_args, **_kwargs):
+            raise failure
+
+        def close(self):
+            closed.append(True)
+
+    page = Page()
+
+    def page_factory(_name, url=None, **_kwargs):
+        if url is not None:
+            page.get(url)
+        return page
+
+    source = FundFlowSource(
+        page_factory,
+        object(),
+        settings=SimpleNamespace(fund_flow_interval_seconds=30, fund_flow_history_top_n=0),
+        history_service=object(),
+    )
+
+    with pytest.raises(ValueError) as raised:
+        source.initialize()
+    source.close()
+
+    assert raised.value is failure
+    assert closed == [True]
+    assert source.page is None

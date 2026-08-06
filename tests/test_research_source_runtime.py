@@ -202,6 +202,72 @@ def test_source_runtime_allows_behaviorless_class_with_approved_base(tmp_path):
     assert result.rows == []
 
 
+def test_source_runtime_rejects_approved_base_name_rebinding_before_exec(tmp_path):
+    marker = tmp_path / "marker"
+    source = tmp_path / "rebound_base.py"
+    source.write_text(
+        "class Evil:\n"
+        "    def __init_subclass__(cls):\n"
+        f"        Path({str(marker)!r}).write_text('executed')\n"
+        "object = Evil\n"
+        "class Trigger(object):\n"
+        "    pass\n"
+        "def strategy(filtered_codes, target_date):\n"
+        "    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchExecutionError, match="protected class base name"):
+        run_source_selector(
+            "rebound_base", "重绑定", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "object = tuple\n",
+        "__builtins__['object'] = tuple\n",
+        "import json as object\n",
+        "def object():\n    pass\n",
+        "class object:\n    pass\n",
+    ],
+)
+def test_source_runtime_rejects_all_protected_base_binding_forms(tmp_path, binding):
+    source = tmp_path / "protected_binding.py"
+    source.write_text(
+        binding
+        + "def strategy(filtered_codes, target_date):\n"
+        + "    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchExecutionError, match="protected class base name"):
+        run_source_selector(
+            "protected_binding", "保护名称", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+
+
+def test_source_runtime_rejects_mutable_builtin_class_base(tmp_path):
+    source = tmp_path / "mutable_base.py"
+    source.write_text(
+        "class Unsafe(list):\n"
+        "    pass\n"
+        "def strategy(filtered_codes, target_date):\n"
+        "    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchExecutionError, match="class definition"):
+        run_source_selector(
+            "mutable_base", "可变基类", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+
+
 def test_source_runtime_executes_parameterized_stock_code_queries(tmp_path):
     source = tmp_path / "parameterized.py"
     source.write_text(

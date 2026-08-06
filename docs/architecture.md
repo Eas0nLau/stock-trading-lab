@@ -39,6 +39,7 @@ infrastructure -> shared
 应用组装会把同一个 `Settings` 显式绑定到浏览器 page factory；Chrome profile 使用该配置的
 `project_root`，旧标签页策略使用 `browser_close_old_tabs`，组合路径不重新读取全局配置。
 资金流向 worker 还会把停止事件传入初始化、监听和采集边界，并在退出时执行幂等且不抛出的资源清理。
+监听响应按 100 毫秒切片轮询并受总截止时间约束；source 在首次导航前取得 page 所有权，导航失败时关闭一次并保留原始异常。
 
 `stock_lab.modules.emotion.index_cycle` 和 `stock_lab.modules.emotion.hot_board`
 拥有指数及热门板块算法。正式 job 只传递英文规范字段；中文模块仅为直接脚本路径提供薄转发。
