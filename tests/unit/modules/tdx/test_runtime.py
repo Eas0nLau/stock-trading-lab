@@ -1,7 +1,9 @@
 from pathlib import Path
 
 from stock_lab.infrastructure.tdx import TdxQuoteSubscription
-from stock_lab.modules.tdx.runtime import run_global_monitor
+import pytest
+
+from stock_lab.modules.tdx.runtime import run_auction_monitor, run_global_monitor
 
 
 class Settings:
@@ -26,6 +28,11 @@ class FakeTq:
         return {"Code": stock_code, "Price": 11, "PreClose": 10, "Open": 10}
 
 
+class ExplodingSubscription:
+    def subscribe(self, tq, codes):
+        raise RuntimeError("subscription setup failed")
+
+
 def test_global_runtime_uses_injected_client_and_closes_it():
     client = FakeTq()
 
@@ -40,4 +47,25 @@ def test_global_runtime_uses_injected_client_and_closes_it():
     )
 
     assert rows[0]["最新价"] == 11
+    assert client.closed is True
+
+
+@pytest.mark.parametrize("runner", [run_global_monitor, run_auction_monitor])
+def test_runtime_closes_acquired_client_when_subscription_setup_raises(runner):
+    client = FakeTq()
+    kwargs = {
+        "settings": Settings(),
+        "codes": ["000001.SZ"],
+        "client_factory": lambda root: client,
+        "subscription_factory": ExplodingSubscription,
+    }
+    if runner is run_auction_monitor:
+        class Repository:
+            def securities(self, market=None):
+                return []
+        kwargs["repository"] = Repository()
+
+    with pytest.raises(RuntimeError, match="subscription setup failed"):
+        runner(**kwargs)
+
     assert client.closed is True

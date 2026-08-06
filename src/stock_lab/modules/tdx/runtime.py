@@ -1,6 +1,8 @@
 import os
 import time
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Iterable
 
 from loguru import logger
 
@@ -10,19 +12,33 @@ from .global_monitor import check_alerts
 from .snapshot import extract_snapshot_row
 
 
-def configured_codes():
+def configured_codes() -> list[str]:
     return [item.strip().upper() for item in os.getenv("TDX_CODES", "000001.SZ").split(",") if item.strip()]
 
 
-def run_global_monitor(settings, codes=None, max_loops=0, interval=2.0, client_factory=load_tq, quote_reader=get_market_snapshot, refresh=refresh_tdx_cache, subscription_factory=TdxQuoteSubscription, sleep=time.sleep, emit=None):
+def run_global_monitor(
+    settings: Any,
+    codes: Iterable[str] | None = None,
+    max_loops: int = 0,
+    interval: float = 2.0,
+    client_factory: Callable[[Path], Any] = load_tq,
+    quote_reader: Callable[[Any, str], dict[str, Any]] = get_market_snapshot,
+    refresh: Callable[[Any], Any] = refresh_tdx_cache,
+    subscription_factory: Callable[[], TdxQuoteSubscription] = TdxQuoteSubscription,
+    sleep: Callable[[float], None] = time.sleep,
+    emit: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
     tdx = TdxSettings.from_settings(settings)
     tq = client_factory(tdx.root)
     codes = list(codes or configured_codes())
-    subscription = subscription_factory()
-    subscription.subscribe(tq, codes)
+    subscription = None
+    subscribed = False
     previous, history = {}, {}
     emit = emit or (lambda event: logger.warning(event["message"]))
     try:
+        subscription = subscription_factory()
+        subscription.subscribe(tq, codes)
+        subscribed = True
         for loop in range(1, max_loops + 1 if max_loops else 2**31):
             refresh(tq)
             rows = [extract_snapshot_row(code, subscription.get_latest(code) or quote_reader(tq, code), datetime.now()) for code in codes]
@@ -31,23 +47,42 @@ def run_global_monitor(settings, codes=None, max_loops=0, interval=2.0, client_f
                 return rows
             sleep(interval)
     finally:
-        subscription.unsubscribe(tq)
-        close_tq(tq)
+        try:
+            if subscribed and subscription is not None:
+                subscription.unsubscribe(tq)
+        finally:
+            close_tq(tq)
 
 
-def run_auction_monitor(settings, repository, codes=None, max_loops=0, interval=3.0, client_factory=load_tq, quote_reader=get_market_snapshot, refresh=refresh_tdx_cache, subscription_factory=TdxQuoteSubscription, sleep=time.sleep, clock=None, emit=None):
+def run_auction_monitor(
+    settings: Any,
+    repository: Any,
+    codes: Iterable[str] | None = None,
+    max_loops: int = 0,
+    interval: float = 3.0,
+    client_factory: Callable[[Path], Any] = load_tq,
+    quote_reader: Callable[[Any, str], dict[str, Any]] = get_market_snapshot,
+    refresh: Callable[[Any], Any] = refresh_tdx_cache,
+    subscription_factory: Callable[[], TdxQuoteSubscription] = TdxQuoteSubscription,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], str] | None = None,
+    emit: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
     from .universe import load_mainboard_non_st_codes
 
     tdx = TdxSettings.from_settings(settings)
     codes = list(codes or load_mainboard_non_st_codes(repository))
     tq = client_factory(tdx.root)
     normalized = codes
-    subscription = subscription_factory()
-    subscription.subscribe(tq, normalized)
+    subscription = None
+    subscribed = False
     state, alerted = AuctionState(), set()
     clock = clock or (lambda: datetime.now().strftime("%H:%M:%S"))
     emit = emit or (lambda event: logger.warning("TDX auction {} {}", event["signal"], event["code"]))
     try:
+        subscription = subscription_factory()
+        subscription.subscribe(tq, normalized)
+        subscribed = True
         loops = 0
         while True:
             phase = current_auction_phase(clock())
@@ -64,5 +99,8 @@ def run_auction_monitor(settings, repository, codes=None, max_loops=0, interval=
                 return rows
             sleep(interval)
     finally:
-        subscription.unsubscribe(tq)
-        close_tq(tq)
+        try:
+            if subscribed and subscription is not None:
+                subscription.unsubscribe(tq)
+        finally:
+            close_tq(tq)
