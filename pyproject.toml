@@ -88,6 +88,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "httpx==0.28.1",
   "iniconfig==2.1.0",
   "pandas-stubs==3.0.0.260204",
   "pip-chill==1.0.3",
