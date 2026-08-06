@@ -32,4 +32,10 @@
 
 `index_daily`、`securities`、`daily_quotes`、`index_market_breadth`、`index_emotion_daily` 和 `hot_board_emotion_daily` 已接入默认数据流水线或新版 API。`jiuyan_actions` 已被新版情绪 job 读取，但采集任务仍需完成写入切换。
 
+市场数据的正式访问边界是 `stock_lab.modules.market_data`。Repository 只返回英文规范列：
+`securities.ts_code`、`securities.symbol`、`daily_quotes.ts_code`、
+`daily_quotes.trade_date`、`daily_quotes.open_price`、`daily_quotes.close_price` 和
+`index_daily.trade_date` 等。代码值按字符串处理，补齐股票代码的前导零并保留交易所后缀。
+共享旧工具仅在适配器边界恢复 `open`、`close`、`pre_close` 等历史键；这不改变存量数据库迁移的备份、校验和回滚要求。
+
 龙虎榜、同花顺、KDJ、5 分钟行情、实时监控和研究脚本仍存在旧表引用，因此禁止执行 `003_drop_legacy_schema.sql`。

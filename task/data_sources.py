@@ -1,11 +1,26 @@
 import datetime as dt
 from sqlalchemy import text
 
+from stock_lab.modules.market_data.helpers import (
+    daily_quote_from_source,
+    index_daily_from_source,
+    normalize_symbol,
+    normalize_trade_date,
+    normalize_ts_code,
+    security_from_source,
+)
+from stock_lab.modules.market_data.repository import MarketDataRepository
+
 
 def _db():
     from utils import db
 
     return db
+
+
+def _market_data_repository():
+    database = _db()
+    return MarketDataRepository(database.mysql_localhost, database.engine)
 
 
 def _to_int(value):
@@ -27,18 +42,15 @@ def _to_float(value):
 
 
 def _date_int(value):
-    if isinstance(value, (dt.date, dt.datetime)):
-        return int(value.strftime("%Y%m%d"))
-    value = str(value or "").replace("-", "")[:8]
-    return _to_int(value)
+    return normalize_trade_date(value)
 
 
 def _symbol_int(value):
-    return _to_int(str(value or "").split(".", 1)[0])
+    return _to_int(normalize_symbol(value))
 
 
 def _ts_code(value):
-    return str(value or "").strip().upper()
+    return normalize_ts_code(value)
 
 
 def _read_index_dates(limit):
@@ -55,44 +67,11 @@ def 交易日期列表(limit=160):
 
 
 def 标准化指数行(row):
-    return {
-        "trade_date": _date_int(row.get("date", row.get("日期"))),
-        "open_price": _to_float(row.get("open", row.get("开盘"))),
-        "close_price": _to_float(row.get("close", row.get("收盘"))),
-        "high_price": _to_float(row.get("high", row.get("最高"))),
-        "low_price": _to_float(row.get("low", row.get("最低"))),
-        "volume": _to_float(row.get("volume", row.get("成交量"))),
-        "turnover": _to_float(row.get("amount", row.get("成交额"))),
-        "amplitude_pct": _to_float(row.get("amplitude", row.get("振幅"))),
-        "change_pct": _to_float(row.get("pct_chg", row.get("涨跌幅"))),
-        "change_amount": _to_float(row.get("change", row.get("涨跌额"))),
-        "turnover_rate": _to_float(row.get("turnover", row.get("换手率"))),
-    }
+    return index_daily_from_source(row)
 
 
 def 股票日线记录(row, stock_name=None):
-    code = _ts_code(row.get("ts_code", row.get("symbol")))
-    date = _date_int(row.get("trade_date", row.get("date")))
-    return {
-        "ts_code": code,
-        "trade_date": date,
-        "open_price": _to_float(row.get("open")),
-        "high_price": _to_float(row.get("high")),
-        "low_price": _to_float(row.get("low")),
-        "close_price": _to_float(row.get("close")),
-        "previous_close": _to_float(row.get("pre_close")),
-        "change_amount": _to_float(row.get("change")),
-        "change_pct": _to_float(row.get("pct_chg")),
-        "volume": _to_float(row.get("vol")),
-        "turnover": _to_float(row.get("amount")),
-        "total_market_value": _to_float(row.get("total_mv")),
-        "circulating_market_value": _to_float(row.get("circ_mv")),
-        "free_float_shares": _to_float(row.get("free_share")),
-        "free_float_market_value": _to_float(row.get("free_mv")),
-        "stock_name": stock_name or row.get("stock_name"),
-        "data_id": f"{code}_{date}",
-        "dde_net_amount": _to_float(row.get("dde")),
-    }
+    return daily_quote_from_source(row, stock_name)
 
 
 def _upsert_rows(table, columns, rows, key_columns):
@@ -151,7 +130,7 @@ def 更新指数日线(start_date, end_date):
         if int(start_date) <= _date_int(row.get("date", row.get("日期"))) <= int(end_date)
     ]
     columns = ["trade_date", "open_price", "close_price", "high_price", "low_price", "volume", "turnover", "amplitude_pct", "change_pct", "change_amount", "turnover_rate"]
-    return _upsert_rows("index_daily", columns, rows, ["trade_date"])
+    return _market_data_repository().upsert_index_daily(rows)
 
 
 def 更新股票基础信息():
@@ -164,13 +143,8 @@ def 更新股票基础信息():
     )
     if frame is None or frame.empty:
         raise RuntimeError("Tushare 未返回股票基础信息")
-    rows = frame.where(frame.notna(), None).to_dict("records")
-    for row in rows:
-        row["ts_code"] = _ts_code(row.get("ts_code"))
-        row["symbol"] = str(row.get("symbol") or "").zfill(6)
-        row["list_date"] = _date_int(row.get("list_date"))
-    columns = ["ts_code", "symbol", "name", "area", "industry", "market", "list_date", "list_status"]
-    return _replace_rows("securities", columns, rows)
+    rows = [security_from_source(row) for row in frame.where(frame.notna(), None).to_dict("records")]
+    return _market_data_repository().replace_securities(rows)
 
 
 def 更新股票日线(start_date, end_date):
@@ -192,16 +166,9 @@ def 更新股票日线(start_date, end_date):
     import pandas as pd
 
     frame = pd.concat(frames, ignore_index=True)
-    names = {
-        str(row.get("symbol") or "").zfill(6): row.get("name")
-        for row in (_db().mysql_localhost("SELECT symbol, name FROM securities", fetch=True) or [])
-    }
+    names = {normalize_symbol(row.get("symbol")): row.get("name") for row in _market_data_repository().securities()}
     rows = [
         股票日线记录(row, names.get(str(row.get("ts_code") or "").split(".", 1)[0].zfill(6)))
         for row in frame.where(frame.notna(), None).to_dict("records")
     ]
-    columns = [
-        "ts_code", "trade_date", "open_price", "high_price", "low_price", "close_price", "previous_close", "change_amount", "change_pct",
-        "volume", "turnover", "total_market_value", "circulating_market_value", "free_float_shares", "free_float_market_value", "stock_name", "data_id", "dde_net_amount",
-    ]
-    return _upsert_rows("daily_quotes", columns, rows, ["data_id"])
+    return _market_data_repository().upsert_daily_quotes(rows)

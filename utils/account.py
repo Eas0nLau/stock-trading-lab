@@ -5,6 +5,7 @@ import pandas as pd
 from loguru import logger
 
 from utils import db, common
+from stock_lab.modules.market_data.helpers import normalize_ts_code
 
 # 初始金额
 init_amount = float(1000000)
@@ -70,9 +71,10 @@ def sync_open_market_before(now_date):
     selected_stocks = holding_stocks.keys()
     if selected_stocks:
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-            FROM stock_daily
-            WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+                   previous_close AS pre_close, high_price AS high, low_price AS low
+            FROM daily_quotes
+            WHERE ts_code IN {str(tuple([normalize_ts_code(i) for i in selected_stocks])).replace(",)", ")")}
             AND trade_date = {now_date}
         """
         range_data = pd.read_sql(query, db.engine)
@@ -135,9 +137,10 @@ def sync_close_market(now_date):
     selected_stocks = holding_stocks.keys()
     if selected_stocks:
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-            FROM stock_daily
-            WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+                   previous_close AS pre_close, high_price AS high, low_price AS low
+            FROM daily_quotes
+            WHERE ts_code IN {str(tuple([normalize_ts_code(i) for i in selected_stocks])).replace(",)", ")")}
             AND trade_date = {now_date}
         """
         range_data = pd.read_sql(query, db.engine)
@@ -188,9 +191,11 @@ def simulated_sell(sell_out_fall_threshold=None,
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
-            WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+                   previous_close AS pre_close, high_price AS high, low_price AS low,
+                   change_pct AS pct_chg
+            FROM daily_quotes
+            WHERE ts_code IN {str(tuple([normalize_ts_code(i) for i in selected_stocks])).replace(",)", ")")}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date
@@ -259,9 +264,10 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(",)", ")")}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+               previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {str(tuple([normalize_ts_code(i) for i in selected_stocks['ts_code'].tolist()])).replace(",)", ")")}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date

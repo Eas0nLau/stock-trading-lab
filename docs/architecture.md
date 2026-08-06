@@ -15,6 +15,13 @@ src/stock_lab/
 └── shared/           # 异常、日志、时间和通用类型
 ```
 
+`stock_lab.modules.market_data` owns the shared repository boundary for
+`securities`, `daily_quotes`, and `index_daily`. It returns canonical English rows
+and preserves string identifiers, including leading zeroes and exchange suffixes.
+Legacy aliases are limited to `utils/common.py` and `utils/account.py` adapters for
+the strategy files that have not migrated yet. Strategy and TDX monitor rewrites are
+explicitly deferred.
+
 ## 依赖规则
 
 ```text

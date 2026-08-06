@@ -1,4 +1,5 @@
 import task.data_sources as data_sources
+import pandas as pd
 
 
 def test_trading_dates_skip_weekends_and_return_ascending(monkeypatch):
@@ -47,3 +48,23 @@ def test_stock_daily_upsert_key_is_date_and_code():
 
     assert payload["ts_code"] == "600000.SH"
     assert payload["data_id"] == "600000.SH_20260805"
+
+
+def test_update_index_daily_delegates_canonical_rows_to_repository(monkeypatch):
+    import sys
+    import types
+
+    calls = []
+
+    class Repository:
+        def upsert_index_daily(self, rows):
+            calls.append(rows)
+            return len(rows)
+
+    monkeypatch.setattr(data_sources, "_market_data_repository", lambda: Repository())
+    monkeypatch.setitem(sys.modules, "akshare", types.SimpleNamespace(
+        stock_zh_index_daily=lambda symbol: pd.DataFrame([{"date": "2026-08-05", "close": 2}])
+    ))
+
+    assert data_sources.更新指数日线(20260805, 20260805) == 1
+    assert calls[0][0]["trade_date"] == 20260805

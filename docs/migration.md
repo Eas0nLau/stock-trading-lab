@@ -14,9 +14,25 @@
 | `实时监控/热门板块情绪.py` | `stock_lab.modules.emotion` | 英文 API 和查询已迁移；旧路由暂时保留 |
 | `task/每日更新.py` | `stock_lab.modules.emotion.jobs` | 情绪 job 已迁移；调度入口仍为兼容文件 |
 | `task/data_sources.py` | `index_daily` / `securities` / `daily_quotes` | 默认写入已切换英文表 |
+| `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
 | `strategy/` | `stock_lab.modules.research` | 待研究模块迁移 |
 
 兼容文件只允许转发。业务模块完成英文 API、数据库、前端和测试迁移后，更新本表并删除对应旧入口。
+
+Market-data repository migration
+--------------------------------
+
+`stock_lab.modules.market_data` is the owner of canonical English models and SQL for
+`securities`, `daily_quotes`, and `index_daily`. Repository outputs use `ts_code`,
+`symbol`, `open_price`, `close_price`, `previous_close`, and the other schema column
+names exactly as stored. `utils/common.py` and `utils/account.py` remain thin adapters
+for existing strategy callers and may expose legacy-shaped aliases only after the
+repository query. A bare numeric code is padded to six digits; an exchange suffix is
+preserved, so `1.SZ` becomes `000001.SZ` and never becomes an integer.
+
+The 57 strategy files, TDX monitor files, and unrelated research SQL remain deferred
+consumers. They can migrate to the repository interfaces without depending on the
+legacy tables.
 
 前端 `IndexCycle.vue` 和 `HotBoardEmotion.vue` 已使用 `/api/v1/emotion/*` 与英文模型字段。旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 已停止注册，避免读取不再更新的旧表。
 

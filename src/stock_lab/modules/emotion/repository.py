@@ -1,6 +1,7 @@
 class EmotionRepository:
-    def __init__(self, query):
+    def __init__(self, query, market_data=None):
         self._query = query
+        self._market_data = market_data
 
     def latest_index_emotion(self):
         rows = self._query(
@@ -58,6 +59,8 @@ class EmotionRepository:
         ) or []
 
     def index_daily_rows(self, limit: int):
+        if self._market_data is not None:
+            return list(reversed(self._market_data.index_daily(limit=limit)))
         rows = self._query(
             f"""
             SELECT `trade_date`, `open_price`, `close_price`, `high_price`, `low_price`, `turnover`, `change_pct`
@@ -114,6 +117,11 @@ class EmotionRepository:
         ) or []
 
     def daily_quote_rows(self, trade_date: int, stock_codes):
+        if self._market_data is not None:
+            from stock_lab.modules.market_data.helpers import normalize_symbol
+
+            rows = self._market_data.daily_quotes_for_date(trade_date, stock_codes)
+            return {normalize_symbol(row.get("ts_code")): row for row in rows}
         codes = sorted({str(code).zfill(6) for code in stock_codes if code})
         if not codes:
             return {}

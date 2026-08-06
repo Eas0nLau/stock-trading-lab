@@ -120,9 +120,12 @@ def _dependencies(repository, writer):
 
     from utils import db
 
+    from stock_lab.modules.market_data.repository import MarketDataRepository
+
     from .repository import EmotionRepository
 
-    return repository or EmotionRepository(db.mysql_localhost), writer or (lambda tables: write_tables(db.engine, tables))
+    market_data = MarketDataRepository(db.mysql_localhost, db.engine)
+    return repository or EmotionRepository(db.mysql_localhost, market_data=market_data), writer or (lambda tables: write_tables(db.engine, tables))
 
 
 def write_tables(engine, tables):

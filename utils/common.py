@@ -11,6 +11,7 @@ from loguru import logger
 from plotly.subplots import make_subplots
 from sqlalchemy import text
 from utils import db, account
+from stock_lab.modules.market_data.helpers import normalize_symbol, normalize_ts_code
 
 # 初始化 Tushare
 # ts.set_token(config.ts_token)  # 替换为你的 token
@@ -96,7 +97,7 @@ def load_stock_pool():
         DataFrame: 过滤后的股票池
     """
     try:
-        stock_pool = pd.read_sql(f"SELECT ts_code FROM stock_basic", db.engine)
+        stock_pool = pd.read_sql("SELECT `ts_code` FROM `securities`", db.engine)
         # logger.info(f"加载股票池，数量：{len(stock_pool)}")
         filtered_codes = stock_pool['ts_code'].tolist()
         return filtered_codes
@@ -114,7 +115,7 @@ def load_stock_pool_symbol():
         DataFrame: 过滤后的股票池
     """
     try:
-        stock_pool = pd.read_sql(f"SELECT symbol FROM stock_basic where market='主板'", db.engine)
+        stock_pool = pd.read_sql("SELECT `symbol` FROM `securities` WHERE `market`='主板'", db.engine)
         # logger.info(f"加载股票池，数量：{len(stock_pool)}")
         filtered_codes = stock_pool['symbol'].tolist()
         return filtered_codes
@@ -125,7 +126,7 @@ def load_stock_pool_symbol():
 
 def load_stock_symbol_ts_code_dict():
     try:
-        stock_pool = pd.read_sql(f"SELECT symbol,ts_code FROM stock_basic", db.engine)
+        stock_pool = pd.read_sql("SELECT `symbol`, `ts_code` FROM `securities`", db.engine)
         # logger.info(f"加载股票池，数量：{len(stock_pool)}")
         return stock_pool.set_index('symbol')['ts_code'].to_dict()
     except Exception as e:
@@ -150,9 +151,10 @@ def backtesting(selected_stocks, target_date, eval_days=3, sell_out_fall_thresho
 
     stock_name_list = selected_stocks['stock_name'].tolist()
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(",)", ")")}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+               previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {str(tuple([normalize_ts_code(i) for i in selected_stocks['ts_code'].tolist()])).replace(",)", ")")}
         AND trade_date >= {target_date}
         AND trade_date <= {next_date_end}
         order by trade_date
@@ -338,15 +340,15 @@ def backtesting_print(results):
 
 def get_next_date(target_date):
     query = f"""
-       SELECT 日期
-       FROM akshare_sh000001
-       WHERE 日期 > {target_date}
-       order by 日期
+       SELECT trade_date
+       FROM index_daily
+       WHERE trade_date > {target_date}
+       order by trade_date
        limit 1 
     """
     sh_range_data = db.mysql_localhost(sql=query, fetch=True)
     if sh_range_data:
-        return sh_range_data[0]['日期']
+        return sh_range_data[0]['trade_date']
     else:
         return None
 
@@ -355,15 +357,15 @@ def check_指数开盘(target_date):
     range_date = (datetime.strptime(str(target_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
     # 获取上证指数信息
     query = f"""
-       SELECT 开盘, 收盘
-       FROM akshare_sh000001
-       WHERE 日期 >= {range_date}
-       AND 日期 <= {target_date}
-       order by 日期
+       SELECT open_price AS open, close_price AS close
+       FROM index_daily
+       WHERE trade_date >= {range_date}
+       AND trade_date <= {target_date}
+       order by trade_date
     """
     sh_range_data = pd.read_sql(query, db.engine)
-    _昨日指数收盘价 = sh_range_data.iloc[-2]['收盘']
-    _今日指数开盘价 = sh_range_data.iloc[-1]['开盘']
+    _昨日指数收盘价 = sh_range_data.iloc[-2]['close']
+    _今日指数开盘价 = sh_range_data.iloc[-1]['open']
     if _今日指数开盘价 < _昨日指数收盘价:
         logger.error(
             f"指数未开在昨日收盘价之上，不进行买入操作。_昨日指数收盘价：{_昨日指数收盘价}，_今日指数开盘价：{_今日指数开盘价}")
@@ -378,18 +380,18 @@ def check_指数开盘(target_date):
 def plotly_init(start_date, end_date):
     range_date = (datetime.strptime(str(start_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')
     index_list = db.mysql_localhost(sql=f"""
-        SELECT 日期, 收盘, 涨跌幅
-        FROM akshare_sh000001
-        WHERE 日期 >= {range_date}
-        AND 日期 <= {end_date}
-        order by 日期
+        SELECT trade_date AS date, close_price AS close, change_pct AS pct_chg
+        FROM index_daily
+        WHERE trade_date >= {range_date}
+        AND trade_date <= {end_date}
+        order by trade_date
     """, fetch=True)
-    index_value = {item["日期"]: item["收盘"] for item in index_list}
-    index_change = {item["日期"]: item["涨跌幅"] for item in index_list}
+    index_value = {item["date"]: item["close"] for item in index_list}
+    index_change = {item["date"]: item["pct_chg"] for item in index_list}
     init_date = None
     for index_row in index_list:
-        if index_row['日期'] < start_date:
-            init_date = index_row['日期']
+        if index_row['date'] < start_date:
+            init_date = index_row['date']
             continue
         break
     plotly_data = [{'date': str(init_date),
@@ -479,7 +481,7 @@ def plotly_show(plotly_data, file_name):
 def process_for_strategy(start_date, end_date, func, file_name):
     filtered_codes = load_stock_pool_symbol()
     distinct_trade_date = db.mysql_localhost(sql=f"""
-        select distinct trade_date FROM stock_daily
+        select distinct trade_date FROM daily_quotes
         where trade_date >= {start_date}
         and trade_date <= {end_date}
         order by trade_date
@@ -539,9 +541,11 @@ def timer_statistics(func):
 def load_stock_daily_data(filtered_codes, start_date, target_date):
     logger.info(f"加载日线数据 开始 trade_date BETWEEN {start_date} AND {target_date}")
     query = f"""
-        SELECT ts_code, trade_date, open, high, low, pre_close, close, amount, pct_chg, vol, stock_name 
-        FROM stock_daily 
-        WHERE ts_code IN {str(tuple(filtered_codes)).replace(",)", ")")} 
+        SELECT ts_code, trade_date, open_price AS open, high_price AS high, low_price AS low,
+               previous_close AS pre_close, close_price AS close, turnover AS amount,
+               change_pct AS pct_chg, volume AS vol, stock_name
+        FROM daily_quotes
+        WHERE ts_code IN {str(tuple([normalize_ts_code(code) for code in filtered_codes])).replace(",)", ")")} 
         AND trade_date BETWEEN %s AND %s
     """
     result = db.mysql_localhost(sql=query, params=(start_date, target_date), fetch=True)
