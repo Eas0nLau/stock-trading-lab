@@ -7,12 +7,14 @@
 | `utils/redis_base.py` | `stock_lab.infrastructure.cache` | 已建立兼容层 |
 | `app.py` | `stock_lab.bootstrap.application` | 已建立兼容入口 |
 | `front_run.py` | `stock_lab.bootstrap.frontend` | 已建立兼容入口 |
-| `app.py` 后台线程 | `stock_lab.jobs.realtime_monitor` | 已迁移装配逻辑 |
+| `app.py` 后台线程 | `stock_lab.jobs.realtime_monitor` | 已迁移装配和定时任务分发，不再删除其他进程持有的任务锁 |
 | `实时监控/资金流向.py` | `stock_lab.modules.fund_flow` | V1 REST/SSE、Redis 写入和前端已迁移；浏览器解析暂作 adapter |
 | `实时监控/策略选股.py` | `stock_lab.modules.strategy_pick` | V1 REST/SSE、Redis 读写、前端和 worker 已迁移；浏览器调度与解析暂作 adapter |
 | `实时监控/情绪周期.py` | `stock_lab.modules.emotion` | 英文 API 和数据读写已迁移；旧算法暂作适配器 |
 | `实时监控/热门板块情绪.py` | `stock_lab.modules.emotion` | 英文 API 和查询已迁移；旧路由暂时保留 |
-| `task/每日更新.py` | `stock_lab.modules.emotion.jobs` | 情绪 job 已迁移；调度入口仍为兼容文件 |
+| `task/每日更新.py` | `stock_lab.jobs.daily_update` | 正式英文编排和 V1 幂等状态已迁移；旧路径为 CLI/调用兼容入口 |
+| `task/盘前纪要.py` | `stock_lab.jobs.premarket_summary` | 正式提取、INI 输出和 V1 幂等状态已迁移；公开仓库需注入来源 adapter |
+| `task/emotion_analysis.py` | `stock_lab.modules.emotion.jobs` | 已移除旧表写入，仅转发到正式英文表 job |
 | `task/data_sources.py` | `index_daily` / `securities` / `daily_quotes` | 默认写入已切换英文表 |
 | `task/_2_分时数据获取_5分k.py` | `stock_lab.jobs.intraday_bars_5m` | 已恢复薄兼容入口；正式采集写入 `intraday_bars_5m` |
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
@@ -79,3 +81,18 @@ Premium analysis reads `daily_quotes` through `MarketDataRepository`. The old
 `游资溢价分析` files contain only executable adapters and perform no work when
 imported. Active strategy dragon-tiger queries use canonical tables and columns;
 Chinese aliases remain only where historical DataFrame consumers require them.
+
+Scheduled jobs migration
+------------------------
+
+`stock_lab.jobs.daily_update` owns the daily source and emotion-job order,
+trading-date window, backfill results, and `stock_lab:jobs:v1:daily_update:*`
+state. `stock_lab.jobs.premarket_summary` owns source-independent ordered stock
+extraction, INI output, and `stock_lab:jobs:v1:premarket_summary:*` state. Both
+use `stock_lab.infrastructure.cache.RedisJobLock`, whose expiring token is
+released atomically only by its owner.
+
+The public repository has no surviving `task/盘前纪要.py` collector implementation
+or historical source adapter. Premarket runs therefore require an injected source;
+without one they return `disabled` and leave state unchanged. The Chinese daily,
+premarket, and emotion-analysis modules are import-safe forwarding wrappers.

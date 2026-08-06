@@ -20,18 +20,43 @@ class RedisState:
     def delete(self, key):
         self.values.pop(key, None)
 
+    def eval(self, _script, _key_count, key, token):
+        if self.values.get(key) != token:
+            return 0
+        self.delete(key)
+        return 1
 
-def test_repeating_one_day_pipeline_is_idempotent(monkeypatch):
+
+class Collector:
+    def trading_dates(self, _limit):
+        return [20260804, 20260805]
+
+    def update_securities(self):
+        return 1
+
+    def update_daily_quotes(self, _start_date, _end_date):
+        return 1
+
+    def update_index_daily(self, _start_date, _end_date):
+        return 1
+
+    def collect_board_actions(self, _trade_date):
+        return 1
+
+
+def test_repeating_one_day_pipeline_is_idempotent():
     redis = RedisState()
     calls = []
-    monkeypatch.setattr(daily.db, "redis_con_localhost", redis)
-    monkeypatch.setattr(daily, "交易日期列表", lambda limit=160: [20260804, 20260805])
-    for name in ("更新股票基础信息", "更新股票日线", "更新指数日线", "韭研公社异动采集", "落库热门板块情绪", "落库指数周期"):
-        monkeypatch.setattr(daily, name, lambda *args, _name=name, **kwargs: calls.append(_name) or 1)
+    options = {
+        "collector": Collector(),
+        "state": redis,
+        "run_hot_board": lambda *_args: calls.append("hot_board") or 1,
+        "run_index": lambda *_args: calls.append("index_emotion") or 1,
+    }
 
-    first = daily.tasks(20260805)
-    second = daily.tasks(20260805)
+    first = daily.tasks(20260805, **options)
+    second = daily.tasks(20260805, **options)
 
-    assert first["状态"] == "success"
-    assert second["状态"] == "skipped"
-    assert calls.count("落库指数周期") == 1
+    assert first["status"] == "success"
+    assert second["status"] == "skipped"
+    assert calls.count("index_emotion") == 1

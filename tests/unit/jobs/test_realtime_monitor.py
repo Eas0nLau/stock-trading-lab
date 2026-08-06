@@ -1,3 +1,4 @@
+import datetime as dt
 import threading
 
 from stock_lab.bootstrap.application import create_app  # noqa: F401 - initializes bootstrap imports before direct job import
@@ -41,3 +42,68 @@ def test_default_strategy_worker_owns_and_obeys_stop_event(monkeypatch):
     strategy_worker = manager._workers["strategy-pick-monitor"]
     assert strategy_worker.thread is not None
     assert not strategy_worker.thread.is_alive()
+
+
+class CapturingTimer:
+    scheduled = []
+
+    def __init__(self, interval, target, args=None, kwargs=None):
+        self.interval = interval
+        self.target = target
+        self.args = args or []
+        self.kwargs = kwargs or {}
+
+    def start(self):
+        self.scheduled.append((self.interval, self.target, self.args, self.kwargs))
+
+
+def test_scheduler_dispatches_official_jobs_after_weekday_thresholds(monkeypatch):
+    CapturingTimer.scheduled = []
+    daily_runner = lambda _date: None
+    premarket_runner = lambda _date, **_kwargs: None
+    source = object()
+    monkeypatch.setattr(realtime_monitor, "run_daily_update", daily_runner)
+    monkeypatch.setattr(realtime_monitor, "run_premarket_summary", premarket_runner)
+
+    realtime_monitor.schedule_optional_jobs(
+        dt.datetime(2026, 8, 7, 17, 35),
+        premarket_source=source,
+        timer_factory=CapturingTimer,
+    )
+
+    assert CapturingTimer.scheduled == [
+        (0, daily_runner, ["20260807"], {}),
+        (0, premarket_runner, ["20260807"], {"source": source}),
+    ]
+
+
+def test_scheduler_does_not_dispatch_before_threshold_or_on_weekend(monkeypatch):
+    CapturingTimer.scheduled = []
+    monkeypatch.setattr(realtime_monitor, "run_daily_update", lambda _date: None)
+    monkeypatch.setattr(realtime_monitor, "run_premarket_summary", lambda _date, **_kwargs: None)
+
+    realtime_monitor.schedule_optional_jobs(
+        dt.datetime(2026, 8, 7, 7, 59),
+        premarket_source=object(),
+        timer_factory=CapturingTimer,
+    )
+    realtime_monitor.schedule_optional_jobs(
+        dt.datetime(2026, 8, 8, 18, 0),
+        premarket_source=object(),
+        timer_factory=CapturingTimer,
+    )
+
+    assert CapturingTimer.scheduled == []
+
+
+def test_scheduler_leaves_unconfigured_premarket_job_disabled(monkeypatch):
+    CapturingTimer.scheduled = []
+    monkeypatch.setattr(realtime_monitor, "run_daily_update", lambda _date: None)
+
+    realtime_monitor.schedule_optional_jobs(
+        dt.datetime(2026, 8, 7, 8, 0),
+        premarket_source=None,
+        timer_factory=CapturingTimer,
+    )
+
+    assert CapturingTimer.scheduled == []
