@@ -50,7 +50,40 @@ FORBIDDEN_WRAPPER_IMPORTS = {
     "DrissionPage",
     "akshare",
     "tushare",
+    "urllib",
+    "utils",
 }
+FORBIDDEN_WRAPPER_CALL_NAMES = {
+    "create_database_client",
+    "create_redis_client",
+    "DragonTigerHttpSource",
+    "RedisPageCache",
+}
+FORBIDDEN_WRAPPER_ATTRIBUTES = {
+    "commit",
+    "cursor",
+    "execute",
+    "mysql_localhost",
+    "pipeline",
+    "redis_con_localhost",
+    "rollback",
+}
+NON_FORWARDING_NODES = (
+    ast.Assign,
+    ast.AugAssign,
+    ast.AnnAssign,
+    ast.For,
+    ast.While,
+    ast.If,
+    ast.Try,
+    ast.With,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+    ast.Global,
+    ast.Nonlocal,
+)
 
 
 def _python_files(root):
@@ -103,6 +136,41 @@ def _string_literals(tree):
     )
 
 
+def _wrapper_behavior(tree):
+    behavior = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                name = node.func.id
+                if name in FORBIDDEN_WRAPPER_CALL_NAMES or name.endswith("Repository"):
+                    behavior.add(f"dependency:{name}")
+            elif isinstance(node.func, ast.Attribute):
+                if node.func.attr in FORBIDDEN_WRAPPER_ATTRIBUTES:
+                    behavior.add(f"persistence:{node.func.attr}")
+                if (
+                    node.func.attr in {"get", "post", "put", "delete", "request"}
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in {"client", "driver", "http", "page", "requests", "session"}
+                ):
+                    behavior.add(f"network:{node.func.attr}")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = node.body[1:] if node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant) else node.body
+            if len(body) != 1 or not isinstance(body[0], ast.Return) or not isinstance(body[0].value, ast.Call):
+                behavior.add(f"non_forwarder:{node.name}")
+            if any(isinstance(child, NON_FORWARDING_NODES) for statement in body for child in ast.walk(statement)):
+                behavior.add(f"algorithm:{node.name}")
+            if node.decorator_list:
+                behavior.add(f"route:{node.name}")
+    literals = _string_literals(tree)
+    if re.search(r"https?://", literals):
+        behavior.add("network:url")
+    if re.search(r"\b(?:SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b", literals, re.IGNORECASE):
+        behavior.add("persistence:sql")
+    if re.search(r"/(?:api|v1)/", literals):
+        behavior.add("route:path")
+    return sorted(behavior)
+
+
 def test_official_code_has_no_reverse_imports_or_chinese_identifiers():
     violations = []
     for path in _python_files(OFFICIAL_ROOT):
@@ -143,9 +211,32 @@ def test_legacy_implementation_files_are_thin_wrappers():
         text = path.read_text(encoding="utf-8")
         tree = ast.parse(text, filename=str(path))
         imported = _import_roots(tree) & FORBIDDEN_WRAPPER_IMPORTS
+        behavior = _wrapper_behavior(tree)
         line_count = len(text.splitlines())
-        if line_count > line_limit or imported:
+        if line_count > line_limit or imported or behavior:
             violations.append(
-                f"{relative_path} lines={line_count}/{line_limit} forbidden_imports={sorted(imported)}"
+                f"{relative_path} lines={line_count}/{line_limit} forbidden_imports={sorted(imported)} behavior={behavior}"
             )
     assert violations == []
+
+
+def test_wrapper_behavior_detector_covers_io_routes_and_algorithms():
+    tree = ast.parse("""
+@app.get('/api/example')
+def route_handler(rows):
+    database.cursor()
+    redis.pipeline()
+    requests.get('https://example.test')
+    for row in rows:
+        cache[row] = row
+""")
+
+    behavior = _wrapper_behavior(tree)
+
+    assert "persistence:cursor" in behavior
+    assert "persistence:pipeline" in behavior
+    assert "network:get" in behavior
+    assert "network:url" in behavior
+    assert "route:route_handler" in behavior
+    assert "route:path" in behavior
+    assert "algorithm:route_handler" in behavior

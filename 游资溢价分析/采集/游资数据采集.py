@@ -8,23 +8,11 @@ for _path in (_ROOT, _SRC):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-from stock_lab.infrastructure.market_data.dragon_tiger import DragonTigerHttpSource, RedisPageCache
-from stock_lab.modules.dragon_tiger.collectors import collect_broker_history
-from stock_lab.modules.dragon_tiger.repository import DragonTigerRepository
-
-
-_RedisPageCache = RedisPageCache
-_fetch_page = DragonTigerHttpSource().fetch_broker_history_page
+from stock_lab.modules.dragon_tiger.runtime import collect_broker_history_data
 
 
 def main():
-    from utils import db
-
-    return collect_broker_history(
-        DragonTigerRepository(db.mysql_localhost, db.engine),
-        _fetch_page,
-        RedisPageCache(db.redis_con_localhost),
-    )
+    return collect_broker_history_data()
 
 
 if __name__ == "__main__":

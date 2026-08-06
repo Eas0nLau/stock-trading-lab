@@ -4,6 +4,9 @@ import threading
 from .contracts import translate_legacy_strategy_pick
 
 
+_default_collector = None
+
+
 class StrategyPickCollector:
     def __init__(self, repository, *, adapter=None):
         self.repository = repository
@@ -59,3 +62,28 @@ def run_strategy_pick_monitor(stop_event=None, *, collector=None, adapter=None):
         collector = create_strategy_pick_collector(create_redis_client(get_settings()), adapter=adapter)
     adapter = adapter or collector.adapter
     return adapter.run(stop_event, collector)
+
+
+def get_strategy_pick_collector():
+    global _default_collector
+    if _default_collector is None:
+        from stock_lab.config import get_settings
+        from stock_lab.infrastructure.cache.redis_client import create_redis_client
+
+        _default_collector = create_strategy_pick_collector(create_redis_client(get_settings()))
+    return _default_collector
+
+
+def refresh_strategy(strategy_id=None, max_retries=None):
+    collector = get_strategy_pick_collector()
+    if strategy_id is None:
+        strategy_id = next(item["id"] for item in collector.repository.strategies() if item.get("enabled", True))
+    return collector.refresh(strategy_id)
+
+
+def refresh_all_strategies():
+    return get_strategy_pick_collector().refresh_all()
+
+
+def start_strategy_pick_monitor(stop_event=None):
+    return run_strategy_pick_monitor(stop_event, collector=get_strategy_pick_collector())

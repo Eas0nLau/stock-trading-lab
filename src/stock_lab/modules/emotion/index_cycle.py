@@ -161,6 +161,19 @@ def _volatility_chart(index_rows, market_rows, limit=30):
     return result
 
 
+def calculate_legacy_index_cycle(index_rows, market_rows):
+    canonical_rows = [{
+        "trade_date": row.get("日期"),
+        "open_price": row.get("开盘"),
+        "close_price": row.get("收盘"),
+        "high_price": row.get("最高"),
+        "low_price": row.get("最低"),
+        "turnover": row.get("成交额"),
+        "change_pct": row.get("涨跌幅"),
+    } for row in index_rows]
+    return calculate_index_cycle(canonical_rows, market_rows)
+
+
 def _summary(state, score, close, averages, market):
     total = max(_int(market.get("total_count")), 1)
     advancing_ratio = _int(market.get("up_count")) / total * 100

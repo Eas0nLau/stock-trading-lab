@@ -1,6 +1,10 @@
 import heapq
+import threading
 
 from .contracts import translate_legacy_fund_flow
+
+
+_chart_cache_lock = threading.Lock()
 
 
 class FundFlowService:
@@ -21,13 +25,14 @@ class FundFlowService:
         top_n = self.default_top_n if top_n is None else max(int(top_n), 0)
         if top_n <= 0:
             return build_matrix_v1(payload, top_n)
-        cached = self.repository.cached_chart(flow_type, trade_date, top_n)
-        if cached is not None:
-            return cached
-        compact = [filter_snapshot(snapshot, top_n) for snapshot in payload]
-        result = build_matrix(compact, top_n)
-        self.repository.save_chart(flow_type, trade_date, top_n, result)
-        return result
+        with _chart_cache_lock:
+            cached = self.repository.cached_chart(flow_type, trade_date, top_n)
+            if cached is not None:
+                return cached
+            compact = [filter_snapshot(snapshot, top_n) for snapshot in payload]
+            result = build_matrix(compact, top_n)
+            self.repository.save_chart(flow_type, trade_date, top_n, result)
+            return result
 
     def stream_events(self):
         return self.repository.stream_events()

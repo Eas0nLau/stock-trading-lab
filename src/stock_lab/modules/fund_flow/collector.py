@@ -6,6 +6,9 @@ from loguru import logger
 from .contracts import translate_legacy_fund_flow
 
 
+_default_source = None
+
+
 def save_snapshot(
     repository,
     flow_type,
@@ -55,3 +58,43 @@ def create_fund_flow_source():
         FundFlowRepository(create_redis_client(settings)),
         settings=settings,
     )
+
+
+def get_fund_flow_source():
+    global _default_source
+    if _default_source is None:
+        _default_source = create_fund_flow_source()
+    return _default_source
+
+
+def collection_interval_seconds():
+    return get_fund_flow_source().collection_interval_seconds()
+
+
+def wait_until_next_run(interval_seconds=None):
+    return get_fund_flow_source().wait_until_next_run(interval_seconds)
+
+
+def is_collection_time(now=None):
+    source = get_fund_flow_source()
+    return source.is_collection_time(now or source.clock())
+
+
+def initialize_source():
+    return get_fund_flow_source().initialize()
+
+
+def warm_history():
+    return get_fund_flow_source().warm_history()
+
+
+def collect_flow(flow_type):
+    return get_fund_flow_source().collect(flow_type)
+
+
+def collect_all_flows():
+    return get_fund_flow_source().collect_all()
+
+
+def start_monitor(stop_event):
+    return run_fund_flow_monitor(stop_event, source=get_fund_flow_source())

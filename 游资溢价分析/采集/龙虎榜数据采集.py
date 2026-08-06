@@ -8,18 +8,11 @@ for _path in (_ROOT, _SRC):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-from stock_lab.infrastructure.market_data.dragon_tiger import DragonTigerHttpSource
-from stock_lab.modules.dragon_tiger.collectors import collect_listings
-from stock_lab.modules.dragon_tiger.repository import DragonTigerRepository
-
-
-_fetch_page = DragonTigerHttpSource().fetch_listing_page
+from stock_lab.modules.dragon_tiger.runtime import collect_listings_for_date
 
 
 def main(date):
-    from utils import db
-
-    return collect_listings(int(date), DragonTigerRepository(db.mysql_localhost, db.engine), _fetch_page)
+    return collect_listings_for_date(date)
 
 
 if __name__ == "__main__":
