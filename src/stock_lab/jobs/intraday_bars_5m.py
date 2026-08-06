@@ -1,13 +1,12 @@
 from stock_lab.infrastructure.market_data import BaoStockSource
+from stock_lab.modules.market_data.collectors import create_default_repository
 from stock_lab.modules.market_data.contracts import IntradayBarSource
 from stock_lab.modules.market_data.parsing import normalize_intraday_bar
 from stock_lab.modules.market_data.repository import MarketDataRepository
 
 
 def _default_repository():
-    from utils import db
-
-    return MarketDataRepository(db.mysql_localhost, db.engine)
+    return create_default_repository()
 
 
 def fetch_intraday_bars_5m(

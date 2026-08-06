@@ -94,9 +94,10 @@ def run_premarket_summary(
         }
 
     if state is None:
-        from utils import db
+        from stock_lab.config import get_settings
+        from stock_lab.infrastructure.cache.redis_client import create_redis_client
 
-        state = db.redis_con_localhost
+        state = create_redis_client(get_settings())
     writer = writer or write_premarket_ini
     output_root = output_root or Path(__file__).resolve().parents[3] / "output"
     completion_key = premarket_completion_key(trade_date)

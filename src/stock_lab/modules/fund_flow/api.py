@@ -6,10 +6,11 @@ from .service import FundFlowService
 
 def register_fund_flow_routes(app: FastAPI, *, repository=None):
     if repository is None:
-        from utils import db
+        from stock_lab.config import get_settings
+        from stock_lab.infrastructure.cache.redis_client import create_redis_client
         from .repository import FundFlowRepository
 
-        repository = FundFlowRepository(db.redis_con_localhost)
+        repository = FundFlowRepository(create_redis_client(get_settings()))
     service = FundFlowService(repository)
 
     @app.get("/api/v1/fund-flow/{flow_type}/dates")

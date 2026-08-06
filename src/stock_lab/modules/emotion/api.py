@@ -6,21 +6,21 @@ from .contracts import translate_legacy_payload
 
 
 def load_current_index_emotion():
-    from utils import db
+    from stock_lab.infrastructure.database import create_database_client
 
     from .repository import EmotionRepository
     from .service import EmotionService
 
-    return EmotionService(EmotionRepository(db.mysql_localhost)).current_index_emotion()
+    return EmotionService(EmotionRepository(create_database_client().query)).current_index_emotion()
 
 
 def load_current_hot_board_emotion(days: int):
-    from utils import db
+    from stock_lab.infrastructure.database import create_database_client
 
     from .repository import EmotionRepository
     from .service import EmotionService
 
-    return EmotionService(EmotionRepository(db.mysql_localhost)).hot_board_emotion(days=days)
+    return EmotionService(EmotionRepository(create_database_client().query)).hot_board_emotion(days=days)
 
 
 def register_emotion_routes(

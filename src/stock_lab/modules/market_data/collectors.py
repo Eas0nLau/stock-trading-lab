@@ -1,13 +1,17 @@
 import pandas as pd
 
+from stock_lab.config import get_settings
+from stock_lab.infrastructure.database import create_database_client
+from stock_lab.infrastructure.market_data.akshare import AkShareSource
+from stock_lab.infrastructure.market_data.tushare import TushareSource
+
 from .helpers import daily_quote_from_source, index_daily_from_source, normalize_symbol, security_from_source
 from .repository import MarketDataRepository
 
 
 def create_default_repository():
-    from utils import db
-
-    return MarketDataRepository(db.mysql_localhost, db.engine)
+    database = create_database_client()
+    return MarketDataRepository(database.query, database.engine)
 
 
 class MarketDataCollector:
@@ -56,36 +60,15 @@ class MarketDataCollector:
         return self.repository.upsert_daily_quotes(rows)
 
 
-def _index_source():
-    import akshare as ak
-
-    return ak.stock_zh_index_daily(symbol="sh000001")
-
-
-def _tushare_client():
-    from utils.common import get_tushare_pro
-
-    return get_tushare_pro()
-
-
-def _security_source():
-    return _tushare_client().stock_basic(
-        exchange="",
-        list_status="L",
-        fields="ts_code,symbol,name,area,industry,market,list_date,list_status",
-    )
-
-
-def _quote_source(trade_date):
-    return _tushare_client().daily(ts_code="", trade_date=str(trade_date))
-
-
 def create_default_collector():
+    settings = get_settings()
+    akshare_source = AkShareSource()
+    tushare_source = TushareSource(settings.tushare_tokens)
     return MarketDataCollector(
         create_default_repository(),
-        index_source=_index_source,
-        security_source=_security_source,
-        quote_source=_quote_source,
+        index_source=akshare_source.fetch_index_daily,
+        security_source=tushare_source.fetch_securities,
+        quote_source=tushare_source.fetch_daily_quotes,
     )
 
 

@@ -147,9 +147,10 @@ def _dependencies(collector, state, run_hot_board, run_index):
     if collector is None:
         collector = DailyUpdateCollector()
     if state is None:
-        from utils import db
+        from stock_lab.config import get_settings
+        from stock_lab.infrastructure.cache.redis_client import create_redis_client
 
-        state = db.redis_con_localhost
+        state = create_redis_client(get_settings())
     if run_hot_board is None or run_index is None:
         from stock_lab.modules.emotion.jobs import (
             run_hot_board_emotion_job,

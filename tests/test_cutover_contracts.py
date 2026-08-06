@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OFFICIAL_ROOT = ROOT / "src" / "stock_lab"
 
-LEGACY_IMPORT_ROOTS = {"task", "实时监控", "游资溢价分析"}
+LEGACY_IMPORT_ROOTS = {"task", "utils", "实时监控", "游资溢价分析"}
 LEGACY_TABLES = {
     "akshare_sh000001",
     "t_指数情绪周期_市场宽度",

@@ -90,14 +90,14 @@ def _dependencies(repository, writer):
     if repository is not None and writer is not None:
         return repository, writer
 
-    from utils import db
-
+    from stock_lab.infrastructure.database import create_database_client
     from stock_lab.modules.market_data.repository import MarketDataRepository
 
     from .repository import EmotionRepository
 
-    market_data = MarketDataRepository(db.mysql_localhost, db.engine)
-    return repository or EmotionRepository(db.mysql_localhost, market_data=market_data), writer or (lambda tables: write_tables(db.engine, tables))
+    database = create_database_client()
+    market_data = MarketDataRepository(database.query, database.engine)
+    return repository or EmotionRepository(database.query, market_data=market_data), writer or (lambda tables: write_tables(database.engine, tables))
 
 
 def write_tables(engine, tables):

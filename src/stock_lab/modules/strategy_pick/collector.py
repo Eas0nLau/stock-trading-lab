@@ -54,7 +54,8 @@ def create_strategy_pick_source(repository):
 def run_strategy_pick_monitor(stop_event=None, *, collector=None, adapter=None):
     stop_event = stop_event or threading.Event()
     if collector is None:
-        from utils import db
-        collector = create_strategy_pick_collector(db.redis_con_localhost, adapter=adapter)
+        from stock_lab.config import get_settings
+        from stock_lab.infrastructure.cache.redis_client import create_redis_client
+        collector = create_strategy_pick_collector(create_redis_client(get_settings()), adapter=adapter)
     adapter = adapter or collector.adapter
     return adapter.run(stop_event, collector)

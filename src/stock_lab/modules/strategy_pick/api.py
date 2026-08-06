@@ -7,8 +7,9 @@ from .service import StrategyPickService
 
 def register_strategy_pick_routes(app: FastAPI, *, repository=None, collector=None, default_strategies=None):
     if repository is None:
-        from utils import db
-        repository = StrategyPickRepository(db.redis_con_localhost)
+        from stock_lab.config import get_settings
+        from stock_lab.infrastructure.cache.redis_client import create_redis_client
+        repository = StrategyPickRepository(create_redis_client(get_settings()))
     if default_strategies is None:
         from stock_lab.config.defaults import DEFAULT_STRATEGY_PICK_STRATEGIES
         default_strategies = DEFAULT_STRATEGY_PICK_STRATEGIES
