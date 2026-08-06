@@ -20,8 +20,16 @@ def strategy(filtered_codes, target_date):
 
     filtered_codes = []
     data_list = db.mysql_localhost(f"""
-        SELECT x.* FROM t_龙虎榜 x
-        where DATE = {target_date}
+        SELECT
+            `stock_code` AS `股票代码`, `stock_name` AS `股票名称`,
+            `net_buy_amount` AS `净买入额`, `date_type` AS `日期类型`,
+            `buy_1_broker_name` AS `买1营业部`, `buy_1_buy_amount` AS `买1买入额`, `buy_1_sell_amount` AS `买1卖出额`,
+            `buy_2_broker_name` AS `买2营业部`, `buy_2_buy_amount` AS `买2买入额`, `buy_2_sell_amount` AS `买2卖出额`,
+            `buy_3_broker_name` AS `买3营业部`, `buy_3_buy_amount` AS `买3买入额`, `buy_3_sell_amount` AS `买3卖出额`,
+            `buy_4_broker_name` AS `买4营业部`, `buy_4_buy_amount` AS `买4买入额`, `buy_4_sell_amount` AS `买4卖出额`,
+            `buy_5_broker_name` AS `买5营业部`, `buy_5_buy_amount` AS `买5买入额`, `buy_5_sell_amount` AS `买5卖出额`
+        FROM `dragon_tiger`
+        WHERE `trade_date` = {target_date}
 --         AND 股票代码 = 002757
     """, fetch=True)
     for row in data_list:

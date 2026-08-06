@@ -116,12 +116,12 @@ def _加载龙虎榜上榜次数(股票代码列表, target_date):
     target_date_obj = datetime.strptime(str(target_date), "%Y%m%d")
     龙虎榜起始日期 = int((target_date_obj - timedelta(days=前期龙头窗口天数)).strftime("%Y%m%d"))
     query = f"""
-        SELECT `股票代码`, COUNT(*) AS `龙虎榜上榜次数`
-        FROM t_龙虎榜
-        WHERE `date` >= {龙虎榜起始日期}
-          AND `date` <= {target_date}
-          AND `股票代码` IN {str(tuple(股票代码列表)).replace(",)", ")")}
-        GROUP BY `股票代码`
+        SELECT `stock_code` AS `股票代码`, COUNT(*) AS `龙虎榜上榜次数`
+        FROM `dragon_tiger`
+        WHERE `trade_date` >= {龙虎榜起始日期}
+          AND `trade_date` <= {target_date}
+          AND `stock_code` IN {str(tuple(股票代码列表)).replace(",)", ")")}
+        GROUP BY `stock_code`
     """
     龙虎榜次数_df = pd.read_sql(query, db.engine)
     if 龙虎榜次数_df.empty:

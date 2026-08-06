@@ -22,10 +22,10 @@ def strategy(filtered_codes, target_date):
 
     # 2. 获取近90天上过龙虎榜的活跃股票池（仅作池子）
     活跃股票池查询 = f"""
-        SELECT DISTINCT `股票代码`
-        FROM t_龙虎榜 
-        WHERE `date` >= {近90天起始日期}
-          AND `date` <= {target_date}
+        SELECT DISTINCT `stock_code` AS `股票代码`
+        FROM `dragon_tiger`
+        WHERE `trade_date` >= {近90天起始日期}
+          AND `trade_date` <= {target_date}
     """
     活跃股票池_df = pd.read_sql(活跃股票池查询, db.engine)
     logger.info(f"   └─ 近90天上过龙虎榜的活跃股票数量：{len(活跃股票池_df)} 只")

@@ -21,11 +21,11 @@ def strategy(filtered_codes, target_date):
 
     # start_date = (datetime.strptime(str(target_date), "%Y%m%d") - timedelta(days=60)).strftime(
     #     '%Y%m%d')
-    # t_龙虎榜_list = db.mysql_localhost(sql="""
-    #     SELECT distinct `股票代码` FROM `t_龙虎榜`
-    #     where date >= %s
+    # dragon_tiger_list = db.mysql_localhost(sql="""
+    #     SELECT distinct `stock_code` AS `股票代码` FROM `dragon_tiger`
+    #     where trade_date >= %s
     # """,params=(start_date,), fetch=True)
-    # filtered_codes = [int(code['股票代码']) for code in t_龙虎榜_list]
+    # filtered_codes = [int(code['股票代码']) for code in dragon_tiger_list]
     # if len(filtered_codes) == 0:
     #     return pd.DataFrame([])
     # 加载日线数据

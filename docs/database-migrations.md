@@ -38,4 +38,6 @@
 `index_daily.trade_date` 等。代码值按字符串处理，补齐股票代码的前导零并保留交易所后缀。
 共享旧工具仅在适配器边界恢复 `open`、`close`、`pre_close` 等历史键；这不改变存量数据库迁移的备份、校验和回滚要求。
 
-龙虎榜、同花顺、KDJ、5 分钟行情、实时监控和研究脚本仍存在旧表引用，因此禁止执行 `003_drop_legacy_schema.sql`。
+龙虎榜和营业部的正式访问边界是 `stock_lab.modules.dragon_tiger`。采集、分析和活跃策略查询已切换到 `dragon_tiger`、`broker_listing_history`、`broker_top_stats`、`brokers` 和 `daily_quotes`；旧中文路径只保留无导入副作用的执行适配器，因此龙虎榜相关代码不再阻塞旧表删除。
+
+同花顺、KDJ、5 分钟行情、韭研采集、实时监控和其他研究脚本仍存在旧表引用，因此仍禁止执行 `003_drop_legacy_schema.sql`。
