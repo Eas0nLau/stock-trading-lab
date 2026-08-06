@@ -1,6 +1,7 @@
 <script setup>
 import * as echarts from 'echarts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { fetchHotBoardEmotion } from '../modules/emotion/api.js'
 
 const props = defineProps({
   active: {
@@ -9,7 +10,6 @@ const props = defineProps({
   },
 })
 
-const API_URL = '/api/hot-board-emotion/current'
 const loading = ref(false)
 const errorMessage = ref('')
 const pageData = ref(null)
@@ -22,36 +22,36 @@ let emotionChart = null
 
 const BOARD_LINE_COLORS = ['#22d3ee', '#fb7185', '#fbbf24', '#a78bfa', '#60a5fa', '#34d399', '#f97316', '#e879f9', '#94a3b8']
 
-const availableDates = computed(() => pageData.value?.可选日期 || [])
-const entryThreshold = computed(() => numeric(pageData.value?.配置?.热门板块入选数量阈值) || 10)
-const climaxThreshold = computed(() => numeric(pageData.value?.配置?.高潮数量阈值) || 20)
+const availableDates = computed(() => pageData.value?.availableDates || [])
+const entryThreshold = computed(() => numeric(pageData.value?.config?.selectionThreshold) || 10)
+const climaxThreshold = computed(() => numeric(pageData.value?.config?.climaxThreshold) || 20)
 const boardList = computed(() => {
-  const date = Number(selectedDate.value || pageData.value?.最新交易日 || 0)
-  return (pageData.value?.板块列表 || [])
+  const date = Number(selectedDate.value || pageData.value?.latestTradeDate || 0)
+  return (pageData.value?.boards || [])
     .map(board => {
-      const trend = board.近期走势 || []
-      const record = trend.find(item => Number(item.日期) === date) || null
+      const trend = board.recentTrend || []
+      const record = trend.find(item => Number(item.tradeDate) === date) || null
       const recentStrength = calculateRecentStrength(trend, date)
-      const state = record?.综合状态 || '沉寂'
-      const score = numeric(record?.情绪分)
+      const state = record?.overallStatus || '沉寂'
+      const score = numeric(record?.emotionScore)
       return {
         ...board,
-        当前记录: record,
-        当前状态: state,
-        当前情绪分: score,
-        选择日期近期强度: recentStrength,
-        排序值: stateRank(state) * 1000 + score * 5 + recentStrength,
+        currentRecord: record,
+        currentStatus: state,
+        currentEmotionScore: score,
+        selectedDateRecentStrength: recentStrength,
+        sortValue: stateRank(state) * 1000 + score * 5 + recentStrength,
       }
     })
-    .sort((left, right) => right.排序值 - left.排序值 || right.近30日峰值数量 - left.近30日峰值数量 || left.板块.localeCompare(right.板块))
+    .sort((left, right) => right.sortValue - left.sortValue || right.peakCount30d - left.peakCount30d || left.boardName.localeCompare(right.boardName))
 })
 const selectedBoard = computed(() => {
-  return boardList.value.find(board => board.板块 === selectedBoardName.value) || boardList.value[0] || null
+  return boardList.value.find(board => board.boardName === selectedBoardName.value) || boardList.value[0] || null
 })
-const selectedTrend = computed(() => selectedBoard.value?.近期走势 || [])
+const selectedTrend = computed(() => selectedBoard.value?.recentTrend || [])
 const selectedRecord = computed(() => {
   const date = Number(selectedDate.value || 0)
-  return selectedTrend.value.find(item => Number(item.日期) === date) || selectedTrend.value.at(-1) || null
+  return selectedTrend.value.find(item => Number(item.tradeDate) === date) || selectedTrend.value.at(-1) || null
 })
 
 onMounted(() => {
@@ -83,14 +83,11 @@ async function fetchData() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const response = await fetch(`${API_URL}?days=30`)
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-    const data = await response.json()
-    if (data?.状态 !== 'success') throw new Error(data?.错误信息 || '热门板块情绪数据不可用')
+    const data = await fetchHotBoardEmotion(30)
     pageData.value = data
-    selectedDate.value = data.最新交易日
-    const boardNames = new Set((data.板块列表 || []).map(item => item.板块))
-    if (!boardNames.has(selectedBoardName.value)) selectedBoardName.value = data.板块列表?.[0]?.板块 || ''
+    selectedDate.value = data.latestTradeDate
+    const boardNames = new Set((data.boards || []).map(item => item.boardName))
+    if (!boardNames.has(selectedBoardName.value)) selectedBoardName.value = data.boards?.[0]?.boardName || ''
     await nextTick()
     renderCharts()
   } catch (error) {
@@ -101,7 +98,7 @@ async function fetchData() {
 }
 
 function selectBoard(board) {
-  selectedBoardName.value = board.板块
+  selectedBoardName.value = board.boardName
 }
 
 function renderCharts() {
@@ -121,14 +118,14 @@ function renderComparisonChart() {
   }
 
   const selectedDateLabel = formatDateShort(selectedDate.value)
-  const originalBoardNames = (pageData.value?.板块列表 || []).map(item => item.板块)
+  const originalBoardNames = (pageData.value?.boards || []).map(item => item.boardName)
   const series = boards.map((board, index) => {
-    const trendMap = new Map((board.近期走势 || []).map(row => [Number(row.日期), row]))
-    const colorIndex = Math.max(originalBoardNames.indexOf(board.板块), 0)
+    const trendMap = new Map((board.recentTrend || []).map(row => [Number(row.tradeDate), row]))
+    const colorIndex = Math.max(originalBoardNames.indexOf(board.boardName), 0)
     const color = BOARD_LINE_COLORS[colorIndex % BOARD_LINE_COLORS.length]
-    const selected = board.板块 === selectedBoardName.value
+    const selected = board.boardName === selectedBoardName.value
     return {
-      name: board.板块,
+      name: board.boardName,
       type: 'line',
       smooth: true,
       connectNulls: false,
@@ -139,7 +136,7 @@ function renderComparisonChart() {
       emphasis: { focus: 'series', lineStyle: { width: 4 } },
       data: dates.map(date => {
         const row = trendMap.get(Number(date))
-        return { value: row?.情绪分 ?? null, row, boardName: board.板块 }
+        return { value: row?.emotionScore ?? null, row, boardName: board.boardName }
       }),
       markLine: index === 0 ? {
         silent: true,
@@ -170,7 +167,7 @@ function renderComparisonChart() {
       pageIconInactiveColor: '#475569',
       pageTextStyle: { color: '#94a3b8' },
       textStyle: { color: '#94a3b8' },
-      data: boards.map(board => board.板块),
+      data: boards.map(board => board.boardName),
     },
     xAxis: {
       type: 'category',
@@ -196,7 +193,7 @@ function renderComparisonChart() {
     const row = params?.data?.row
     const boardName = params?.data?.boardName || params?.seriesName
     if (boardName) selectedBoardName.value = boardName
-    if (row?.日期) selectedDate.value = Number(row.日期)
+    if (row?.tradeDate) selectedDate.value = Number(row.tradeDate)
   })
 }
 
@@ -229,7 +226,7 @@ function renderEmotionChart() {
     },
     xAxis: {
       type: 'category',
-      data: rows.map(row => formatDateShort(row.日期)),
+      data: rows.map(row => formatDateShort(row.tradeDate)),
       axisLine: { lineStyle: { color: '#334155' } },
       axisLabel: { color: '#94a3b8', interval: 2 },
     },
@@ -262,7 +259,7 @@ function renderEmotionChart() {
         z: 4,
         lineStyle: { width: 3, color: '#22d3ee' },
         areaStyle: { color: 'rgba(34, 211, 238, 0.10)' },
-        data: rows.map(row => ({ value: row.情绪分, row })),
+        data: rows.map(row => ({ value: row.emotionScore, row })),
         markLine: {
           silent: true,
           symbol: ['none', 'none'],
@@ -285,11 +282,11 @@ function renderEmotionChart() {
           color: '#fda4af',
           fontSize: 9,
           fontWeight: 600,
-          formatter: params => numeric(params.data?.row?.当日板块数量) >= climaxThreshold.value
-            ? `${formatDateShort(params.data.row.日期)} 高潮`
+          formatter: params => numeric(params.data?.row?.currentBoardCount) >= climaxThreshold.value
+            ? `${formatDateShort(params.data.row.tradeDate)} 高潮`
             : '',
         },
-        data: rows.map(row => ({ value: row.当日板块数量, row })),
+        data: rows.map(row => ({ value: row.currentBoardCount, row })),
         markLine: {
           silent: true,
           symbol: ['none', 'none'],
@@ -305,7 +302,7 @@ function renderEmotionChart() {
         symbolSize: 8,
         z: 7,
         itemStyle: {
-          color: params => stateColor(params.data?.row?.综合状态),
+          color: params => stateColor(params.data?.row?.overallStatus),
           borderColor: '#0f172a',
           borderWidth: 1,
         },
@@ -321,16 +318,16 @@ function renderEmotionChart() {
           borderWidth: 1,
           borderRadius: 3,
           padding: [2, 4],
-          formatter: params => ['高潮', '沉寂', '未上榜'].includes(params.data?.row?.综合状态) ? '' : params.data?.row?.综合状态 || '',
+          formatter: params => ['高潮', '沉寂', '未上榜'].includes(params.data?.row?.overallStatus) ? '' : params.data?.row?.overallStatus || '',
         },
-        data: rows.map(row => ({ value: row.情绪分 ?? 0, row })),
+        data: rows.map(row => ({ value: row.emotionScore ?? 0, row })),
       },
     ],
   }, true)
 
   emotionChart.off('click')
   emotionChart.on('click', params => {
-    const date = params?.data?.row?.日期
+    const date = params?.data?.row?.tradeDate
     if (date) selectedDate.value = Number(date)
   })
 }
@@ -339,14 +336,14 @@ function buildEmotionTooltip(params) {
   const row = params?.find(item => item?.data?.row)?.data?.row
   if (!row) return ''
   return [
-    `<div style="font-weight:600;margin-bottom:6px">${formatDate(row.日期)} · ${row.综合状态 || '-'}</div>`,
-    `情绪分：${formatNumber(row.情绪分, 1)}`,
-    `当日上榜：${row.当日板块数量 ?? '-'} 只（${row.热度阶段 || '-'}）`,
-    `高潮判定：${numeric(row.当日板块数量) >= climaxThreshold.value ? '是' : '否'}（阈值 ${climaxThreshold.value} 只）`,
-    `样本来源：${formatDate(row.样本来源日期)}，股票池 ${row.前日股票池数量 ?? 0} 只`,
-    `平均涨幅：${formatPercent(row.平均涨跌幅)}，平均振幅：${formatPercent(row.平均振幅)}`,
-    `旧池晋级：${row.晋级家数 ?? 0} 只（${formatPercent(row.晋级率)}），新增涨停：${row.新晋级家数 ?? 0} 只（${formatPercent(row.新晋级率)}）`,
-    `红盘率：${formatPercent(row.红盘率)}，大跌率：${formatPercent(row.大跌率)}`,
+    `<div style="font-weight:600;margin-bottom:6px">${formatDate(row.tradeDate)} · ${row.overallStatus || '-'}</div>`,
+    `情绪分：${formatNumber(row.emotionScore, 1)}`,
+    `当日上榜：${row.currentBoardCount ?? '-'} 只（${row.heatStage || '-'}）`,
+    `高潮判定：${numeric(row.currentBoardCount) >= climaxThreshold.value ? '是' : '否'}（阈值 ${climaxThreshold.value} 只）`,
+    `样本来源：${formatDate(row.sampleTradeDate)}，股票池 ${row.previousStockPoolCount ?? 0} 只`,
+    `平均涨幅：${formatPercent(row.averageChangePct)}，平均振幅：${formatPercent(row.averageAmplitudePct)}`,
+    `旧池晋级：${row.promotionCount ?? 0} 只（${formatPercent(row.promotionRate)}），新增涨停：${row.newPromotionCount ?? 0} 只（${formatPercent(row.newPromotionRate)}）`,
+    `红盘率：${formatPercent(row.positiveRate)}，大跌率：${formatPercent(row.largeLossRate)}`,
   ].join('<br/>')
 }
 
@@ -355,20 +352,20 @@ function buildComparisonTooltip(params) {
     .filter(item => item?.data?.row)
     .sort((left, right) => numeric(right.value) - numeric(left.value))
   if (!items.length) return ''
-  const date = items[0].data.row.日期
+  const date = items[0].data.row.tradeDate
   const rows = items.map(item => {
     const row = item.data.row
-    return `${item.marker}${item.seriesName}：${formatNumber(row.情绪分, 1)} · ${row.综合状态 || '-'} · 上榜 ${row.当日板块数量 ?? '-'}只`
+    return `${item.marker}${item.seriesName}：${formatNumber(row.emotionScore, 1)} · ${row.overallStatus || '-'} · 上榜 ${row.currentBoardCount ?? '-'}只`
   })
   return [`<div style="font-weight:600;margin-bottom:6px">${formatDate(date)}</div>`, ...rows].join('<br/>')
 }
 
 function calculateRecentStrength(trend, date) {
-  const rows = (trend || []).filter(item => Number(item.日期) <= date).slice(-3)
+  const rows = (trend || []).filter(item => Number(item.tradeDate) <= date).slice(-3)
   if (!rows.length) return 0
   const weights = [0.2, 0.3, 0.5].slice(-rows.length)
   const sum = weights.reduce((total, value) => total + value, 0)
-  return rows.reduce((total, row, index) => total + numeric(row.情绪分) * weights[index], 0) / sum
+  return rows.reduce((total, row, index) => total + numeric(row.emotionScore) * weights[index], 0) / sum
 }
 
 function resizeCharts() {
@@ -499,32 +496,32 @@ function numeric(value) {
           <div class="hot-board-scrollbar min-h-0 flex-1 space-y-2 overflow-auto p-3">
             <button
               v-for="(board, index) in boardList"
-              :key="board.板块"
+              :key="board.boardName"
               class="w-full rounded-lg border px-3 py-3 text-left transition"
-              :class="selectedBoard?.板块 === board.板块 ? 'border-cyan-400/60 bg-cyan-500/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'"
+              :class="selectedBoard?.boardName === board.boardName ? 'border-cyan-400/60 bg-cyan-500/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600'"
               @click="selectBoard(board)">
               <div class="flex items-center justify-between gap-3">
                 <div class="min-w-0">
                   <span class="mr-2 text-xs text-slate-500">{{ index + 1 }}</span>
-                  <span class="font-medium text-white">{{ board.板块 }}</span>
+                  <span class="font-medium text-white">{{ board.boardName }}</span>
                 </div>
-                <span class="shrink-0 rounded border px-2 py-1 text-[11px]" :class="stateClass(board.当前状态)">{{ board.当前状态 }}</span>
+                <span class="shrink-0 rounded border px-2 py-1 text-[11px]" :class="stateClass(board.currentStatus)">{{ board.currentStatus }}</span>
               </div>
               <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <div class="text-slate-500">情绪分</div>
-                  <div class="mt-1 font-semibold text-cyan-200">{{ formatNumber(board.当前情绪分, 1) }}</div>
+                  <div class="mt-1 font-semibold text-cyan-200">{{ formatNumber(board.currentEmotionScore, 1) }}</div>
                 </div>
                 <div>
                   <div class="text-slate-500">上榜</div>
-                  <div class="mt-1 text-slate-200">{{ board.当前记录?.当日板块数量 ?? '-' }}</div>
+                  <div class="mt-1 text-slate-200">{{ board.currentRecord?.currentBoardCount ?? '-' }}</div>
                 </div>
                 <div>
                   <div class="text-slate-500">平均涨幅</div>
                   <div
                     class="mt-1"
-                    :class="numeric(board.当前记录?.平均涨跌幅) >= 0 ? 'text-red-300' : 'text-emerald-300'">
-                    {{ formatPercent(board.当前记录?.平均涨跌幅) }}
+                    :class="numeric(board.currentRecord?.averageChangePct) >= 0 ? 'text-red-300' : 'text-emerald-300'">
+                    {{ formatPercent(board.currentRecord?.averageChangePct) }}
                   </div>
                 </div>
               </div>
@@ -536,20 +533,20 @@ function numeric(value) {
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
             <div class="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div class="text-xs text-slate-400">{{ selectedBoard.板块 }} · {{ formatDate(selectedRecord.日期) }}</div>
+                <div class="text-xs text-slate-400">{{ selectedBoard.boardName }} · {{ formatDate(selectedRecord.tradeDate) }}</div>
                 <div class="mt-3 flex flex-wrap items-center gap-2">
-                  <span class="rounded border px-4 py-2 text-xl font-semibold" :class="stateClass(selectedRecord.综合状态)">{{ selectedRecord.综合状态 }}</span>
-                  <span class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300">热度 {{ selectedRecord.热度阶段 }}</span>
-                  <span class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300">承接 {{ selectedRecord.承接情绪 }}</span>
+                  <span class="rounded border px-4 py-2 text-xl font-semibold" :class="stateClass(selectedRecord.overallStatus)">{{ selectedRecord.overallStatus }}</span>
+                  <span class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300">热度 {{ selectedRecord.heatStage }}</span>
+                  <span class="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300">承接 {{ selectedRecord.continuationState }}</span>
                 </div>
               </div>
               <div class="text-right">
                 <div class="text-xs text-slate-400">情绪分</div>
-                <div class="mt-1 text-5xl font-semibold text-white">{{ formatNumber(selectedRecord.情绪分, 1) }}</div>
-                <div class="mt-1 text-xs text-slate-500">近30日峰值 {{ selectedBoard.近30日峰值数量 }} 只</div>
+                <div class="mt-1 text-5xl font-semibold text-white">{{ formatNumber(selectedRecord.emotionScore, 1) }}</div>
+                <div class="mt-1 text-xs text-slate-500">近30日峰值 {{ selectedBoard.peakCount30d }} 只</div>
               </div>
             </div>
-            <p class="mt-4 text-sm leading-6 text-slate-300">{{ selectedRecord.判定摘要 }}</p>
+            <p class="mt-4 text-sm leading-6 text-slate-300">{{ selectedRecord.decisionSummary }}</p>
           </div>
 
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
@@ -565,33 +562,33 @@ function numeric(value) {
       <section v-if="selectedRecord" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-500">前日股票池</div>
-          <div class="mt-2 text-xl font-semibold text-white">{{ selectedRecord.前日股票池数量 ?? 0 }} / {{ selectedRecord.前日板块数量 ?? '-' }}</div>
+          <div class="mt-2 text-xl font-semibold text-white">{{ selectedRecord.previousStockPoolCount ?? 0 }} / {{ selectedRecord.previousBoardCount ?? '-' }}</div>
           <div class="mt-1 text-xs text-slate-500">落库明细 / 来源统计</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-500">平均涨幅</div>
-          <div class="mt-2 text-xl font-semibold" :class="numeric(selectedRecord.平均涨跌幅) >= 0 ? 'text-red-300' : 'text-emerald-300'">{{ formatPercent(selectedRecord.平均涨跌幅) }}</div>
-          <div class="mt-1 text-xs text-slate-500">中位数 {{ formatPercent(selectedRecord.中位数涨跌幅) }}</div>
+          <div class="mt-2 text-xl font-semibold" :class="numeric(selectedRecord.averageChangePct) >= 0 ? 'text-red-300' : 'text-emerald-300'">{{ formatPercent(selectedRecord.averageChangePct) }}</div>
+          <div class="mt-1 text-xs text-slate-500">中位数 {{ formatPercent(selectedRecord.medianChangePct) }}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-500">平均振幅</div>
-          <div class="mt-2 text-xl font-semibold text-amber-200">{{ formatPercent(selectedRecord.平均振幅) }}</div>
-          <div class="mt-1 text-xs text-slate-500">涨幅离散 {{ formatNumber(selectedRecord.涨幅标准差, 2) }}</div>
+          <div class="mt-2 text-xl font-semibold text-amber-200">{{ formatPercent(selectedRecord.averageAmplitudePct) }}</div>
+          <div class="mt-1 text-xs text-slate-500">涨幅离散 {{ formatNumber(selectedRecord.changeStddev, 2) }}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-500">晋级情况</div>
-          <div class="mt-2 text-xl font-semibold text-red-300">{{ formatPercent(selectedRecord.晋级率) }}</div>
-          <div class="mt-1 text-xs text-slate-500">旧池 {{ selectedRecord.晋级家数 ?? 0 }} / {{ selectedRecord.前日股票池数量 ?? 0 }} · 新增 {{ selectedRecord.新晋级家数 ?? 0 }} 只</div>
+          <div class="mt-2 text-xl font-semibold text-red-300">{{ formatPercent(selectedRecord.promotionRate) }}</div>
+          <div class="mt-1 text-xs text-slate-500">旧池 {{ selectedRecord.promotionCount ?? 0 }} / {{ selectedRecord.previousStockPoolCount ?? 0 }} · 新增 {{ selectedRecord.newPromotionCount ?? 0 }} 只</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-500">红盘率</div>
-          <div class="mt-2 text-xl font-semibold text-cyan-200">{{ formatPercent(selectedRecord.红盘率) }}</div>
-          <div class="mt-1 text-xs text-slate-500">行情覆盖 {{ formatPercent(selectedRecord.行情覆盖率) }}</div>
+          <div class="mt-2 text-xl font-semibold text-cyan-200">{{ formatPercent(selectedRecord.positiveRate) }}</div>
+          <div class="mt-1 text-xs text-slate-500">行情覆盖 {{ formatPercent(selectedRecord.quoteCoverage) }}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-500">大跌率</div>
-          <div class="mt-2 text-xl font-semibold text-emerald-300">{{ formatPercent(selectedRecord.大跌率) }}</div>
-          <div class="mt-1 text-xs text-slate-500">炸板率 {{ formatPercent(selectedRecord.炸板率) }}</div>
+          <div class="mt-2 text-xl font-semibold text-emerald-300">{{ formatPercent(selectedRecord.largeLossRate) }}</div>
+          <div class="mt-1 text-xs text-slate-500">炸板率 {{ formatPercent(selectedRecord.failedLimitRate) }}</div>
         </div>
       </section>
 
@@ -620,25 +617,25 @@ function numeric(value) {
             <tbody class="divide-y divide-slate-800">
               <tr
                 v-for="row in [...selectedTrend].reverse()"
-                :key="row.日期"
+                :key="row.tradeDate"
                 class="cursor-pointer hover:bg-slate-800/60"
-                :class="Number(row.日期) === Number(selectedDate) ? 'bg-cyan-500/5' : ''"
-                @click="selectedDate = Number(row.日期)">
-                <td class="whitespace-nowrap px-4 py-3 text-slate-300">{{ formatDate(row.日期) }}</td>
-                <td class="px-4 py-3"><span class="rounded border px-2 py-1" :class="stateClass(row.综合状态)">{{ row.综合状态 }}</span></td>
-                <td class="px-4 py-3 text-slate-400">{{ row.热度阶段 }} / {{ row.承接情绪 }}</td>
-                <td class="px-4 py-3 text-slate-300">{{ row.当日板块数量 ?? '-' }}</td>
-                <td class="px-4 py-3 text-slate-400">{{ formatDate(row.样本来源日期) }}</td>
-                <td class="px-4 py-3 text-slate-300">{{ row.前日股票池数量 ?? 0 }} / {{ row.有效样本数 ?? 0 }}</td>
-                <td class="px-4 py-3" :class="numeric(row.平均涨跌幅) >= 0 ? 'text-red-300' : 'text-emerald-300'">{{ formatPercent(row.平均涨跌幅) }}</td>
-                <td class="px-4 py-3 text-amber-200">{{ formatPercent(row.平均振幅) }}</td>
+                :class="Number(row.tradeDate) === Number(selectedDate) ? 'bg-cyan-500/5' : ''"
+                @click="selectedDate = Number(row.tradeDate)">
+                <td class="whitespace-nowrap px-4 py-3 text-slate-300">{{ formatDate(row.tradeDate) }}</td>
+                <td class="px-4 py-3"><span class="rounded border px-2 py-1" :class="stateClass(row.overallStatus)">{{ row.overallStatus }}</span></td>
+                <td class="px-4 py-3 text-slate-400">{{ row.heatStage }} / {{ row.continuationState }}</td>
+                <td class="px-4 py-3 text-slate-300">{{ row.currentBoardCount ?? '-' }}</td>
+                <td class="px-4 py-3 text-slate-400">{{ formatDate(row.sampleTradeDate) }}</td>
+                <td class="px-4 py-3 text-slate-300">{{ row.previousStockPoolCount ?? 0 }} / {{ row.validSampleCount ?? 0 }}</td>
+                <td class="px-4 py-3" :class="numeric(row.averageChangePct) >= 0 ? 'text-red-300' : 'text-emerald-300'">{{ formatPercent(row.averageChangePct) }}</td>
+                <td class="px-4 py-3 text-amber-200">{{ formatPercent(row.averageAmplitudePct) }}</td>
                 <td class="px-4 py-3 text-red-300">
-                  {{ formatPercent(row.晋级率) }}
-                  <div class="mt-1 whitespace-nowrap text-[11px] text-slate-500">旧 {{ row.晋级家数 ?? 0 }} · 新 {{ row.新晋级家数 ?? 0 }}</div>
+                  {{ formatPercent(row.promotionRate) }}
+                  <div class="mt-1 whitespace-nowrap text-[11px] text-slate-500">旧 {{ row.promotionCount ?? 0 }} · 新 {{ row.newPromotionCount ?? 0 }}</div>
                 </td>
-                <td class="px-4 py-3 text-cyan-200">{{ formatPercent(row.红盘率) }}</td>
-                <td class="px-4 py-3 text-emerald-300">{{ formatPercent(row.大跌率) }}</td>
-                <td class="px-4 py-3 font-semibold text-white">{{ formatNumber(row.情绪分, 1) }}</td>
+                <td class="px-4 py-3 text-cyan-200">{{ formatPercent(row.positiveRate) }}</td>
+                <td class="px-4 py-3 text-emerald-300">{{ formatPercent(row.largeLossRate) }}</td>
+                <td class="px-4 py-3 font-semibold text-white">{{ formatNumber(row.emotionScore, 1) }}</td>
               </tr>
             </tbody>
           </table>
