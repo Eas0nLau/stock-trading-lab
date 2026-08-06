@@ -1,12 +1,18 @@
 from dataclasses import dataclass
 
+from .context import DisabledCapability
+
 
 @dataclass(slots=True)
 class ResearchData:
     """Read-only facade over the canonical market-data repositories."""
 
     market_data: object
-    dragon_tiger: object
+    dragon_tiger: object | None = None
+
+    def __post_init__(self):
+        if self.dragon_tiger is None:
+            self.dragon_tiger = DisabledCapability("dragon_tiger")
 
     def securities(self, market=None):
         return self.market_data.securities(market=market)

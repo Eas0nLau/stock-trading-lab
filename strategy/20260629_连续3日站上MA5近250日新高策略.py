@@ -98,7 +98,7 @@ def _加载日线数据(filtered_codes, 交易日列表):
             sb.market,
             sb.list_status
         FROM daily_quotes sd
-        LEFT JOIN securities sb ON sd.ts_code = sb.symbol
+        LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
         WHERE sd.trade_date IN {交易日元组}
           {代码过滤条件}
           AND sb.market = '主板'

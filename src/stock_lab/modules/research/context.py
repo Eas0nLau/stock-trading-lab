@@ -6,9 +6,16 @@ class ResearchSafetyError(RuntimeError):
     """Raised when research execution would use an unapproved live capability."""
 
 
-class _DisabledCapability:
+class ResearchConfigurationError(ValueError):
+    """Raised when a strategy cannot run with the supplied configuration."""
+
+
+class DisabledCapability:
+    def __init__(self, capability: str):
+        self.capability = capability
+
     def __getattr__(self, name):
-        raise ResearchSafetyError(f"research capability {name!r} is disabled")
+        raise ResearchSafetyError(f"research capability {self.capability}.{name} is disabled")
 
 
 @dataclass(slots=True)
@@ -25,17 +32,28 @@ class ResearchContext:
         if self.parameters is None:
             self.parameters = {}
         if self.dragon_tiger is None:
-            self.dragon_tiger = _DisabledCapability()
+            self.dragon_tiger = DisabledCapability("dragon_tiger")
         if self.account is None:
-            self.account = _DisabledCapability()
+            self.account = DisabledCapability("account")
         if self.network is None:
-            self.network = _DisabledCapability()
+            self.network = DisabledCapability("network")
 
     @classmethod
-    def test_context(cls, market_data=None):
-        return cls(market_data or _DisabledCapability())
+    def test_context(cls, market_data=None, parameters=None):
+        if market_data is None:
+            market_data = DisabledCapability("market_data")
+        return cls(market_data, parameters=parameters)
+
+    def with_parameters(self, **parameters):
+        return ResearchContext(
+            market_data=self.market_data,
+            dragon_tiger=self.dragon_tiger,
+            account=self.account,
+            network=self.network,
+            parameters={**self.parameters, **parameters},
+        )
 
     def require_network(self):
-        if isinstance(self.network, _DisabledCapability):
+        if isinstance(self.network, DisabledCapability):
             raise ResearchSafetyError("network access must be explicitly injected")
         return self.network

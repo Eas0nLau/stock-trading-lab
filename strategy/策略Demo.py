@@ -117,7 +117,7 @@ def _加载日线数据(filtered_codes, 交易日列表):
             sb.market,
             sb.list_status
         FROM daily_quotes sd
-        LEFT JOIN securities sb ON sd.ts_code = sb.symbol
+        LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
         LEFT JOIN (
             SELECT latest_sd.ts_code, latest_sd.circulating_market_value AS 最新流通市值
             FROM daily_quotes latest_sd

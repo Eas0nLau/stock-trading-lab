@@ -37,12 +37,17 @@ List all 57 legacy strategy launchers without importing them:
 uv run python -m stock_lab.modules.research list
 ```
 
-Each entry has an ASCII English identifier, the original Chinese display name,
-and its compatibility source path. A selected entry is loaded lazily and
-adapted to the uniform `run(context) -> result` contract. Strategies with a
-legacy `strategy(filtered_codes, target_date)` entrypoint receive those values
-through explicit run parameters; callers must still supply the date and any
-other selection inputs.
+Each entry has an explicit ASCII English identifier, the original Chinese
+display name, compatibility source path, declared entrypoint, capabilities,
+target-date requirement, and safety status. The catalog is static and does not
+infer entrypoints from source files.
+
+The current legacy launchers are explicitly marked `unsafe_legacy` (or
+`unsupported` when no entrypoint exists). The registry raises
+`ResearchSafetyError` before importing them, including in test contexts. This
+prevents import-time database, network, and global-account side effects. A
+migrated strategy may be marked `context_aware` only when it declares the
+exact `run(context)` entrypoint; no `start`/`strategy` guessing is performed.
 
 The CLI refuses to run without an explicitly injected context:
 
@@ -50,6 +55,11 @@ The CLI refuses to run without an explicitly injected context:
 from stock_lab.modules.research.cli import main
 main(["run", "strategy_demo"], context=context)
 ```
+
+The example intentionally returns a controlled safety error until that legacy
+launcher is migrated to the context-aware contract. The CLI validates
+`--target-date` and converts safety, import, and configuration failures to a
+nonzero result without a traceback.
 
 Chinese files under `strategy/` remain compatibility launchers and preserve
 their original display names. They are not imported during discovery.

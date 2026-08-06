@@ -15,8 +15,8 @@ from 实时监控 import 资金流向
 普通主板股票SQL = """
 (
     (
-        (ts_code BETWEEN 1 AND 3999)
-        OR (ts_code BETWEEN 600000 AND 609999)
+        (CAST(SUBSTRING_INDEX(ts_code, '.', 1) AS UNSIGNED) BETWEEN 1 AND 3999)
+        OR (CAST(SUBSTRING_INDEX(ts_code, '.', 1) AS UNSIGNED) BETWEEN 600000 AND 609999)
     )
     AND (stock_name IS NULL OR stock_name NOT LIKE '%ST%')
 )
@@ -64,7 +64,7 @@ def 计算当前指数周期():
 def 读取最新指数周期落库结果():
     try:
         exists = db.mysql_localhost(
-            "SHOW TABLES LIKE 't_指数情绪周期_每日分析'",
+            "SHOW TABLES LIKE 'index_emotion_daily'",
             fetch=True,
         )
         if not exists:
@@ -73,13 +73,20 @@ def 读取最新指数周期落库结果():
         rows = db.mysql_localhost(
             """
             SELECT
-                `日期`, `指数名称`, `周期状态`, `周期分数`, `摘要`,
-                `开盘`, `收盘`, `最高`, `最低`, `涨跌幅`, `指数成交额`, `指数成交额比例`, `市场成交额比例`,
-                `MA5`, `MA10`, `MA20`, `MA60`, `MA5斜率`, `MA10斜率`, `MA20斜率`,
-                `趋势得分`, `市场宽度得分`, `涨跌停结构得分`, `量能得分`, `风险偏好得分`,
-                `市场宽度JSON`, `信号JSON`, `最近走势JSON`, `波动图JSON`, `完整结果JSON`
-            FROM `t_指数情绪周期_每日分析`
-            ORDER BY `日期` DESC
+                `trade_date` AS `日期`, `index_name` AS `指数名称`, `cycle_state` AS `周期状态`,
+                `cycle_score` AS `周期分数`, `summary` AS `摘要`,
+                `open_price` AS `开盘`, `close_price` AS `收盘`, `high_price` AS `最高`,
+                `low_price` AS `最低`, `change_pct` AS `涨跌幅`, `index_turnover` AS `指数成交额`,
+                `index_turnover_ratio` AS `指数成交额比例`, `market_turnover_ratio` AS `市场成交额比例`,
+                `ma5` AS `MA5`, `ma10` AS `MA10`, `ma20` AS `MA20`, `ma60` AS `MA60`,
+                `ma5_slope` AS `MA5斜率`, `ma10_slope` AS `MA10斜率`, `ma20_slope` AS `MA20斜率`,
+                `trend_score` AS `趋势得分`, `breadth_score` AS `市场宽度得分`,
+                `limit_structure_score` AS `涨跌停结构得分`, `volume_score` AS `量能得分`,
+                `risk_appetite_score` AS `风险偏好得分`, `market_breadth_json` AS `市场宽度JSON`,
+                `signals_json` AS `信号JSON`, `recent_trend_json` AS `最近走势JSON`,
+                `volatility_chart_json` AS `波动图JSON`, `full_result_json` AS `完整结果JSON`
+            FROM `index_emotion_daily`
+            ORDER BY `trade_date` DESC
             LIMIT 1
             """,
             fetch=True,
@@ -163,15 +170,15 @@ def 补充最近走势市场宽度(latest_date, recent_rows, limit=20):
             SELECT
                 trade_date AS `日期`,
                 COUNT(*) AS `股票总数`,
-                SUM(CASE WHEN pct_chg > 0 THEN 1 ELSE 0 END) AS `上涨家数`,
-                SUM(CASE WHEN pct_chg < 0 THEN 1 ELSE 0 END) AS `下跌家数`,
-                SUM(CASE WHEN ({普通主板股票SQL}) AND pre_close > 0 AND close >= ROUND(pre_close * (1 + ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS `涨停家数`,
-                SUM(CASE WHEN ({普通主板股票SQL}) AND pre_close > 0 AND close <= ROUND(pre_close * (1 - ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS `跌停家数`
-            FROM stock_daily
+                SUM(CASE WHEN change_pct > 0 THEN 1 ELSE 0 END) AS `上涨家数`,
+                SUM(CASE WHEN change_pct < 0 THEN 1 ELSE 0 END) AS `下跌家数`,
+                SUM(CASE WHEN ({普通主板股票SQL}) AND previous_close > 0 AND close_price >= ROUND(previous_close * (1 + ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS `涨停家数`,
+                SUM(CASE WHEN ({普通主板股票SQL}) AND previous_close > 0 AND close_price <= ROUND(previous_close * (1 - ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS `跌停家数`
+            FROM daily_quotes
             WHERE trade_date IN (
                 SELECT trade_date FROM (
                     SELECT DISTINCT trade_date
-                    FROM stock_daily
+                    FROM daily_quotes
                     WHERE trade_date <= %s
                     ORDER BY trade_date DESC
                     LIMIT {int(limit)}
@@ -222,7 +229,7 @@ def 解析JSON字段(value, default):
 def 实时计算当前指数周期():
     index_rows = 读取上证指数日线()
     if not index_rows:
-        return {"状态": "empty", "错误信息": "akshare_sh000001 暂无指数数据"}
+        return {"状态": "empty", "错误信息": "index_daily 暂无指数数据"}
 
     market_rows = 读取市场宽度数据()
     return 计算指数周期结果(index_rows, market_rows)
@@ -230,7 +237,7 @@ def 实时计算当前指数周期():
 
 def 计算指数周期结果(index_rows, market_rows):
     if not index_rows:
-        return {"状态": "empty", "错误信息": "akshare_sh000001 暂无指数数据"}
+        return {"状态": "empty", "错误信息": "index_daily 暂无指数数据"}
 
     closes = [取浮点数(row.get("收盘")) for row in index_rows]
     amounts = [取浮点数(row.get("成交额")) for row in index_rows]
@@ -418,9 +425,9 @@ def 当前日期是工作日(date):
 def 获取指数交易日期集合(limit=120):
     rows = db.mysql_localhost(
         f"""
-        SELECT 日期
-        FROM akshare_sh000001
-        ORDER BY 日期 DESC
+        SELECT trade_date AS 日期
+        FROM index_daily
+        ORDER BY trade_date DESC
         LIMIT {int(limit)}
         """,
         fetch=True,
@@ -718,9 +725,10 @@ def 计算题材周期分数(values, max_positive):
 def 读取上证指数日线(limit=160):
     rows = db.mysql_localhost(
         f"""
-        SELECT 日期, 开盘, 收盘, 最高, 最低, 成交额, 涨跌幅
-        FROM akshare_sh000001
-        ORDER BY 日期 DESC
+        SELECT trade_date AS 日期, open_price AS 开盘, close_price AS 收盘,
+               high_price AS 最高, low_price AS 最低, turnover AS 成交额, change_pct AS 涨跌幅
+        FROM index_daily
+        ORDER BY trade_date DESC
         LIMIT {int(limit)}
         """,
         fetch=True,
@@ -734,19 +742,19 @@ def 读取市场宽度数据(limit=80):
         SELECT
             trade_date,
             COUNT(*) AS total_count,
-            SUM(CASE WHEN pct_chg > 0 THEN 1 ELSE 0 END) AS up_count,
-            SUM(CASE WHEN pct_chg < 0 THEN 1 ELSE 0 END) AS down_count,
-            SUM(CASE WHEN pct_chg >= 5 THEN 1 ELSE 0 END) AS up_gt5_count,
-            SUM(CASE WHEN pct_chg <= -5 THEN 1 ELSE 0 END) AS down_lt5_count,
-            SUM(CASE WHEN ({普通主板股票SQL}) AND pre_close > 0 AND close >= ROUND(pre_close * (1 + ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS limit_up_count,
-            SUM(CASE WHEN ({普通主板股票SQL}) AND pre_close > 0 AND close <= ROUND(pre_close * (1 - ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS limit_down_count,
-            SUM(amount) AS amount,
-            AVG(pct_chg) AS avg_pct_chg
-        FROM stock_daily
+            SUM(CASE WHEN change_pct > 0 THEN 1 ELSE 0 END) AS up_count,
+            SUM(CASE WHEN change_pct < 0 THEN 1 ELSE 0 END) AS down_count,
+            SUM(CASE WHEN change_pct >= 5 THEN 1 ELSE 0 END) AS up_gt5_count,
+            SUM(CASE WHEN change_pct <= -5 THEN 1 ELSE 0 END) AS down_lt5_count,
+            SUM(CASE WHEN ({普通主板股票SQL}) AND previous_close > 0 AND close_price >= ROUND(previous_close * (1 + ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS limit_up_count,
+            SUM(CASE WHEN ({普通主板股票SQL}) AND previous_close > 0 AND close_price <= ROUND(previous_close * (1 - ({涨跌停幅度SQL})), 2) THEN 1 ELSE 0 END) AS limit_down_count,
+            SUM(turnover) AS amount,
+            AVG(change_pct) AS avg_pct_chg
+        FROM daily_quotes
         WHERE trade_date IN (
             SELECT trade_date FROM (
                 SELECT DISTINCT trade_date
-                FROM stock_daily
+                FROM daily_quotes
                 ORDER BY trade_date DESC
                 LIMIT {int(limit)}
             ) recent_dates

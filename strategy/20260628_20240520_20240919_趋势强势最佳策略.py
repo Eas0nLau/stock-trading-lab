@@ -83,7 +83,7 @@ def _读取日线数据(trade_dates, filtered_codes=None):
                 sb.market,
                 sb.list_status
             FROM daily_quotes sd
-            LEFT JOIN securities sb ON sd.ts_code = sb.symbol
+            LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
             WHERE sd.trade_date IN {trade_date_tuple}
               {code_filter}
               AND sb.market = '主板'
