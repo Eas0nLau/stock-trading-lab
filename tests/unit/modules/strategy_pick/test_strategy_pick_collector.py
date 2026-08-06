@@ -1,6 +1,8 @@
 import json
 import threading
+from datetime import datetime
 
+from stock_lab.modules.strategy_pick import collector as collector_module
 from stock_lab.modules.strategy_pick.collector import StrategyPickCollector, create_strategy_pick_collector, run_strategy_pick_monitor
 from stock_lab.modules.strategy_pick.repository import StrategyPickRepository
 from stock_lab.modules.strategy_pick.source import parse_strategy_response
@@ -76,6 +78,28 @@ def test_collector_normalizes_and_persists_legacy_collection_result():
     assert result["strategyId"] == "eastmoney_1"
     assert repository.latest("eastmoney_1")["status"] == "success"
     assert adapter.calls == ["eastmoney_1"]
+
+
+def test_collector_defaults_missing_collection_date_from_clock(monkeypatch):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 8, 10, 0, 0)
+
+    assert hasattr(collector_module, "datetime")
+    monkeypatch.setattr(collector_module.datetime, "datetime", FixedDateTime)
+    repository = StrategyPickRepository(Redis())
+    collector = StrategyPickCollector(repository, adapter=Adapter())
+
+    result = collector.persist_legacy_snapshot({
+        "strategyId": "eastmoney_1",
+        "status": "failed",
+        "stocks": [],
+        "addedStocks": [],
+    })
+
+    assert result["collectedDate"] == "20260808"
+    assert repository.history("eastmoney_1", "20260808") == [result]
 
 
 def test_official_worker_delegates_loop_to_injected_adapter():
