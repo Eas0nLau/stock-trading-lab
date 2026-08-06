@@ -1,4 +1,5 @@
 import datetime as dt
+import time
 from sqlalchemy import text
 
 
@@ -48,6 +49,11 @@ def _read_index_dates(limit):
 def 交易日期列表(limit=160):
     dates = sorted(set(_read_index_dates(max(int(limit), 1))), reverse=False)
     return dates[-int(limit):]
+
+
+def 待更新交易日期(dates, existing_dates):
+    existing = {int(date) for date in existing_dates}
+    return [int(date) for date in dates if int(date) not in existing]
 
 
 def 标准化指数行(row):
@@ -168,32 +174,44 @@ def 更新股票基础信息():
 def 更新股票日线(start_date, end_date):
     from utils.common import pro
 
-    dates = [
+    all_dates = sorted([
         date for date in _read_index_dates(1000)
         if int(start_date) <= int(date) <= int(end_date)
-    ]
+    ])
+    if not all_dates:
+        all_dates = [int(end_date)]
+    existing_rows = _db().mysql_localhost(
+        "SELECT DISTINCT trade_date FROM stock_daily WHERE trade_date BETWEEN %s AND %s",
+        params=(int(start_date), int(end_date)),
+        fetch=True,
+    ) or []
+    dates = 待更新交易日期(all_dates, [row.get("trade_date") for row in existing_rows])
     if not dates:
-        dates = [int(end_date)]
-    frames = []
-    for date in dates:
-        frame = pro.daily(ts_code="", trade_date=str(date))
-        if frame is not None and not frame.empty:
-            frames.append(frame)
-    if not frames:
-        raise RuntimeError(f"Tushare 未返回 {start_date}-{end_date} 股票日线")
-    import pandas as pd
-
-    frame = pd.concat(frames, ignore_index=True)
+        return 0
     names = {
         _symbol_int(row.get("symbol")): row.get("name")
         for row in (_db().mysql_localhost("SELECT symbol, name FROM stock_basic", fetch=True) or [])
     }
-    rows = [
-        股票日线记录(row, names.get(_symbol_int(row.get("ts_code"))))
-        for row in frame.where(frame.notna(), None).to_dict("records")
-    ]
     columns = [
         "ts_code", "trade_date", "open", "high", "low", "close", "pre_close", "change", "pct_chg",
         "vol", "amount", "total_mv", "circ_mv", "free_share", "free_mv", "stock_name", "data_id", "dde",
     ]
-    return _upsert_rows("stock_daily", columns, rows, ["data_id"])
+    total_rows = 0
+    for date in dates:
+        started_at = time.monotonic()
+        try:
+            frame = pro.daily(ts_code="", trade_date=str(date))
+        except Exception as error:
+            if "频率" not in str(error):
+                raise
+            time.sleep(65)
+            frame = pro.daily(ts_code="", trade_date=str(date))
+        if frame is None or frame.empty:
+            raise RuntimeError(f"Tushare 未返回 {date} 股票日线")
+        rows = [
+            股票日线记录(row, names.get(_symbol_int(row.get("ts_code"))))
+            for row in frame.where(frame.notna(), None).to_dict("records")
+        ]
+        total_rows += _upsert_rows("stock_daily", columns, rows, ["data_id"])
+        time.sleep(max(0.0, 1.3 - (time.monotonic() - started_at)))
+    return total_rows

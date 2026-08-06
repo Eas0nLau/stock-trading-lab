@@ -80,3 +80,31 @@ def test_board_appearance_and_disappearance_are_not_missing_data(monkeypatch):
 
     status = {row["板块"]: row["综合状态"] for row in written}
     assert status == {"旧板块": "退潮", "新板块": "升温"}
+
+
+def test_index_backfill_reads_full_year_window(monkeypatch):
+    limits = {}
+
+    def read_index(limit):
+        limits["index"] = limit
+        return []
+
+    def read_market(limit):
+        limits["market"] = limit
+        return []
+
+    monkeypatch.setattr(
+        emotion_analysis.情绪周期,
+        "读取上证指数日线",
+        read_index,
+    )
+    monkeypatch.setattr(
+        emotion_analysis.情绪周期,
+        "读取市场宽度数据",
+        read_market,
+    )
+
+    with pytest.raises(emotion_analysis.MissingEmotionSource):
+        emotion_analysis.落库指数周期(20260105)
+
+    assert limits == {"index": 260, "market": 260}

@@ -97,8 +97,8 @@ def _market_for_date(rows, date):
 
 def 落库指数周期(date):
     date = _int(date)
-    index_rows = [row for row in 情绪周期.读取上证指数日线(160) if _int(row.get("日期")) <= date]
-    market_rows = [row for row in 情绪周期.读取市场宽度数据(80) if _int(row.get("trade_date")) <= date]
+    index_rows = [row for row in 情绪周期.读取上证指数日线(260) if _int(row.get("日期")) <= date]
+    market_rows = [row for row in 情绪周期.读取市场宽度数据(260) if _int(row.get("trade_date")) <= date]
     if not index_rows or not market_rows or _int(index_rows[-1].get("日期")) != date:
         raise MissingEmotionSource(f"{date} 缺少指数日线或市场宽度数据")
 

@@ -47,3 +47,10 @@ def test_stock_daily_upsert_key_is_date_and_code():
 
     assert payload["ts_code"] == 600000
     assert payload["data_id"] == "600000_20260805"
+
+
+def test_existing_stock_daily_dates_are_skipped():
+    assert data_sources.待更新交易日期(
+        [20260105, 20260106, 20260107],
+        [20260106],
+    ) == [20260105, 20260107]
