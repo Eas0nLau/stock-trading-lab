@@ -2,8 +2,6 @@ import datetime
 import threading
 from threading import Timer
 
-from loguru import logger
-
 from stock_lab.bootstrap.workers import WorkerManager
 
 
@@ -26,23 +24,8 @@ def run_strategy_pick_monitor() -> None:
 
 
 def run_fund_flow_monitor(stop_event: threading.Event) -> None:
-    from 实时监控 import 资金流向
-
-    logger.info(
-        "Fund-flow scheduler started with a {} second interval",
-        资金流向.获取资金流向采集间隔秒(),
-    )
-    资金流向.init_driver()
-    资金流向.预热最新资金流向历史()
-
-    while not stop_event.is_set():
-        资金流向.等待到下次对齐执行()
-        if stop_event.is_set():
-            break
-        now = datetime.datetime.now()
-        if 资金流向.当前是资金流向采集时间(now):
-            资金流向.采集全部资金流向()
-        schedule_optional_jobs(now)
+    from stock_lab.modules.fund_flow.collector import run_fund_flow_monitor as run_collector
+    run_collector(stop_event, schedule_optional_jobs)
 
 
 def schedule_optional_jobs(now: datetime.datetime) -> None:

@@ -56,20 +56,20 @@
         <div class="filter-results-list flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
           <div
               v-for="item in filterResults"
-              :key="item.板块名称"
+              :key="item.boardName"
               class="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-slate-100">
             <div class="mb-2 flex items-start justify-between gap-2">
-              <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white">{{ item.板块名称 }}</span>
-              <span class="font-mono text-sm font-semibold text-red-300">{{ item.资金净流入亿.toFixed(2) }}亿</span>
+              <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white">{{ item.boardName }}</span>
+              <span class="font-mono text-sm font-semibold text-red-300">{{ item.netInflow100m.toFixed(2) }}亿</span>
             </div>
             <div class="flex items-center gap-2">
               <button
                   @click="copyStockName(item)"
-                  :title="`复制 ${item.入选龙头 || item.龙头 || '-'}`"
+                  :title="`复制 ${item.selectedLeader || item.leader || '-'}`"
                   class="copy-stock-button rounded-md border border-amber-300/30 bg-amber-300/10 px-1.5 py-0.5 font-semibold text-amber-100">
-                {{ copiedStockName === (item.入选龙头 || item.龙头) ? '已复制' : (item.入选龙头 || item.龙头 || '-') }}
+                {{ copiedStockName === (item.selectedLeader || item.leader) ? '已复制' : (item.selectedLeader || item.leader || '-') }}
               </button>
-              <span class="rounded-md border border-sky-300/25 bg-sky-300/10 px-1.5 py-0.5 font-mono font-semibold text-sky-100">{{ item.入选时间 || item.时间 }}</span>
+              <span class="rounded-md border border-sky-300/25 bg-sky-300/10 px-1.5 py-0.5 font-mono font-semibold text-sky-100">{{ item.selectedTime || item.time }}</span>
             </div>
           </div>
           <div v-if="!filterResults.length"
@@ -120,9 +120,8 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { fetchFundFlowDates, fetchFundFlowHistory } from '../modules/fund-flow/api.js'
+import { fetchFundFlowDates, fetchFundFlowHistory, openFundFlowStream } from '../modules/fund-flow/api.js'
 
-const FUND_FLOW_API_BASE = '/api/v1/fund-flow'
 const chartRef = ref(null)
 let chartInstance = null
 let fundFlowStream = null
@@ -153,12 +152,6 @@ const notificationPermission = ref(typeof Notification === 'undefined' ? 'unsupp
 const lastNotificationKey = ref('')
 const copiedStockName = ref('')
 let copyFeedbackTimer = null
-
-const getFlow = (item) => {
-  if (!item) return 0
-  const yi = item['资金净流入(亿)'] ?? item.资金净流入亿 ?? 0
-  return yi / 10000
-}
 
 const getToday = () => {
   const date = new Date()
@@ -208,7 +201,7 @@ const copyText = async (text) => {
 }
 
 const copyStockName = async (item) => {
-  const stockName = item.入选龙头 || item.龙头
+  const stockName = item.selectedLeader || item.leader
   if (!stockName) return
 
   try {
@@ -251,85 +244,12 @@ const requestNotificationPermission = async () => {
   }
 }
 
-const flattenSparseMatrixHistoryData = (historyData) => {
-  if (historyData?.format !== 'matrix-v2') return null
-
-  const rows = []
-  const times = Array.isArray(historyData.times) ? historyData.times : []
-  const boards = Array.isArray(historyData.boards) ? historyData.boards : []
-  boards.forEach(board => {
-    const points = Array.isArray(board.points) ? board.points : []
-    points.forEach(point => {
-      const [timeIndex, rawFlow, leader = ''] = point
-      const time = times[timeIndex]
-      if (!time) return
-      rows.push({
-        时间: time,
-        板块名称: board.name,
-        龙头: leader || '',
-        资金净流入亿: Number(rawFlow || 0) / 10000
-      })
-    })
-  })
-  return rows
-}
-
-const flattenMatrixHistoryData = (historyData) => {
-  const sparseRows = flattenSparseMatrixHistoryData(historyData)
-  if (sparseRows) return sparseRows
-  if (historyData?.format !== 'matrix-v1') return null
-
-  const rows = []
-  const times = Array.isArray(historyData.times) ? historyData.times : []
-  const boards = Array.isArray(historyData.boards) ? historyData.boards : []
-  boards.forEach(board => {
-    const values = Array.isArray(board.values) ? board.values : []
-    const leaders = Array.isArray(board.leaders) ? board.leaders : []
-    times.forEach((time, index) => {
-      const rawFlow = values[index]
-      if (rawFlow === null || rawFlow === undefined) return
-      rows.push({
-        时间: time,
-        板块名称: board.name,
-        龙头: leaders[index] || '',
-        资金净流入亿: Number(rawFlow || 0) / 10000
-      })
-    })
-  })
-  return rows
-}
-
-const flattenHistoryData = (historyData) => {
-  const matrixRows = flattenMatrixHistoryData(historyData)
-  if (matrixRows) return matrixRows
-
-  const rowMap = new Map()
-  if (historyData?.length) {
-    historyData.forEach(arr => {
-      if (Array.isArray(arr)) {
-        arr.forEach(item => {
-          if (item?.板块名称 && item.时间) {
-            const row = {
-              时间: item.时间,
-              板块名称: item.板块名称,
-              龙头: item.龙头,
-              资金净流入亿: getFlow(item)
-            }
-            rowMap.set(`${row.时间}|${row.板块名称}`, row)
-          }
-        })
-      }
-    })
-  }
-  return [...rowMap.values()]
-}
-
 const dedupeRowsByBoard = (rows) => {
   const bestByBoard = new Map()
   rows.forEach(row => {
-    const existing = bestByBoard.get(row.板块名称)
-    if (!existing || Math.abs(row.资金净流入亿) > Math.abs(existing.资金净流入亿)) {
-      bestByBoard.set(row.板块名称, row)
+    const existing = bestByBoard.get(row.boardName)
+    if (!existing || Math.abs(row.netInflow100m) > Math.abs(existing.netInflow100m)) {
+      bestByBoard.set(row.boardName, row)
     }
   })
   return [...bestByBoard.values()]
@@ -340,42 +260,42 @@ const updateFilterResults = () => {
   const bestByBoard = new Map()
 
   currentPlotData.value.forEach(row => {
-    if (row.资金净流入亿 <= amount) return
+    if (row.netInflow100m <= amount) return
 
-    const existing = bestByBoard.get(row.板块名称)
+    const existing = bestByBoard.get(row.boardName)
     if (!existing) {
-      bestByBoard.set(row.板块名称, {
+      bestByBoard.set(row.boardName, {
         ...row,
-        入选时间: row.时间,
-        入选龙头: row.龙头,
-        入选资金净流入亿: row.资金净流入亿
+        selectedTime: row.time,
+        selectedLeader: row.leader,
+        selectedNetInflow100m: row.netInflow100m
       })
       return
     }
 
-    const isEarlierEntry = row.时间 < existing.入选时间
-    const isSameTimeHigherEntry = row.时间 === existing.入选时间 && row.资金净流入亿 > existing.入选资金净流入亿
+    const isEarlierEntry = row.time < existing.selectedTime
+    const isSameTimeHigherEntry = row.time === existing.selectedTime && row.netInflow100m > existing.selectedNetInflow100m
     if (isEarlierEntry || isSameTimeHigherEntry) {
-      existing.入选时间 = row.时间
-      existing.入选龙头 = row.龙头
-      existing.入选资金净流入亿 = row.资金净流入亿
+      existing.selectedTime = row.time
+      existing.selectedLeader = row.leader
+      existing.selectedNetInflow100m = row.netInflow100m
     }
 
-    if (row.资金净流入亿 > existing.资金净流入亿) {
-      bestByBoard.set(row.板块名称, {
+    if (row.netInflow100m > existing.netInflow100m) {
+      bestByBoard.set(row.boardName, {
         ...row,
-        入选时间: existing.入选时间,
-        入选龙头: existing.入选龙头,
-        入选资金净流入亿: existing.入选资金净流入亿
+        selectedTime: existing.selectedTime,
+        selectedLeader: existing.selectedLeader,
+        selectedNetInflow100m: existing.selectedNetInflow100m
       })
     }
   })
 
   filterResults.value = [...bestByBoard.values()]
       .sort((a, b) => {
-        const timeSort = a.入选时间.localeCompare(b.入选时间)
+        const timeSort = a.selectedTime.localeCompare(b.selectedTime)
         if (timeSort !== 0) return timeSort
-        return b.入选资金净流入亿 - a.入选资金净流入亿
+        return b.selectedNetInflow100m - a.selectedNetInflow100m
       })
   notifyFilterResults(filterResults.value)
 }
@@ -393,18 +313,18 @@ const notifyFilterResults = (results, force = false) => {
 
   const { amount } = parseFilterConditions()
   const latestResult = [...results].sort((a, b) => {
-    const timeSort = (b.入选时间 || b.时间).localeCompare(a.入选时间 || a.时间)
+    const timeSort = (b.selectedTime || b.time).localeCompare(a.selectedTime || a.time)
     if (timeSort !== 0) return timeSort
-    return (b.入选资金净流入亿 || b.资金净流入亿) - (a.入选资金净流入亿 || a.资金净流入亿)
+    return (b.selectedNetInflow100m || b.netInflow100m) - (a.selectedNetInflow100m || a.netInflow100m)
   })[0]
-  const latestTime = latestResult.入选时间 || latestResult.时间
-  const latestStock = latestResult.入选龙头 || latestResult.龙头 || '-'
-  const notificationKey = `${props.flowType}|${selectedDate.value}|${amount}|${latestTime}|${latestResult.板块名称}|${latestStock}`
+  const latestTime = latestResult.selectedTime || latestResult.time
+  const latestStock = latestResult.selectedLeader || latestResult.leader || '-'
+  const notificationKey = `${props.flowType}|${selectedDate.value}|${amount}|${latestTime}|${latestResult.boardName}|${latestStock}`
   if (!force && notificationKey === lastNotificationKey.value) return
   lastNotificationKey.value = notificationKey
 
   new Notification(`${props.title}最新入选：${latestStock}`, {
-    body: `${latestTime} ${latestResult.板块名称} ${latestStock} ${latestResult.资金净流入亿.toFixed(2)}亿`,
+    body: `${latestTime} ${latestResult.boardName} ${latestStock} ${latestResult.netInflow100m.toFixed(2)}亿`,
     tag: notificationKey,
     renotify: true,
   })
@@ -459,7 +379,7 @@ const renderChart = (historyData) => {
   if (!chartInstance) chartInstance = echarts.init(chartDom)
   else chartInstance.clear()
 
-  const plotData = flattenHistoryData(historyData)
+  const plotData = Array.isArray(historyData) ? historyData : []
   currentPlotData.value = plotData
   updateFilterResults()
 
@@ -476,18 +396,18 @@ const renderChart = (historyData) => {
     return
   }
 
-  const timePoints = [...new Set(plotData.map(r => r.时间))].sort()
+  const timePoints = [...new Set(plotData.map(r => r.time))].sort()
   const latestTime = timePoints[timePoints.length - 1]
-  const latestData = plotData.filter(r => r.时间 === latestTime)
+  const latestData = plotData.filter(r => r.time === latestTime)
 
   const selectedData = dedupeRowsByBoard(latestData)
-      .sort((a, b) => b.资金净流入亿 - a.资金净流入亿)
+      .sort((a, b) => b.netInflow100m - a.netInflow100m)
 
   const rowMap = new Map(
-      plotData.map(row => [`${row.时间}\u0000${row.板块名称}`, row])
+      plotData.map(row => [`${row.time}\u0000${row.boardName}`, row])
   )
   const series = selectedData.map((latestRow, i) => {
-    const name = latestRow.板块名称
+    const name = latestRow.boardName
     const color = getColorByRank(i, selectedData.length)
 
     return {
@@ -500,13 +420,13 @@ const renderChart = (historyData) => {
       data: timePoints.map(time => {
         const row = rowMap.get(`${time}\u0000${name}`)
         // 未进入该分钟 Top 列表不代表资金净额为 0，保留为空值避免曲线错误跌至零轴。
-        const amount = row ? row.资金净流入亿 : null
+        const amount = row ? row.netInflow100m : null
         return {
           value: amount,
-          时间: time,
-          板块名称: name,
-          龙头: row?.龙头 || '',
-          资金净流入亿: amount
+          time,
+          boardName: name,
+          leader: row?.leader || '',
+          netInflow100m: amount
         }
       }),
       showSymbol: false,
@@ -516,7 +436,7 @@ const renderChart = (historyData) => {
         show: true,
         formatter: params => {
           const data = params.data || {}
-          return `${data.板块名称}: ${Number(data.资金净流入亿 || 0).toFixed(2)}亿 ${data.龙头 || ''}`
+          return `${data.boardName}: ${Number(data.netInflow100m || 0).toFixed(2)}亿 ${data.leader || ''}`
         },
         color,
         fontSize: 11,
@@ -526,7 +446,7 @@ const renderChart = (historyData) => {
     }
   })
 
-  const allValues = plotData.map(r => r.资金净流入亿)
+  const allValues = plotData.map(r => r.netInflow100m)
   const dataMin = Math.min(...allValues)
   const dataMax = Math.max(...allValues)
   const axisPadding = dataMin === dataMax ? Math.max(Math.abs(dataMin) * 0.1, 0.01) : 0
@@ -539,15 +459,15 @@ const renderChart = (historyData) => {
       textStyle: { color: '#f8fafc', fontSize: 12 },
       formatter: params => {
         const sortedParams = [...params].sort((a, b) => {
-          const va = Number(a.data?.资金净流入亿 ?? a.value ?? 0)
-          const vb = Number(b.data?.资金净流入亿 ?? b.value ?? 0)
+          const va = Number(a.data?.netInflow100m ?? a.value ?? 0)
+          const vb = Number(b.data?.netInflow100m ?? b.value ?? 0)
           return vb - va
         })
         let result = (params[0]?.axisValue || '') + '<br/>'
         sortedParams.forEach(item => {
           const data = item.data || {}
-          const amount = Number(data.资金净流入亿 ?? item.value ?? 0)
-          result += `<span style="color:${item.color}">${item.seriesName}: ${amount.toFixed(2)}亿  ${data.龙头 || ''}</span><br/>`
+          const amount = Number(data.netInflow100m ?? item.value ?? 0)
+          result += `<span style="color:${item.color}">${item.seriesName}: ${amount.toFixed(2)}亿  ${data.leader || ''}</span><br/>`
         })
         return result
       }
@@ -577,15 +497,7 @@ const renderChart = (historyData) => {
 
 const startFundFlowUpdateStream = () => {
   if (fundFlowStream || typeof EventSource === 'undefined') return
-  fundFlowStream = new EventSource(`${FUND_FLOW_API_BASE}/stream`)
-  fundFlowStream.onmessage = (event) => {
-    try {
-      const payload = JSON.parse(event.data)
-      handleFundFlowUpdateEvent(payload)
-    } catch (error) {
-      console.warn('资金流向更新事件解析失败', error)
-    }
-  }
+  fundFlowStream = openFundFlowStream(handleFundFlowUpdateEvent)
   fundFlowStream.onerror = () => {
     // EventSource 会自动重连，这里保留连接作为实时刷新通道。
   }
@@ -597,17 +509,17 @@ const stopFundFlowUpdateStream = () => {
 }
 
 const handleFundFlowUpdateEvent = (payload) => {
-  if (!payload || payload.类型 !== 'snapshot') return
+  if (!payload || payload.type !== 'snapshot') return
   if (payload.flowType !== props.flowType) return
 
   clearTimeout(streamRefreshTimer)
   streamRefreshTimer = setTimeout(async () => {
-    const snapshotDate = payload.采集日期 || getToday()
+    const snapshotDate = payload.tradeDate || getToday()
     if (!dateOptions.value.includes(snapshotDate)) {
       dateOptions.value = [...new Set([snapshotDate, ...dateOptions.value])]
           .sort((a, b) => b.localeCompare(a))
     }
-    if (!selectedDate.value || selectedDate.value === payload.采集日期) {
+    if (!selectedDate.value || selectedDate.value === payload.tradeDate) {
       selectedDate.value = snapshotDate
       await fetchData()
     }

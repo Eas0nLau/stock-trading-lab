@@ -17,6 +17,9 @@ class FundFlowService:
             return build_matrix(payload)
         return payload
 
+    def stream_events(self):
+        return self.repository.stream_events()
+
 
 def build_matrix(snapshots):
     times = []

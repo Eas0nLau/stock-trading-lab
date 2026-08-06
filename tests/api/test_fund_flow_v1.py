@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from stock_lab.modules.fund_flow.api import register_fund_flow_routes
+from stock_lab.modules.fund_flow.service import FundFlowService
 from stock_lab.modules.fund_flow.repository import FundFlowRepository
 
 
@@ -25,3 +26,29 @@ def test_fund_flow_v1_exposes_english_history_contract():
     assert response.status_code == 200
     assert response.json()["format"] == "matrix-v2"
     assert response.json()["boards"] == []
+
+
+def test_fund_flow_v1_stream_emits_english_snapshot_event():
+    redis = Redis()
+    repository = FundFlowRepository(redis)
+    app = FastAPI()
+    register_fund_flow_routes(app, repository=repository)
+    service = FundFlowService(repository)
+
+    events = service.stream_events()
+    first = next(events)
+    assert first.startswith("data: ")
+    repository.publish_snapshot("industry", "20260806", "10:00:00", 2)
+    snapshot = next(events)
+    assert '"type": "snapshot"' in snapshot
+    assert '"trade_date": "20260806"' in snapshot
+    events.close()
+
+
+def test_register_routes_does_not_register_legacy_fund_flow_paths():
+    redis = Redis()
+    app = FastAPI()
+    register_fund_flow_routes(app, repository=FundFlowRepository(redis))
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/fund-flow/stream" in paths
+    assert not any(path.startswith("/api/zijin") for path in paths)

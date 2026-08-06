@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Query
+from fastapi.responses import StreamingResponse
 
 from .service import FundFlowService
 
@@ -23,3 +24,11 @@ def register_fund_flow_routes(app: FastAPI, *, repository=None):
         if flow_type not in {"industry", "concept"}:
             return {"status": "error", "error_message": "Unsupported flow type"}
         return service.history(flow_type, trade_date)
+
+    @app.get("/api/v1/fund-flow/stream")
+    def stream():
+        return StreamingResponse(
+            service.stream_events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )

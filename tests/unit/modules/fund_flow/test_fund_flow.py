@@ -13,6 +13,7 @@ class FakeRedis:
     def get(self, key): return self.values.get(key)
     def sadd(self, key, value): self.sets.setdefault(key, set()).add(value)
     def smembers(self, key): return self.sets.get(key, set())
+    def publish(self, channel, payload): pass
 
 
 def test_translates_legacy_snapshot_fields():
@@ -27,3 +28,16 @@ def test_repository_uses_v1_keys_and_round_trips_history():
     assert repository.history("industry", "20260806")["format"] == "matrix-v2"
     assert repository.dates("industry") == ["20260806"]
     assert all(key.isascii() for key in [*redis.values, *redis.sets])
+
+
+def test_repository_replaces_same_time_snapshot_without_duplicate():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+    repository.save_history("industry", "20260806", [{"time": "10:00:00", "board_name": "旧"}])
+    repository.save_history("industry", "20260806", [{"time": "10:00:00", "board_name": "新"}])
+    repository.save_history("industry", "20260806", [{"time": "10:01:00", "board_name": "后续"}])
+
+    assert repository.history("industry", "20260806") == [
+        [{"time": "10:00:00", "board_name": "新"}],
+        [{"time": "10:01:00", "board_name": "后续"}],
+    ]

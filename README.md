@@ -241,7 +241,7 @@ MySQL 负责保存需要长期查询和回测的结构化数据，主要包括�
 
 Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 
-- 行业/概念资金流向快照与图表缓存。
+- 行业/概念资金流向快照，使用 `fund_flow:v1:{flow_type}:history:{date}`、`fund_flow:v1:{flow_type}:dates` 和 `fund_flow:v1:stream`。
 - 策略配置、当前选股名单、历史快照和入选事件。
 - 每日更新、盘前纪要等任务的执行锁和完成标记。
 
@@ -249,13 +249,13 @@ Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 
 | 页面 | 主要接口 | 当前状态 |
 | --- | --- | --- |
-| 板块资金流向 | `/api/zijin/industry/*`、`/api/zijin/stream` | 已实现 |
-| 概念资金流向 | `/api/zijin/concept/*`、`/api/zijin/stream` | 已实现 |
+| 板块资金流向 V1 | `/api/v1/fund-flow/industry/dates`、`/history/{date}`、`/api/v1/fund-flow/stream` | 英文字段，前端已切换 |
+| 概念资金流向 V1 | `/api/v1/fund-flow/concept/dates`、`/history/{date}`、`/api/v1/fund-flow/stream` | 英文字段，前端已切换 |
 | 策略选股监控 | `/api/strategy-pick/*` | 已实现 |
 | 指数情绪 V1 | `/api/v1/emotion/current` | 英文字段，前端已切换 |
 | 热门板块情绪 V1 | `/api/v1/emotion/hot-boards` | 英文字段，前端已切换 |
 
-旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 不再注册，避免继续返回旧表中的陈旧数据。题材周期将在资金流向模块迁移时接入新版接口。
+旧 `/api/zijin/*`、`/api/emotion/*` 和 `/api/hot-board-emotion/*` 不再注册。资金流向浏览器采集逻辑暂留在兼容文件中，通过官方 adapter 写入 V1 Redis；策略选股仍依赖旧监控模块。
 
 ## 8. 运行条件与启动方式
 
