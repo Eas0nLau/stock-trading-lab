@@ -17,6 +17,16 @@
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
 | `strategy/` | `stock_lab.modules.research` | 待研究模块迁移 |
 
+TDX monitor migration
+---------------------
+
+`stock_lab.infrastructure.tdx` owns the lazy TDX plugin adapter, while
+`stock_lab.modules.tdx` owns English parsing, snapshot, global-alert, auction,
+and securities-universe logic. `实时监控/tdx_全局监控.py` and
+`实时监控/tdx_竞价监控.py` remain executable compatibility launchers. The
+auction universe is read through `MarketDataRepository.securities()`; official
+code does not open a direct PyMySQL connection.
+
 兼容文件只允许转发。业务模块完成英文 API、数据库、前端和测试迁移后，更新本表并删除对应旧入口。
 
 Market-data repository migration

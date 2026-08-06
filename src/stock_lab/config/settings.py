@@ -68,7 +68,10 @@ class Settings:
             deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", "").strip(),
             tdx_root=os.getenv("TDX_ROOT", "").strip(),
             init_url=os.getenv("INIT_URL", defaults.DEFAULT_INIT_URL).strip(),
-            tdx_cache_refresh_interval_seconds=defaults.DEFAULT_TDX_CACHE_REFRESH_INTERVAL_SECONDS,
+            tdx_cache_refresh_interval_seconds=_optional_positive_float_env(
+                "TDX_CACHE_REFRESH_INTERVAL_SECONDS",
+                defaults.DEFAULT_TDX_CACHE_REFRESH_INTERVAL_SECONDS,
+            ),
             browser_close_old_tabs=defaults.DEFAULT_BROWSER_CLOSE_OLD_TABS,
             fund_flow_interval_seconds=defaults.DEFAULT_FUND_FLOW_INTERVAL_SECONDS,
             fund_flow_history_top_n=defaults.DEFAULT_FUND_FLOW_HISTORY_TOP_N,
@@ -105,6 +108,19 @@ def _optional_int_env(name: str, default: int) -> int:
         return int(value)
     except ValueError as error:
         raise RuntimeError(f"环境变量 {name} 必须是整数") from error
+
+
+def _optional_positive_float_env(name: str, default: float) -> float:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return float(default)
+    try:
+        parsed = float(value)
+    except ValueError as error:
+        raise RuntimeError(f"环境变量 {name} 必须是正数") from error
+    if parsed <= 0:
+        raise RuntimeError(f"环境变量 {name} 必须是正数")
+    return parsed
 
 
 def _csv_env(name: str) -> list[str]:

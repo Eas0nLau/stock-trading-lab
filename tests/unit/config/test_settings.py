@@ -51,6 +51,14 @@ def test_settings_rejects_missing_mysql_environment(monkeypatch):
         Settings.from_env(load_file=False)
 
 
+def test_settings_reads_tdx_refresh_interval(monkeypatch):
+    from stock_lab.config.settings import Settings
+
+    set_required_env(monkeypatch, TDX_CACHE_REFRESH_INTERVAL_SECONDS="4.5")
+
+    assert Settings.from_env(load_file=False).tdx_cache_refresh_interval_seconds == 4.5
+
+
 def test_legacy_config_projects_new_settings(monkeypatch):
     monkeypatch.setattr(dotenv, "load_dotenv", lambda *_args, **_kwargs: False)
     set_required_env(monkeypatch)

@@ -31,6 +31,10 @@ npm --prefix front run build
 
 新业务进入 `src/stock_lab/modules/<domain>/`，每个模块按需要包含 `api.py`、`service.py`、`repository.py`、`schemas.py`、`domain.py` 和 `jobs.py`。不要向 `utils/`、`实时监控/` 或 `task/` 增加新的正式实现。
 
+TDX integration belongs in `src/stock_lab/infrastructure/tdx/`; TDX parsing and
+monitor logic belongs in `src/stock_lab/modules/tdx/`. Keep TDX client loading
+lazy so unit tests and imports do not require a local TDX installation.
+
 每项行为变更先写失败测试。领域算法优先使用纯数据输入输出；数据库、缓存和第三方接口通过构造参数或协议注入。
 
 ## 提交边界
