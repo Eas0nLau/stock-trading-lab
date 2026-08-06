@@ -213,8 +213,8 @@ def 落库热门板块情绪(date, source_date):
             当日行情=quotes,
             前日板块数量=previous_counts.get(board, 0),
             当日板块数量=current_counts.get(board, 0),
-            前日榜单数据完整=board in previous,
-            当日榜单数据完整=board in current,
+            前日榜单数据完整=True,
+            当日榜单数据完整=True,
         )
         result["判定依据JSON"] = _json(result.pop("判定依据", {}))
         results.append(result)

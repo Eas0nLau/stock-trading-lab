@@ -56,3 +56,27 @@ def test_board_count_uses_source_board_total_instead_of_filtered_rows():
     ]
 
     assert emotion_analysis.读取板块数量(rows, "机器人") == 20
+
+
+def test_board_appearance_and_disappearance_are_not_missing_data(monkeypatch):
+    source_rows = {
+        20260804: [{"板块": "旧板块", "板块个股数量": 8, "股票代码": 1}],
+        20260805: [{"板块": "新板块", "板块个股数量": 8, "股票代码": 2}],
+    }
+    written = []
+    monkeypatch.setattr(
+        emotion_analysis,
+        "读取板块股票池",
+        lambda date: source_rows[date],
+    )
+    monkeypatch.setattr(emotion_analysis, "_行情", lambda codes, date: {})
+    monkeypatch.setattr(
+        emotion_analysis,
+        "_upsert",
+        lambda table, columns, rows, keys: written.extend(rows) or len(rows),
+    )
+
+    emotion_analysis.落库热门板块情绪(20260805, 20260804)
+
+    status = {row["板块"]: row["综合状态"] for row in written}
+    assert status == {"旧板块": "退潮", "新板块": "升温"}
