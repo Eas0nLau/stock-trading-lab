@@ -120,8 +120,9 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { fetchFundFlowDates, fetchFundFlowHistory } from '../modules/fund-flow/api.js'
 
-const FUND_FLOW_API_BASE = '/api/zijin'
+const FUND_FLOW_API_BASE = '/api/v1/fund-flow'
 const chartRef = ref(null)
 let chartInstance = null
 let fundFlowStream = null
@@ -415,9 +416,7 @@ const fetchDates = async () => {
   dateOptions.value = [today]
 
   try {
-    const res = await fetch(`${FUND_FLOW_API_BASE}/${props.flowType}/dates`)
-    if (!res.ok) throw new Error('获取日期失败')
-    const dates = await res.json()
+    const dates = await fetchFundFlowDates(props.flowType)
     dateOptions.value = [...new Set([today, ...dates])].sort((a, b) => b.localeCompare(a))
   } catch (e) {
     console.error('获取日期失败:', e)
@@ -432,12 +431,7 @@ const fetchData = async () => {
   errorMessage.value = ''
   try {
     const queryDate = selectedDate.value || getToday()
-    const res = await fetch(
-        `${FUND_FLOW_API_BASE}/${props.flowType}/history/${queryDate}`,
-        { signal: controller.signal }
-    )
-    if (!res.ok) throw new Error('获取数据失败')
-    const data = await res.json()
+    const data = await fetchFundFlowHistory(props.flowType, queryDate, controller.signal)
     if (requestId !== fetchRequestId) return
     renderChart(data)
   } catch (e) {

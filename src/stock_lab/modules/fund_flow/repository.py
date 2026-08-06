@@ -14,7 +14,13 @@ class FundFlowRepository:
         return f"fund_flow:v1:{flow_type}:dates"
 
     def save_history(self, flow_type, trade_date, payload):
-        self.redis.set(self.history_key(flow_type, trade_date), json.dumps(payload, ensure_ascii=False))
+        key = self.history_key(flow_type, trade_date)
+        existing = self.history(flow_type, trade_date)
+        if isinstance(payload, list):
+            snapshots = existing if isinstance(existing, list) else []
+            snapshots.append(payload)
+            payload = snapshots
+        self.redis.set(key, json.dumps(payload, ensure_ascii=False))
         self.redis.sadd(self.dates_key(flow_type), trade_date)
 
     def history(self, flow_type, trade_date):
