@@ -61,3 +61,97 @@ def test_market_data_migration_uses_canonical_ids_and_beijing_exchange():
 
     assert "CONCAT(LPAD(CAST(`code` AS CHAR), 6, '0'), '_', `time`, '_', `adjustflag`)" in migrate_sql
     assert migrate_sql.count("THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.BJ')") == 4
+
+
+THS_MIGRATIONS = {
+    "ths_boards": {
+        "legacy_table": "t_同花顺板块列表",
+        "target_columns": (
+            "board_code", "board_type", "board_name", "page_code",
+            "detail_path", "collected_date", "updated_at",
+        ),
+        "source_columns": (
+            "板块代码", "板块类型", "板块名称", "页面代码",
+            "详情路径", "采集日期", "更新时间",
+        ),
+        "key_columns": ("board_code",),
+    },
+    "ths_board_constituents": {
+        "legacy_table": "t_同花顺板块成分股",
+        "target_columns": (
+            "board_code", "stock_code", "board_type", "board_name",
+            "page_code", "stock_name", "collected_date", "updated_at",
+        ),
+        "source_columns": (
+            "板块代码", "股票代码", "板块类型", "板块名称",
+            "页面代码", "股票名称", "采集日期", "更新时间",
+        ),
+        "key_columns": ("board_code", "stock_code"),
+    },
+    "ths_stock_relations": {
+        "legacy_table": "t_同花顺股票板块概念对应关系",
+        "target_columns": (
+            "stock_code", "stock_name", "industry_names", "industry_codes",
+            "concept_names", "concept_codes", "collected_date", "updated_at",
+        ),
+        "source_columns": (
+            "股票代码", "股票名称", "同花顺行业", "同花顺行业代码",
+            "同花顺概念", "同花顺概念代码", "采集日期", "更新时间",
+        ),
+        "key_columns": ("stock_code",),
+    },
+}
+
+
+def ths_migration_statement(sql, target_table, legacy_table):
+    match = re.search(
+        rf"INSERT INTO `{target_table}` \((.*?)\)\s*"
+        rf"SELECT (.*?)\s*FROM `{legacy_table}`\s*"
+        r"ON DUPLICATE KEY UPDATE (.*?);",
+        sql,
+        re.DOTALL,
+    )
+    assert match is not None
+    return match.groups()
+
+
+def test_ths_imports_map_every_column_and_refresh_all_non_key_values():
+    create_sql = CREATE_PATH.read_text(encoding="utf-8")
+    migrate_sql = MIGRATE_PATH.read_text(encoding="utf-8")
+
+    for target_table, definition in THS_MIGRATIONS.items():
+        create_match = re.search(
+            rf"CREATE TABLE `{target_table}` \((.*?)\) ENGINE=InnoDB",
+            create_sql,
+            re.DOTALL,
+        )
+        assert create_match is not None
+        created_columns = tuple(
+            re.findall(r"^\s*`([^`]+)`\s+", create_match.group(1), re.MULTILINE)
+        )
+        assert created_columns == definition["target_columns"]
+        target_sql, source_sql, update_sql = ths_migration_statement(
+            migrate_sql,
+            target_table,
+            definition["legacy_table"],
+        )
+        assert tuple(sql_identifiers(target_sql)) == definition["target_columns"]
+        assert tuple(sql_identifiers(source_sql)) == definition["source_columns"]
+        updated_columns = tuple(re.findall(r"`([^`]+)`\s*=\s*VALUES", update_sql))
+        assert updated_columns == tuple(
+            column
+            for column in definition["target_columns"]
+            if column not in definition["key_columns"]
+        )
+
+
+def test_ths_imports_have_row_count_validation_queries():
+    migrate_sql = MIGRATE_PATH.read_text(encoding="utf-8")
+
+    for target_table, definition in THS_MIGRATIONS.items():
+        expected = (
+            f"SELECT '{target_table}' AS `table_name`, "
+            f"(SELECT COUNT(*) FROM `{definition['legacy_table']}`) AS `legacy_rows`, "
+            f"(SELECT COUNT(*) FROM `{target_table}`) AS `new_rows`;"
+        )
+        assert expected in migrate_sql

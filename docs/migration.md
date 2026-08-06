@@ -21,6 +21,7 @@
 | KDJ 更新与策略 SQL | `stock_lab.jobs.kdj_indicators` / `kdj_indicators` | 已切换英文任务、列名和表名 |
 | `游资溢价分析/` | `stock_lab.modules.dragon_tiger` | canonical models, parsers, repositories, collectors, and premium analysis migrated; executable paths are thin adapters |
 | `strategy/` | `stock_lab.modules.research` | 57 个单日选股 adapter、共享回测编排、本地/离线 provider 已迁移；中文源文件保留参数和展示名称 |
+| 同花顺板块归档表 | `stock_lab.modules.ths` | 三张英文表由只读 repository 正式拥有；仅通过迁移导入，无运行时采集器或消费者 |
 
 TDX monitor migration
 ---------------------
@@ -81,6 +82,21 @@ Premium analysis reads `daily_quotes` through `MarketDataRepository`. The old
 `游资溢价分析` files contain only executable adapters and perform no work when
 imported. Active strategy dragon-tiger queries use canonical tables and columns;
 Chinese aliases remain only where historical DataFrame consumers require them.
+
+THS archival reference migration
+--------------------------------
+
+`stock_lab.modules.ths` owns frozen English models and injected read-only queries
+for `ths_boards`, `ths_board_constituents`, and `ths_stock_relations`. Repository
+methods may filter boards by type, constituents by board/type/stock, and relations
+by stock code. They expose no write operation and require no database engine.
+
+No runtime THS producer or consumer exists in this repository. The three tables
+are archived reference snapshots populated only by `002_migrate_legacy_data.sql`;
+this status must not be interpreted as a missing collector. Once all three
+source/target row counts and sampled records have parity, the corresponding
+legacy THS tables in `003_drop_legacy_schema.sql` can be removed. The English
+tables remain import-only after legacy retirement.
 
 Scheduled jobs migration
 ------------------------

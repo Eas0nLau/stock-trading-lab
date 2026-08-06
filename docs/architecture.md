@@ -53,6 +53,14 @@ MySQL 连接池按第一次查询创建，Redis 客户端创建时不执行网�
 
 数据库使用版本化 SQL 迁移。新 schema 先建立，存量数据显式复制和校验，应用逐模块切换后才允许执行旧表删除脚本。详细流程见 `docs/database-migrations.md`。
 
+`stock_lab.modules.ths` owns canonical read-only access to `ths_boards`,
+`ths_board_constituents`, and `ths_stock_relations`. These tables are archived
+reference data populated only by the legacy-data import migration. There is no
+runtime producer or consumer, so the module accepts an injected database query
+callable and deliberately has no engine, collector, job, API, or write method.
+The three legacy THS tables can be dropped after import parity is confirmed; the
+English tables remain import-only after that retirement.
+
 TDX official code lives in `stock_lab.infrastructure.tdx` and
 `stock_lab.modules.tdx`. The latter owns parsing and monitor signal logic; the
 former owns lazy optional-client integration. The Chinese files under `实时监控/`

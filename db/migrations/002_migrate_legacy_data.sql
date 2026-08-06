@@ -76,17 +76,17 @@ ON DUPLICATE KEY UPDATE `broker_name`=VALUES(`broker_name`);
 INSERT INTO `ths_boards` (`board_code`, `board_type`, `board_name`, `page_code`, `detail_path`, `collected_date`, `updated_at`)
 SELECT `板块代码`, `板块类型`, `板块名称`, `页面代码`, `详情路径`, `采集日期`, `更新时间`
 FROM `t_同花顺板块列表`
-ON DUPLICATE KEY UPDATE `board_name`=VALUES(`board_name`), `collected_date`=VALUES(`collected_date`), `updated_at`=VALUES(`updated_at`);
+ON DUPLICATE KEY UPDATE `board_type`=VALUES(`board_type`), `board_name`=VALUES(`board_name`), `page_code`=VALUES(`page_code`), `detail_path`=VALUES(`detail_path`), `collected_date`=VALUES(`collected_date`), `updated_at`=VALUES(`updated_at`);
 
 INSERT INTO `ths_board_constituents` (`board_code`, `stock_code`, `board_type`, `board_name`, `page_code`, `stock_name`, `collected_date`, `updated_at`)
 SELECT `板块代码`, `股票代码`, `板块类型`, `板块名称`, `页面代码`, `股票名称`, `采集日期`, `更新时间`
 FROM `t_同花顺板块成分股`
-ON DUPLICATE KEY UPDATE `stock_name`=VALUES(`stock_name`), `collected_date`=VALUES(`collected_date`), `updated_at`=VALUES(`updated_at`);
+ON DUPLICATE KEY UPDATE `board_type`=VALUES(`board_type`), `board_name`=VALUES(`board_name`), `page_code`=VALUES(`page_code`), `stock_name`=VALUES(`stock_name`), `collected_date`=VALUES(`collected_date`), `updated_at`=VALUES(`updated_at`);
 
 INSERT INTO `ths_stock_relations` (`stock_code`, `stock_name`, `industry_names`, `industry_codes`, `concept_names`, `concept_codes`, `collected_date`, `updated_at`)
 SELECT `股票代码`, `股票名称`, `同花顺行业`, `同花顺行业代码`, `同花顺概念`, `同花顺概念代码`, `采集日期`, `更新时间`
 FROM `t_同花顺股票板块概念对应关系`
-ON DUPLICATE KEY UPDATE `stock_name`=VALUES(`stock_name`), `industry_names`=VALUES(`industry_names`), `concept_names`=VALUES(`concept_names`), `updated_at`=VALUES(`updated_at`);
+ON DUPLICATE KEY UPDATE `stock_name`=VALUES(`stock_name`), `industry_names`=VALUES(`industry_names`), `industry_codes`=VALUES(`industry_codes`), `concept_names`=VALUES(`concept_names`), `concept_codes`=VALUES(`concept_codes`), `collected_date`=VALUES(`collected_date`), `updated_at`=VALUES(`updated_at`);
 
 INSERT INTO `schema_migrations` (`version`) VALUES ('002_migrate_legacy_data')
 ON DUPLICATE KEY UPDATE `applied_at`=`applied_at`;
@@ -96,3 +96,6 @@ SELECT 'index_daily' AS `table_name`, (SELECT COUNT(*) FROM `akshare_sh000001`) 
 SELECT 'securities' AS `table_name`, (SELECT COUNT(*) FROM `stock_basic`) AS `legacy_rows`, (SELECT COUNT(*) FROM `securities`) AS `new_rows`;
 SELECT 'daily_quotes' AS `table_name`, (SELECT COUNT(*) FROM `stock_daily`) AS `legacy_rows`, (SELECT COUNT(*) FROM `daily_quotes`) AS `new_rows`;
 SELECT 'dragon_tiger' AS `table_name`, (SELECT COUNT(*) FROM `t_龙虎榜`) AS `legacy_rows`, (SELECT COUNT(*) FROM `dragon_tiger`) AS `new_rows`;
+SELECT 'ths_boards' AS `table_name`, (SELECT COUNT(*) FROM `t_同花顺板块列表`) AS `legacy_rows`, (SELECT COUNT(*) FROM `ths_boards`) AS `new_rows`;
+SELECT 'ths_board_constituents' AS `table_name`, (SELECT COUNT(*) FROM `t_同花顺板块成分股`) AS `legacy_rows`, (SELECT COUNT(*) FROM `ths_board_constituents`) AS `new_rows`;
+SELECT 'ths_stock_relations' AS `table_name`, (SELECT COUNT(*) FROM `t_同花顺股票板块概念对应关系`) AS `legacy_rows`, (SELECT COUNT(*) FROM `ths_stock_relations`) AS `new_rows`;
