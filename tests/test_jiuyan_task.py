@@ -77,3 +77,27 @@ def test_parse_grouped_action_fields_and_scaled_range():
     assert rows[0]["股票代码"] == 1
     assert rows[0]["涨幅"] == 10.01
     assert rows[0]["板块个股数量"] == 12
+
+
+def test_page_date_uses_hyphenated_route():
+    assert jiuyan.格式化页面日期(20260701) == "2026-07-01"
+
+
+def test_response_date_must_match_requested_date():
+    response = {
+        "data": [
+            {
+                "date": "2026-08-06",
+                "name": "机器人",
+                "count": 12,
+                "list": [{
+                    "code": "sz000001",
+                    "name": "示例",
+                    "article": {"action_info": {"shares_range": 1001}},
+                }],
+            }
+        ]
+    }
+
+    with pytest.raises(jiuyan.IncompleteJiuyanResponse, match="响应日期"):
+        jiuyan.解析异动响应(response, 20260701)

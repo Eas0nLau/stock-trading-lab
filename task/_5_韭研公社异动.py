@@ -91,6 +91,10 @@ def _date_time(date, value):
     return text
 
 
+def 格式化页面日期(date):
+    return dt.datetime.strptime(str(int(date)), "%Y%m%d").strftime("%Y-%m-%d")
+
+
 def _unwrap_rows(response):
     if not isinstance(response, dict):
         return []
@@ -108,6 +112,11 @@ def _unwrap_rows(response):
 def 解析异动响应(response, date):
     records = []
     for group in _unwrap_rows(response):
+        response_date = str(group.get("date") or "").replace("-", "") if isinstance(group, dict) else ""
+        if response_date and response_date != str(int(date)):
+            raise IncompleteJiuyanResponse(
+                f"请求日期 {date} 与响应日期 {group.get('date')} 不一致"
+            )
         if not isinstance(group, dict) or not isinstance(group.get("list"), list):
             records.append(group)
             continue
@@ -170,10 +179,15 @@ def _decode_response(body):
 def _采集响应(date):
     from utils import driver_chrome
 
-    url = 页面模板.format(date=int(date), date_text=str(date))
+    url = 页面模板.format(date=int(date), date_text=格式化页面日期(date))
     等待请求频率()
     _等待Redis请求频率()
-    page = driver_chrome.初始化页面("jiuyan-action", url=None, background=True)
+    page = driver_chrome.初始化页面(
+        "jiuyan-action",
+        url=None,
+        background=True,
+        关闭旧页面=False,
+    )
     page.listen.start([监听路径])
     page.get(url, timeout=0)
     tab = page.ele("text=全部异动解析")

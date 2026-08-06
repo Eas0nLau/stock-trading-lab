@@ -165,6 +165,13 @@ def _板块股票(rows):
     return {board: list(items.values()) for board, items in grouped.items()}
 
 
+def 读取板块数量(rows, board):
+    return max(
+        [_int(row.get("板块个股数量")) for row in rows if row.get("板块") == board]
+        or [0]
+    )
+
+
 def _行情(codes, date):
     codes = sorted({_int(code) for code in codes if _int(code)})
     if not codes:
@@ -182,26 +189,18 @@ def _行情(codes, date):
 def 落库热门板块情绪(date, source_date):
     date = _int(date)
     source_date = _int(source_date)
-    current = _板块股票(读取板块股票池(date))
-    previous = _板块股票(读取板块股票池(source_date))
+    current_rows = 读取板块股票池(date)
+    previous_rows = 读取板块股票池(source_date)
+    current = _板块股票(current_rows)
+    previous = _板块股票(previous_rows)
     if not current or not previous:
         raise MissingEmotionSource(f"{date} 缺少 {source_date} 或当前交易日韭研板块数据")
 
     codes = {code for rows in previous.values() for code in [item["股票代码"] for item in rows]}
     quotes = _行情(codes, date)
     board_names = set(current) | set(previous)
-    current_counts = {
-        board: len(rows) for board, rows in current.items()
-    }
-    previous_counts = {
-        board: len(rows) for board, rows in previous.items()
-    }
-    raw_rows = 读取板块股票池(date)
-    for board in board_names:
-        board_rows = [row for row in raw_rows if row.get("板块") == board]
-        current_counts[board] = max(
-            [_int(row.get("板块个股数量")) for row in board_rows] or [current_counts.get(board, 0)]
-        )
+    current_counts = {board: 读取板块数量(current_rows, board) for board in board_names}
+    previous_counts = {board: 读取板块数量(previous_rows, board) for board in board_names}
 
     results = []
     for board in sorted(board_names):

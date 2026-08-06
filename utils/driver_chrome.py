@@ -11,18 +11,20 @@ _driver_lock = RLock()
 _pages = {}
 
 
-def _创建浏览器():
+def _创建浏览器(关闭旧页面=None):
     co = ChromiumOptions()
     co.set_timeouts(1, 2, 5)
     co.set_user_data_path(f'{config.project_path}/data/chrome_profile')
     driver_web = WebPage(chromium_options=co)
-    _启动时关闭旧页面(driver_web)
+    _启动时关闭旧页面(driver_web, 关闭旧页面)
     driver_web.set.window.max()
     return driver_web
 
 
-def _启动时关闭旧页面(driver_web):
-    if not config.启动时关闭旧浏览器页面:
+def _启动时关闭旧页面(driver_web, enabled=None):
+    if enabled is None:
+        enabled = config.启动时关闭旧浏览器页面
+    if not enabled:
         return
 
     try:
@@ -57,18 +59,18 @@ def _页面可用(page):
         return False
 
 
-def 初始化浏览器():
+def 初始化浏览器(关闭旧页面=None):
     global _driver_web
     with _driver_lock:
         if not _浏览器可用(_driver_web):
-            _driver_web = _创建浏览器()
+            _driver_web = _创建浏览器(关闭旧页面)
             _pages.clear()
         return _driver_web
 
 
-def 初始化页面(页面名称, url=None, background=False, 使用主标签页=False):
+def 初始化页面(页面名称, url=None, background=False, 使用主标签页=False, 关闭旧页面=None):
     with _driver_lock:
-        driver_web = 初始化浏览器()
+        driver_web = 初始化浏览器(关闭旧页面)
         page = _pages.get(页面名称)
         if not _页面可用(page):
             page = driver_web if 使用主标签页 else driver_web.new_tab(background=background)

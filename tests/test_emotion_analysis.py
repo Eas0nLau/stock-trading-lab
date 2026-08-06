@@ -47,3 +47,12 @@ def test_index_api_selects_and_restores_complete_result(monkeypatch):
 
     assert "完整结果JSON" in captured["sql"]
     assert result["周期状态"] == "发酵"
+
+
+def test_board_count_uses_source_board_total_instead_of_filtered_rows():
+    rows = [
+        {"板块": "机器人", "板块个股数量": 20, "股票代码": 1},
+        {"板块": "机器人", "板块个股数量": 20, "股票代码": 2},
+    ]
+
+    assert emotion_analysis.读取板块数量(rows, "机器人") == 20
