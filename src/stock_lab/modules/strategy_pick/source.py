@@ -146,7 +146,7 @@ class StrategyPickSource:
     def __init__(self, page_factory, repository, *, settings=None, clock=datetime.datetime.now, sleeper=time.sleep):
         self.page_factory = page_factory
         self.repository = repository
-        self.settings = settings or get_settings()
+        self.settings = get_settings() if settings is None else settings
         self.clock = clock
         self.sleeper = sleeper
         self._lock = threading.RLock()

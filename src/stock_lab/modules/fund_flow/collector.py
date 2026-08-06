@@ -1,5 +1,6 @@
 import datetime
 import threading
+from functools import partial
 
 from loguru import logger
 
@@ -34,7 +35,9 @@ def run_fund_flow_monitor(
         source.collection_interval_seconds(),
     )
     try:
-        source.initialize()
+        source.initialize(stop_event=stop_event)
+        if stop_event.is_set():
+            return
         source.warm_history()
         while not stop_event.is_set():
             source.wait_until_next_run(stop_event=stop_event)
@@ -42,12 +45,15 @@ def run_fund_flow_monitor(
                 break
             now = datetime.datetime.now()
             if source.is_collection_time(now):
-                source.collect_all()
+                source.collect_all(stop_event=stop_event)
             schedule_optional_jobs(now)
     finally:
-        close = getattr(source, "close", None)
-        if callable(close):
-            close()
+        try:
+            close = getattr(source, "close", None)
+            if callable(close):
+                close()
+        except Exception as error:
+            logger.warning("Could not close fund-flow source: {}", error)
 
 
 def create_fund_flow_source(*, settings=None):
@@ -58,9 +64,9 @@ def create_fund_flow_source(*, settings=None):
     from .repository import FundFlowRepository
     from .source import FundFlowSource
 
-    settings = settings or get_settings()
+    settings = get_settings() if settings is None else settings
     return FundFlowSource(
-        create_page,
+        partial(create_page, settings=settings),
         FundFlowRepository(create_redis_client(settings)),
         settings=settings,
     )

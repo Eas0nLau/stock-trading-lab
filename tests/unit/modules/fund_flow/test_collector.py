@@ -1,6 +1,8 @@
 import threading
 from types import SimpleNamespace
 
+import pytest
+
 from stock_lab.modules.fund_flow import collector
 from stock_lab.modules.fund_flow.collector import save_snapshot
 from stock_lab.modules.fund_flow.source import FundFlowSource
@@ -42,7 +44,7 @@ def test_monitor_uses_injected_source_contract_and_logs_startup(monkeypatch):
 
     class Source:
         def collection_interval_seconds(self): return 30
-        def initialize(self): calls.append("initialize")
+        def initialize(self, stop_event=None): calls.append("initialize")
         def warm_history(self): calls.append("warm_history")
 
     class Logger:
@@ -57,7 +59,6 @@ def test_monitor_uses_injected_source_contract_and_logs_startup(monkeypatch):
     assert calls == [
         ("Fund-flow scheduler started with a {} second interval", 30),
         "initialize",
-        "warm_history",
     ]
 
 
@@ -97,7 +98,7 @@ def test_monitor_stop_interrupts_long_wait_and_closes_page():
 
     class Source:
         def collection_interval_seconds(self): return 3600
-        def initialize(self): self.page = Page()
+        def initialize(self, stop_event=None): self.page = Page()
         def warm_history(self): pass
         def wait_until_next_run(self, stop_event=None):
             waiting.set()
@@ -117,3 +118,131 @@ def test_monitor_stop_interrupts_long_wait_and_closes_page():
 
     assert not thread.is_alive()
     assert closed == [True]
+
+
+def test_monitor_passes_stop_event_to_blocking_collection_and_worker_stops():
+    from stock_lab.bootstrap.workers import WorkerManager
+
+    stop_event = threading.Event()
+    collecting = threading.Event()
+    fallback_release = threading.Event()
+    observed_stop_events = []
+    closed = []
+
+    class Source:
+        def collection_interval_seconds(self): return 30
+        def initialize(self, stop_event=None): pass
+        def warm_history(self): pass
+        def wait_until_next_run(self, stop_event=None): pass
+        def is_collection_time(self, now): return True
+        def collect_all(self, stop_event=None):
+            observed_stop_events.append(stop_event)
+            collecting.set()
+            (stop_event or fallback_release).wait(timeout=3600)
+        def close(self): closed.append(True)
+
+    manager = WorkerManager()
+    manager.register(
+        "blocking-fund-flow",
+        lambda: collector.run_fund_flow_monitor(stop_event, source=Source()),
+        stop=stop_event.set,
+    )
+
+    manager.start_all()
+    assert collecting.wait(timeout=1)
+    manager.stop_all(join_timeout=1)
+
+    worker = manager._workers["blocking-fund-flow"]
+    was_alive = worker.thread.is_alive()
+    fallback_release.set()
+    worker.thread.join(timeout=1)
+    assert worker.thread is not None
+    assert observed_stop_events == [stop_event]
+    assert not was_alive
+    assert closed == [True]
+
+
+def test_source_close_is_idempotent_and_tolerates_partial_cleanup_failures():
+    calls = []
+
+    class Listener:
+        def stop(self):
+            calls.append("listener")
+            raise RuntimeError("listener close failed")
+
+    class Page:
+        listen = Listener()
+
+        def close(self):
+            calls.append("page")
+            raise RuntimeError("page close failed")
+
+    source = FundFlowSource(
+        lambda *_args, **_kwargs: None,
+        object(),
+        settings=SimpleNamespace(fund_flow_interval_seconds=30, fund_flow_history_top_n=0),
+        history_service=object(),
+    )
+    source.close()
+    source.page = Page()
+    source.close()
+    source.close()
+
+    assert calls == ["listener", "page"]
+
+
+def test_cleanup_does_not_mask_primary_monitor_error():
+    class Source:
+        def collection_interval_seconds(self): return 30
+        def initialize(self, stop_event=None): raise ValueError("primary failure")
+        def close(self): raise RuntimeError("cleanup failure")
+
+    with pytest.raises(ValueError, match="primary failure"):
+        collector.run_fund_flow_monitor(threading.Event(), source=Source())
+
+
+def test_collection_stops_between_listener_packets():
+    stop_event = threading.Event()
+
+    class Listen:
+        def start(self, _targets): pass
+
+        def steps(self, timeout=None):
+            yield SimpleNamespace(response=SimpleNamespace(body={}), target="first")
+            stop_event.set()
+            yield SimpleNamespace(response=SimpleNamespace(body={}), target="second")
+
+    page = SimpleNamespace(listen=Listen(), get=lambda *_args, **_kwargs: None)
+    source = FundFlowSource(
+        lambda *_args, **_kwargs: page,
+        object(),
+        settings=SimpleNamespace(
+            fund_flow_interval_seconds=30,
+            fund_flow_history_top_n=0,
+            concept_exclusions=(),
+        ),
+        history_service=object(),
+    )
+    source.page = page
+
+    assert source.collect("industry", stop_event=stop_event) == []
+
+
+def test_fund_flow_factory_binds_composed_settings_to_page_factory(monkeypatch):
+    settings = SimpleNamespace(
+        fund_flow_interval_seconds=31,
+        fund_flow_history_top_n=2,
+    )
+    monkeypatch.setattr(
+        "stock_lab.infrastructure.cache.redis_client.create_redis_client",
+        lambda received: object(),
+    )
+    monkeypatch.setattr(
+        "stock_lab.config.get_settings",
+        lambda: (_ for _ in ()).throw(AssertionError("global settings used")),
+    )
+
+    source = collector.create_fund_flow_source(settings=settings)
+
+    assert source.settings is settings
+    assert source.page_factory.keywords["settings"] is settings

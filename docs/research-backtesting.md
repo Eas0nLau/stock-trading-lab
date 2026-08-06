@@ -66,6 +66,10 @@ may contain only method declarations, docstrings, `pass`, and safe assignments;
 executable class statements are rejected before compilation. Runtime builtins
 are an explicit minimal set, filesystem helpers such as `open` are absent, and
 the guarded import hook permits only required harmless standard-library modules.
+Class decorators and keyword/metaclass expressions are rejected. Base classes
+must be non-executable `Name` or `Attribute` references rooted in the runtime's
+explicit approved base namespace; calls and computed class headers never reach
+`exec`.
 
 Run against deterministic built-in fixtures:
 

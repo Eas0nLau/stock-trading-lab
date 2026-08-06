@@ -1,5 +1,6 @@
 import datetime
 import threading
+from functools import partial
 
 from .contracts import translate_legacy_strategy_pick
 
@@ -51,7 +52,11 @@ def create_strategy_pick_source(repository, *, settings=None):
 
     from .source import StrategyPickSource
 
-    return StrategyPickSource(create_page, repository, settings=settings)
+    return StrategyPickSource(
+        partial(create_page, settings=settings),
+        repository,
+        settings=settings,
+    )
 
 
 def run_strategy_pick_monitor(stop_event=None, *, settings=None, collector=None, adapter=None):

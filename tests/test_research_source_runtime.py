@@ -158,6 +158,50 @@ def test_source_runtime_rejects_executable_class_decorator(tmp_path):
         )
 
 
+@pytest.mark.parametrize(
+    "class_definition",
+    [
+        "class Dangerous(side_effect()):\n    pass\n",
+        "class Dangerous(object, metaclass=side_effect()):\n    pass\n",
+        "@side_effect()\nclass Dangerous:\n    pass\n",
+    ],
+)
+def test_source_runtime_rejects_executable_class_headers(tmp_path, class_definition):
+    source = tmp_path / "class_header.py"
+    source.write_text(
+        class_definition
+        + "def strategy(filtered_codes, target_date):\n"
+        + "    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchExecutionError, match="class definition"):
+        run_source_selector(
+            "class_header", "类定义", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+
+
+def test_source_runtime_allows_behaviorless_class_with_approved_base(tmp_path):
+    source = tmp_path / "safe_class.py"
+    source.write_text(
+        "class Safe(object):\n"
+        "    VALUE = 1\n"
+        "    def value(self):\n"
+        "        return self.VALUE\n"
+        "def strategy(filtered_codes, target_date):\n"
+        "    return [] if Safe().value() == 1 else filtered_codes\n",
+        encoding="utf-8",
+    )
+
+    result = run_source_selector(
+        "safe_class", "安全类", source,
+        OfflineResearchProvider.builtin().context(20260102),
+    )
+
+    assert result.rows == []
+
+
 def test_source_runtime_executes_parameterized_stock_code_queries(tmp_path):
     source = tmp_path / "parameterized.py"
     source.write_text(

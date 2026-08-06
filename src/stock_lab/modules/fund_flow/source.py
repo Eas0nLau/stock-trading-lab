@@ -38,10 +38,12 @@ def is_excluded_concept(value, excluded_names):
     )
 
 
-def parse_fund_flow_packets(packets, collected_at, flow_type, excluded_names=()):
+def parse_fund_flow_packets(packets, collected_at, flow_type, excluded_names=(), *, stop_event=None):
     flow_response = None
     leader_response = None
     for packet in packets:
+        if stop_event is not None and stop_event.is_set():
+            return []
         body = packet.response.body
         target = str(packet.target)
         if "/api/qt/clist/get" in target:
@@ -81,7 +83,7 @@ class FundFlowSource:
     def __init__(self, page_factory, repository, *, settings=None, history_service=None, sleeper=time.sleep, clock=datetime.datetime.now):
         self.page_factory = page_factory
         self.repository = repository
-        self.settings = settings or get_settings()
+        self.settings = get_settings() if settings is None else settings
         if history_service is None:
             from .service import FundFlowService
 
@@ -97,12 +99,18 @@ class FundFlowSource:
     def collection_interval_seconds(self):
         return self.settings.fund_flow_interval_seconds
 
-    def initialize(self):
+    def initialize(self, *, stop_event=None):
+        if stop_event is not None and stop_event.is_set():
+            return None
         self.page = self.page_factory(
             "fund-flow",
             "https://data.eastmoney.com/bkzj/hy.html",
             use_main_tab=True,
+            stop_event=stop_event,
         )
+        if stop_event is not None and stop_event.is_set():
+            self.close()
+            return None
         return self.page
 
     def warm_history(self):
@@ -137,33 +145,48 @@ class FundFlowSource:
         page, self.page = self.page, None
         if page is None:
             return
-        listener = getattr(page, "listen", None)
-        stop = getattr(listener, "stop", None)
         try:
+            listener = getattr(page, "listen", None)
+            stop = getattr(listener, "stop", None)
             if callable(stop):
                 stop()
-        finally:
+        except Exception as error:
+            logger.warning("Could not stop fund-flow listener: {}", error)
+        try:
             close = getattr(page, "close", None)
             if callable(close):
                 close()
+        except Exception as error:
+            logger.warning("Could not close fund-flow page: {}", error)
 
     @staticmethod
     def is_collection_time(now):
         return now.weekday() < 5 and any(start <= now.time() <= end for start, end in COLLECTION_WINDOWS)
 
-    def collect(self, flow_type):
+    def collect(self, flow_type, *, stop_event=None):
+        if stop_event is not None and stop_event.is_set():
+            return []
         if self.page is None:
-            self.initialize()
+            self.initialize(stop_event=stop_event)
+        if self.page is None or (stop_event is not None and stop_event.is_set()):
+            return []
         name, url = FLOW_CONFIG[flow_type]
         now = self.clock()
         self.page.listen.start(["/dataapi/bkzj/getbkzj", "/api/qt/clist/get"])
+        if stop_event is not None and stop_event.is_set():
+            return []
         self.page.get(url, timeout=0)
+        if stop_event is not None and stop_event.is_set():
+            return []
         records = parse_fund_flow_packets(
             self.page.listen.steps(timeout=5),
             now.strftime("%H:%M:%S"),
             flow_type,
             self.settings.concept_exclusions,
+            stop_event=stop_event,
         )
+        if stop_event is not None and stop_event.is_set():
+            return []
         save_snapshot(
             self.repository,
             flow_type,
@@ -174,5 +197,10 @@ class FundFlowSource:
         logger.info("Collected {} {} rows", name, len(records))
         return records
 
-    def collect_all(self):
-        return {flow_type: self.collect(flow_type) for flow_type in FLOW_CONFIG}
+    def collect_all(self, *, stop_event=None):
+        records = {}
+        for flow_type in FLOW_CONFIG:
+            if stop_event is not None and stop_event.is_set():
+                break
+            records[flow_type] = self.collect(flow_type, stop_event=stop_event)
+        return records

@@ -4,6 +4,7 @@ from loguru import logger
 
 
 _browser = None
+_browser_configuration = None
 _lock = RLock()
 _pages = {}
 
@@ -28,12 +29,13 @@ def _is_page_available(page):
         return False
 
 
-def _new_browser(close_old_tabs=None):
+def _new_browser(*, settings=None, close_old_tabs=None):
     from DrissionPage import ChromiumOptions, WebPage
 
-    from stock_lab.config import get_settings
+    if settings is None:
+        from stock_lab.config import get_settings
 
-    settings = get_settings()
+        settings = get_settings()
     options = ChromiumOptions()
     options.set_timeouts(1, 2, 5)
     options.set_user_data_path(str(settings.project_root / "data" / "chrome_profile"))
@@ -52,22 +54,42 @@ def _new_browser(close_old_tabs=None):
     return browser
 
 
-def create_browser(close_old_tabs=None):
-    global _browser
+def create_browser(close_old_tabs=None, *, settings=None):
+    global _browser, _browser_configuration
+    if settings is None:
+        from stock_lab.config import get_settings
+
+        settings = get_settings()
+    should_close = settings.browser_close_old_tabs if close_old_tabs is None else close_old_tabs
+    configuration = (str(settings.project_root), bool(should_close))
     with _lock:
-        if not _is_browser_available(_browser):
-            _browser = _new_browser(close_old_tabs)
+        if not _is_browser_available(_browser) or _browser_configuration != configuration:
+            _browser = _new_browser(settings=settings, close_old_tabs=close_old_tabs)
+            _browser_configuration = configuration
             _pages.clear()
         return _browser
 
 
-def create_page(name, url=None, background=False, use_main_tab=False, close_old_tabs=None):
+def create_page(
+    name,
+    url=None,
+    background=False,
+    use_main_tab=False,
+    close_old_tabs=None,
+    *,
+    settings=None,
+    stop_event=None,
+):
+    if stop_event is not None and stop_event.is_set():
+        return None
     with _lock:
-        browser = create_browser(close_old_tabs)
+        browser = create_browser(close_old_tabs, settings=settings)
+        if stop_event is not None and stop_event.is_set():
+            return None
         page = _pages.get(name)
         if not _is_page_available(page):
             page = browser if use_main_tab else browser.new_tab(background=background)
             _pages[name] = page
-    if url:
+    if url and not (stop_event is not None and stop_event.is_set()):
         page.get(url, timeout=0)
     return page

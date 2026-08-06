@@ -36,6 +36,9 @@ infrastructure -> shared
 资金流向和策略选股的浏览器采集、解析、调度、快照、事件和 SSE broker 均由
 `stock_lab.modules.fund_flow`、`stock_lab.modules.strategy_pick` 与
 `stock_lab.infrastructure.browser` 拥有。兼容脚本只转发，不注册旧 REST 路由，也不访问旧 Redis 键。
+应用组装会把同一个 `Settings` 显式绑定到浏览器 page factory；Chrome profile 使用该配置的
+`project_root`，旧标签页策略使用 `browser_close_old_tabs`，组合路径不重新读取全局配置。
+资金流向 worker 还会把停止事件传入初始化、监听和采集边界，并在退出时执行幂等且不抛出的资源清理。
 
 `stock_lab.modules.emotion.index_cycle` 和 `stock_lab.modules.emotion.hot_board`
 拥有指数及热门板块算法。正式 job 只传递英文规范字段；中文模块仅为直接脚本路径提供薄转发。

@@ -34,6 +34,10 @@ SAFE_BUILTIN_NAMES = {
 }
 SAFE_BUILTINS = {name: getattr(builtins, name) for name in SAFE_BUILTIN_NAMES}
 SAFE_RUNTIME_IMPORTS = SAFE_IMPORTS | {"_strptime", "calendar", "locale", "time"}
+SAFE_CLASS_BASE_NAMES = {
+    "Exception", "ValueError", "dict", "list", "object", "tuple",
+}
+SAFE_CLASS_BASE_ROOTS = {"np", "pd"}
 
 
 def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
@@ -196,6 +200,7 @@ def _load_selector_namespace(path, context):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in reachable:
             body.append(node)
         elif isinstance(node, ast.ClassDef):
+            _validate_class_definition(node, path)
             _validate_class_body(node, path)
             body.append(node)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)) and _is_safe_assignment(node):
@@ -266,6 +271,25 @@ def _validate_class_body(node, path):
             raise ResearchExecutionError(
                 f"{path} class body contains executable statement in {node.name}"
             )
+
+
+def _validate_class_definition(node, path):
+    safe_bases = all(_is_safe_class_base(base) for base in node.bases)
+    if node.decorator_list or node.keywords or not safe_bases:
+        raise ResearchExecutionError(
+            f"{path} class definition contains executable or unsafe expression in {node.name}"
+        )
+
+
+def _is_safe_class_base(node):
+    if isinstance(node, ast.Name):
+        return node.id in SAFE_CLASS_BASE_NAMES
+    if not isinstance(node, ast.Attribute):
+        return False
+    root = node
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    return isinstance(root, ast.Name) and root.id in SAFE_CLASS_BASE_ROOTS
 
 
 def _reachable_functions(functions, root):
