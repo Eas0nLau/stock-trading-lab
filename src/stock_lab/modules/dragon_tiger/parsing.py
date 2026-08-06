@@ -29,21 +29,33 @@ def _broker_id(anchor) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def _seat_values(table, side):
+def _seat_values(table, side, trade_date, source_id):
     values = {}
     if table is None:
         return values
     for rank, row in enumerate(table.find_all("tr")[1:6], start=1):
         cells = row.find_all("td")
         if len(cells) < 4:
-            continue
+            raise ValueError(
+                f"{side} seat row {rank} malformed for {trade_date} source {source_id}: "
+                f"expected 4 cells, got {len(cells)}"
+            )
         anchor = cells[0].find("a")
+        if anchor is None:
+            raise ValueError(
+                f"{side} seat row {rank} malformed for {trade_date} source {source_id}: broker link missing"
+            )
         prefix = f"{side}_{rank}"
-        values[f"{prefix}_broker_id"] = _broker_id(anchor)
-        values[f"{prefix}_broker_name"] = anchor.get("title") if anchor else cells[0].get_text(strip=True) or None
-        values[f"{prefix}_buy_amount"] = parse_amount(cells[1].get_text(strip=True))
-        values[f"{prefix}_sell_amount"] = parse_amount(cells[2].get_text(strip=True))
-        values[f"{prefix}_net_amount"] = parse_amount(cells[3].get_text(strip=True))
+        try:
+            values[f"{prefix}_broker_id"] = _broker_id(anchor)
+            values[f"{prefix}_broker_name"] = anchor.get("title") or cells[0].get_text(strip=True) or None
+            values[f"{prefix}_buy_amount"] = parse_amount(cells[1].get_text(strip=True))
+            values[f"{prefix}_sell_amount"] = parse_amount(cells[2].get_text(strip=True))
+            values[f"{prefix}_net_amount"] = parse_amount(cells[3].get_text(strip=True))
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"{side} seat row {rank} malformed for {trade_date} source {source_id}: {error}"
+            ) from error
     return values
 
 
@@ -62,10 +74,14 @@ def parse_listing_page(html: str, trade_date: int):
         raise ValueError(f"listing table missing for {trade_date}")
 
     listings = []
-    for row in table.find_all("tr"):
+    for row_index, row in enumerate(table.find_all("tr"), start=1):
         cells = row.find_all("td")
-        if len(cells) < 7:
+        if not cells:
             continue
+        if len(cells) < 7:
+            raise ValueError(
+                f"listing row {row_index} malformed for {trade_date}: expected 7 cells, got {len(cells)}"
+            )
         stock_anchor = cells[2].find("a")
         source_id = stock_anchor.get("rid") if stock_anchor else None
         detail = soup.find("div", attrs={"rid": source_id}) if source_id else None
@@ -73,27 +89,32 @@ def parse_listing_page(html: str, trade_date: int):
         if detail is None or len(detail_tables) < 2:
             raise ValueError(f"listing detail missing for {trade_date} source {source_id}")
         paragraphs = detail.find_all("p")
-        detail_text = paragraphs[0].get_text(" ", strip=True)
+        detail_text = paragraphs[0].get_text(" ", strip=True) if paragraphs else ""
         if "明细：" not in detail_text:
             raise ValueError(f"listing reason missing for {trade_date} source {source_id}")
         summary_text = " ".join(item.get_text(" ", strip=True) for item in paragraphs[1:])
-        values = {
-            "data_id": f"{int(trade_date)}_{source_id}",
-            "trade_date": int(trade_date),
-            "source_id": source_id,
-            "detail_type": detail_text.split("明细：", 1)[1].strip(),
-            "date_type": cells[0].get_text(strip=True) or "1日",
-            "stock_code": cells[1].get_text(strip=True),
-            "stock_name": cells[2].get_text(strip=True),
-            "current_price": parse_amount(cells[3].get_text(strip=True)),
-            "change_pct": parse_amount(cells[4].get_text(strip=True)),
-            "turnover": parse_amount(cells[5].get_text(strip=True)),
-            "net_buy_amount": parse_amount(cells[6].get_text(strip=True)),
-            "total_buy_amount": _label_amount(summary_text, "合计买入："),
-            "total_sell_amount": _label_amount(summary_text, "合计卖出："),
-        }
-        values.update(_seat_values(detail_tables[0], "buy"))
-        values.update(_seat_values(detail_tables[1], "sell"))
+        try:
+            values = {
+                "data_id": f"{int(trade_date)}_{source_id}",
+                "trade_date": int(trade_date),
+                "source_id": source_id,
+                "detail_type": detail_text.split("明细：", 1)[1].strip(),
+                "date_type": cells[0].get_text(strip=True) or "1日",
+                "stock_code": cells[1].get_text(strip=True),
+                "stock_name": cells[2].get_text(strip=True),
+                "current_price": parse_amount(cells[3].get_text(strip=True)),
+                "change_pct": parse_amount(cells[4].get_text(strip=True)),
+                "turnover": parse_amount(cells[5].get_text(strip=True)),
+                "net_buy_amount": parse_amount(cells[6].get_text(strip=True)),
+                "total_buy_amount": _label_amount(summary_text, "合计买入："),
+                "total_sell_amount": _label_amount(summary_text, "合计卖出："),
+            }
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"listing row {row_index} malformed for {trade_date} source {source_id}: {error}"
+            ) from error
+        values.update(_seat_values(detail_tables[0], "buy", trade_date, source_id))
+        values.update(_seat_values(detail_tables[1], "sell", trade_date, source_id))
         listings.append(DragonTigerListing(**values))
     return listings
 
@@ -161,26 +182,35 @@ def parse_broker_history_page(html: str, broker_id: str, broker_name: str):
     if table is None:
         raise ValueError(f"broker history table missing for {broker_id}")
     rows = []
-    for row in table.find_all("tr")[1:]:
+    for row_index, row in enumerate(table.find_all("tr")[1:], start=1):
         cells = row.find_all("td")
         if len(cells) < 8:
-            continue
-        stock_anchor = cells[1].find("a")
-        stock_code = _broker_id(stock_anchor)
-        trade_date = int(cells[0].get_text(strip=True).replace("-", ""))
-        reason = cells[2].get_text(strip=True)
-        rows.append(BrokerListingHistory(
-            data_id=f"{broker_id}_{trade_date}_{stock_code}_{reason}",
-            broker_id=broker_id,
-            broker_name=broker_name,
-            trade_date=trade_date,
-            stock_name=cells[1].get_text(strip=True),
-            stock_code=stock_code,
-            listing_reason=reason,
-            change_pct=parse_amount(cells[3].get_text(strip=True)),
-            buy_amount=parse_amount(cells[4].get_text(strip=True)),
-            sell_amount=parse_amount(cells[5].get_text(strip=True)),
-            net_amount=parse_amount(cells[6].get_text(strip=True)),
-            board_name=cells[7].get_text(strip=True) or None,
-        ))
+            raise ValueError(
+                f"broker history row {row_index} malformed for {broker_id}: expected 8 cells, got {len(cells)}"
+            )
+        try:
+            stock_anchor = cells[1].find("a")
+            stock_code = _broker_id(stock_anchor)
+            if not stock_code:
+                raise ValueError("stock code link missing")
+            trade_date = int(cells[0].get_text(strip=True).replace("-", ""))
+            reason = cells[2].get_text(strip=True)
+            rows.append(BrokerListingHistory(
+                data_id=f"{broker_id}_{trade_date}_{stock_code}_{reason}",
+                broker_id=broker_id,
+                broker_name=broker_name,
+                trade_date=trade_date,
+                stock_name=cells[1].get_text(strip=True),
+                stock_code=stock_code,
+                listing_reason=reason,
+                change_pct=parse_amount(cells[3].get_text(strip=True)),
+                buy_amount=parse_amount(cells[4].get_text(strip=True)),
+                sell_amount=parse_amount(cells[5].get_text(strip=True)),
+                net_amount=parse_amount(cells[6].get_text(strip=True)),
+                board_name=cells[7].get_text(strip=True) or None,
+            ))
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"broker history row {row_index} malformed for {broker_id}: {error}"
+            ) from error
     return rows, page_count

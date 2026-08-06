@@ -1,4 +1,5 @@
 import importlib.util
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -54,6 +55,84 @@ def test_legacy_analysis_main_delegates_to_canonical_analysis(monkeypatch):
 
     assert module.main("20260701", "20260806") == expected
     assert calls == [(20260701, 20260806)]
+
+
+def test_compatibility_paths_bootstrap_checkout_imports_in_isolated_python():
+    src = str(ROOT / "src")
+    for path in LEGACY_FILES:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                (
+                    "import runpy, sys; "
+                    f"sys.path = [item for item in sys.path if item.lower() != {src!r}.lower()]; "
+                    f"runpy.run_path({str(path)!r}, run_name='compatibility_probe')"
+                ),
+            ],
+            cwd=path.parent,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, f"{path.relative_to(ROOT)}: {result.stderr}"
+
+
+def test_listing_collector_main_forwards_checkout_dependencies(monkeypatch):
+    module = _load(LEGACY_FILES[1], monkeypatch)
+    fake_db = types.SimpleNamespace(mysql_localhost=object(), engine=object())
+    sys.modules["utils"].db = fake_db
+    calls = []
+    monkeypatch.setattr(module, "DragonTigerRepository", lambda query, engine: (query, engine))
+    monkeypatch.setattr(
+        module,
+        "collect_listings",
+        lambda date, repository, fetch_page: calls.append((date, repository, fetch_page)) or 4,
+    )
+
+    assert module.main("20260806") == 4
+    assert calls == [(20260806, (fake_db.mysql_localhost, fake_db.engine), module._fetch_page)]
+
+
+def test_broker_directory_main_forwards_checkout_dependencies(monkeypatch):
+    module = _load(LEGACY_FILES[2], monkeypatch)
+    fake_db = types.SimpleNamespace(mysql_localhost=object(), engine=object())
+    sys.modules["utils"].db = fake_db
+    calls = []
+    monkeypatch.setattr(module, "DragonTigerRepository", lambda query, engine: (query, engine))
+    monkeypatch.setattr(
+        module,
+        "collect_broker_directory",
+        lambda repository, pages: calls.append((repository, pages)) or 5,
+    )
+
+    assert module.main() == 5
+    assert calls == [((fake_db.mysql_localhost, fake_db.engine), module._pages)]
+
+
+def test_broker_history_main_forwards_checkout_dependencies(monkeypatch):
+    module = _load(LEGACY_FILES[3], monkeypatch)
+    redis_client = object()
+    fake_db = types.SimpleNamespace(
+        mysql_localhost=object(),
+        engine=object(),
+        redis_con_localhost=redis_client,
+    )
+    sys.modules["utils"].db = fake_db
+    calls = []
+    monkeypatch.setattr(module, "DragonTigerRepository", lambda query, engine: (query, engine))
+    monkeypatch.setattr(
+        module,
+        "collect_broker_history",
+        lambda repository, fetch_page, cache: calls.append((repository, fetch_page, cache)) or 6,
+    )
+
+    assert module.main() == 6
+    repository, fetch_page, cache = calls[0]
+    assert repository == (fake_db.mysql_localhost, fake_db.engine)
+    assert fetch_page is module._fetch_page
+    assert cache._client is redis_client
 
 
 def test_active_python_has_no_legacy_dragon_tiger_table_references():

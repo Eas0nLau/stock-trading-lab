@@ -1,4 +1,4 @@
-from stock_lab.modules.dragon_tiger.models import Broker
+from stock_lab.modules.dragon_tiger.models import Broker, BrokerTopStats
 from stock_lab.modules.dragon_tiger.repository import DragonTigerRepository
 
 
@@ -96,3 +96,55 @@ def test_empty_upsert_does_not_open_transaction():
 
     assert DragonTigerRepository(FakeQuery(), engine).upsert_brokers([]) == 0
     assert engine.connection.calls == []
+
+
+def test_broker_top_stats_reads_all_canonical_columns():
+    row = {
+        "broker_id": "B1",
+        "broker_name": "Broker One",
+        "listing_count": 12,
+        "total_capital_used": 3456.0,
+        "year_listing_count": 7,
+        "year_stock_count": 5,
+        "three_day_follow_success_rate": 66.7,
+    }
+    query = FakeQuery([row])
+
+    result = DragonTigerRepository(query).broker_top_stats()
+
+    assert result == [row]
+    sql, params, fetch = query.calls[0]
+    assert "FROM `broker_top_stats`" in sql
+    assert all(f"`{column}`" in sql for column in row)
+    assert params is None
+    assert fetch is True
+
+
+def test_upsert_broker_top_stats_updates_non_key_columns():
+    engine = FakeEngine()
+    repository = DragonTigerRepository(FakeQuery(), engine)
+    stats = BrokerTopStats(
+        broker_id="B1",
+        broker_name="Broker One",
+        listing_count=12,
+        total_capital_used=3456.0,
+        year_listing_count=7,
+        year_stock_count=5,
+        three_day_follow_success_rate=66.7,
+    )
+
+    assert repository.upsert_broker_top_stats([stats]) == 1
+
+    sql, rows = engine.connection.calls[0]
+    assert "INSERT INTO `broker_top_stats`" in sql
+    assert "`broker_id` = VALUES(`broker_id`)" not in sql
+    assert "`listing_count` = VALUES(`listing_count`)" in sql
+    assert rows == [{
+        "broker_id": "B1",
+        "broker_name": "Broker One",
+        "listing_count": 12,
+        "total_capital_used": 3456.0,
+        "year_listing_count": 7,
+        "year_stock_count": 5,
+        "three_day_follow_success_rate": 66.7,
+    }]

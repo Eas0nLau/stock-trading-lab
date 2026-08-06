@@ -89,6 +89,28 @@ def test_parse_listing_page_skips_unpublished_day_and_rejects_malformed_page():
         parse_listing_page("<html></html>", 20260806)
 
 
+def test_parse_listing_page_rejects_malformed_listing_row_with_date_context():
+    html = """
+    <div class="twrap"><table class="m-table">
+      <tr><th>header</th></tr>
+      <tr><td>1日</td><td>000001</td><td>broken</td></tr>
+    </table></div>
+    """
+
+    with pytest.raises(ValueError, match=r"listing row 2 malformed.*20260806"):
+        parse_listing_page(html, 20260806)
+
+
+def test_parse_listing_page_rejects_malformed_seat_row_with_listing_context():
+    malformed = LISTING_HTML.replace(
+        '<tr><td><a href="/market/lhbyyb/orgcode/B1/" title="机构专用">机构专用</a></td><td>22000</td><td>50</td><td>21950</td></tr>',
+        "<tr><td>broken</td></tr>",
+    )
+
+    with pytest.raises(ValueError, match=r"buy seat row 1 malformed.*20260806.*RID-1"):
+        parse_listing_page(malformed, 20260806)
+
+
 def test_parse_broker_directory_page_deduplicates_brokers_from_both_columns():
     html = """
     <table class="m-table">
@@ -134,3 +156,15 @@ def test_parse_broker_history_page_keeps_legacy_two_page_fallback():
 
     assert rows == []
     assert page_count == 2
+
+
+def test_parse_broker_history_page_rejects_malformed_row_with_broker_context():
+    html = """
+    <table class="m-table m-table-nosort">
+      <tr><th>header</th></tr>
+      <tr><td>2026-08-06</td><td>broken</td></tr>
+    </table>
+    """
+
+    with pytest.raises(ValueError, match=r"broker history row 1 malformed.*B1"):
+        parse_broker_history_page(html, "B1", "Broker One")

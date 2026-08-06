@@ -69,16 +69,20 @@ def analyze_broker_premium(
         stats[broker_id]["count"] += 1
         stats[broker_id]["return_total"] += (following_open - next_open) / next_open * 100
 
-    average_returns = {
-        broker_id: values["return_total"] / values["count"] if values["count"] else 0.0
+    qualified_average_returns = {
+        broker_id: values["return_total"] / values["count"]
         for broker_id, values in stats.items()
+        if values["count"] >= minimum_samples
     }
     lineup_returns = {}
     for row in latest_rows:
+        broker_id = _value(row, "broker_id")
+        if broker_id not in qualified_average_returns:
+            continue
         stock_code = str(_value(row, "stock_code"))
         reason = _value(row, "listing_reason")
         lineup_returns.setdefault(stock_code, {}).setdefault(reason, []).append(
-            average_returns[_value(row, "broker_id")]
+            qualified_average_returns[broker_id]
         )
 
     selected_codes = set()
@@ -87,9 +91,12 @@ def analyze_broker_premium(
         for returns in reason_groups.values():
             unique_returns = set(returns)
             average_return = sum(unique_returns) / len(unique_returns)
-            ranking_scores[stock_code] = average_return
             if len(unique_returns) > 2 and average_return > average_return_threshold:
                 selected_codes.add(stock_code)
+                ranking_scores[stock_code] = max(
+                    ranking_scores.get(stock_code, float("-inf")),
+                    average_return,
+                )
 
     ranked_codes = sorted(selected_codes, key=lambda code: ranking_scores[code], reverse=True)
     return [int(code) for code in ranked_codes]

@@ -108,7 +108,7 @@ def test_analysis_excludes_connect_seats_low_net_rows_and_short_quote_histories(
     assert result == []
 
 
-def test_analysis_ranks_multiple_reasons_by_legacy_final_reason_score():
+def test_analysis_ranks_multiple_reasons_by_highest_qualifying_reason_score():
     latest_date = 20260806
     lineups = [
         ("000001", "Reason A", [("A1", "A One", 5.0), ("A2", "A Two", 6.0), ("A3", "A Three", 7.0)]),
@@ -144,6 +144,39 @@ def test_analysis_ranks_multiple_reasons_by_legacy_final_reason_score():
         latest_date,
         FakeDragonTigerRepository(listings, history),
         FakeMarketDataRepository(returns),
+        minimum_samples=1,
     )
 
-    assert result == [2, 1]
+    assert result == [1, 2]
+
+
+def test_analysis_excludes_brokers_below_minimum_sample_count():
+    latest_date = 20260806
+    listing = {
+        "stock_code": "000001",
+        "stock_name": "Ping An",
+        "detail_type": "Reason",
+        **{f"buy_{rank}_broker_name": name for rank, name in enumerate(["One", "Two", "Three", None, None], 1)},
+    }
+    history = []
+    returns = {}
+    for broker_id, name, stock_code, gains in (
+        ("B1", "One", "000101", [3.0, 4.0, 5.0]),
+        ("B2", "Two", "000102", [4.0, 5.0, 6.0]),
+        ("B3", "Three", "000103", [6.0, 7.0]),
+    ):
+        for offset, gain in enumerate(gains, 1):
+            trade_date = 20260700 + offset
+            history.append(_history(broker_id, name, trade_date, stock_code=stock_code))
+            returns[(stock_code, trade_date)] = gain
+        history.append(_history(broker_id, name, latest_date))
+
+    result = analyze_broker_premium(
+        20260701,
+        latest_date,
+        FakeDragonTigerRepository([listing], history),
+        FakeMarketDataRepository(returns),
+        minimum_samples=3,
+    )
+
+    assert result == []
