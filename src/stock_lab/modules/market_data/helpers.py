@@ -24,6 +24,14 @@ def normalize_symbol(value):
     return normalize_ts_code(value).split(".", 1)[0]
 
 
+def stock_code_filter(codes, column="ts_code"):
+    symbols = sorted({normalize_symbol(code) for code in codes if code})
+    if not symbols:
+        return "1 = 0", ()
+    placeholders = ", ".join(["%s"] * len(symbols))
+    return f"LPAD(SUBSTRING_INDEX(`{column}`, '.', 1), 6, '0') IN ({placeholders})", tuple(symbols)
+
+
 def normalize_trade_date(value):
     if isinstance(value, (dt.datetime, dt.date)):
         return int(value.strftime("%Y%m%d"))

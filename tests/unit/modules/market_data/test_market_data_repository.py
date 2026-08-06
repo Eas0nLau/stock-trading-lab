@@ -49,3 +49,20 @@ def test_securities_query_supports_market_filter():
     assert result[0]["symbol"] == "600000"
     assert query.calls[0][1] == ("主板",)
     assert "FROM `securities`" in query.calls[0][0]
+
+
+def test_index_daily_limit_selects_latest_window_in_ascending_order():
+    query = FakeQuery([
+        {"trade_date": 20260805},
+        {"trade_date": 20260806},
+        {"trade_date": 20260807},
+    ])
+
+    result = MarketDataRepository(query).index_daily(limit=3)
+
+    assert [row["trade_date"] for row in result] == [20260805, 20260806, 20260807]
+    sql = query.calls[0][0]
+    assert "FROM (" in sql
+    assert "ORDER BY `trade_date` DESC" in sql
+    assert "LIMIT 3" in sql
+    assert ") AS `recent_index_daily` ORDER BY `trade_date` ASC" in sql

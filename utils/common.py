@@ -11,7 +11,7 @@ from loguru import logger
 from plotly.subplots import make_subplots
 from sqlalchemy import text
 from utils import db, account
-from stock_lab.modules.market_data.helpers import normalize_symbol, normalize_ts_code
+from stock_lab.modules.market_data.helpers import normalize_symbol, stock_code_filter
 
 # 初始化 Tushare
 # ts.set_token(config.ts_token)  # 替换为你的 token
@@ -150,16 +150,17 @@ def backtesting(selected_stocks, target_date, eval_days=3, sell_out_fall_thresho
         '%Y%m%d')  # 缓冲 30 天
 
     stock_name_list = selected_stocks['stock_name'].tolist()
+    code_sql, code_params = stock_code_filter(selected_stocks['ts_code'].tolist())
     query = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
                previous_close AS pre_close, high_price AS high, low_price AS low
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple([normalize_ts_code(i) for i in selected_stocks['ts_code'].tolist()])).replace(",)", ")")}
+        WHERE {code_sql}
         AND trade_date >= {target_date}
         AND trade_date <= {next_date_end}
         order by trade_date
     """
-    next_day_data = pd.read_sql(query, db.engine)
+    next_day_data = pd.read_sql(query, db.engine, params=code_params)
     # buy_date = next_day_data['trade_date'].min()
     # 入选后的交易日期
     after_purchase_date_list = list(set(next_day_data['trade_date'].tolist()))
@@ -540,15 +541,16 @@ def timer_statistics(func):
 @timer_statistics
 def load_stock_daily_data(filtered_codes, start_date, target_date):
     logger.info(f"加载日线数据 开始 trade_date BETWEEN {start_date} AND {target_date}")
+    code_sql, code_params = stock_code_filter(filtered_codes)
     query = f"""
         SELECT ts_code, trade_date, open_price AS open, high_price AS high, low_price AS low,
                previous_close AS pre_close, close_price AS close, turnover AS amount,
                change_pct AS pct_chg, volume AS vol, stock_name
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple([normalize_ts_code(code) for code in filtered_codes])).replace(",)", ")")} 
+        WHERE {code_sql}
         AND trade_date BETWEEN %s AND %s
     """
-    result = db.mysql_localhost(sql=query, params=(start_date, target_date), fetch=True)
+    result = db.mysql_localhost(sql=query, params=(*code_params, start_date, target_date), fetch=True)
     stock_daily = pd.DataFrame(result)
     logger.info(f"加载日线数据 完成 {len(stock_daily)}")
     return stock_daily

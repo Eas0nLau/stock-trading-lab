@@ -1,6 +1,6 @@
 from sqlalchemy import text
 
-from .helpers import normalize_symbol, normalize_ts_code
+from .helpers import normalize_symbol, normalize_ts_code, stock_code_filter
 
 
 class MarketDataRepository:
@@ -34,19 +34,9 @@ class MarketDataRepository:
         conditions = []
         params = []
         if stock_codes:
-            codes = sorted({normalize_ts_code(code) for code in stock_codes if code})
-            qualified = [code for code in codes if "." in code]
-            symbols = [code.split(".", 1)[0] for code in codes if "." not in code]
-            code_conditions = []
-            if qualified:
-                code_conditions.append(f"`ts_code` IN ({','.join(['%s'] * len(qualified))})")
-                params.extend(qualified)
-            if symbols:
-                code_conditions.append(
-                    f"LPAD(SUBSTRING_INDEX(`ts_code`, '.', 1), 6, '0') IN ({','.join(['%s'] * len(symbols))})"
-                )
-                params.extend(symbols)
-            conditions.append("(" + " OR ".join(code_conditions) + ")")
+            code_sql, code_params = stock_code_filter(stock_codes)
+            conditions.append(code_sql)
+            params.extend(code_params)
         if start_date is not None:
             conditions.append("`trade_date` >= %s")
             params.append(int(start_date))
@@ -71,12 +61,17 @@ class MarketDataRepository:
         if end_date is not None:
             conditions.append("`trade_date` <= %s")
             params.append(int(end_date))
-        sql = "SELECT `trade_date`, `open_price`, `close_price`, `high_price`, `low_price`, `volume`, `turnover`, `amplitude_pct`, `change_pct`, `change_amount`, `turnover_rate` FROM `index_daily`"
+        columns = "`trade_date`, `open_price`, `close_price`, `high_price`, `low_price`, `volume`, `turnover`, `amplitude_pct`, `change_pct`, `change_amount`, `turnover_rate`"
+        sql = f"SELECT {columns} FROM `index_daily`"
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
-        sql += " ORDER BY `trade_date`"
         if limit is not None:
-            sql += f" LIMIT {int(limit)}"
+            sql = f"SELECT {columns} FROM (SELECT {columns} FROM `index_daily`"
+            if conditions:
+                sql += " WHERE " + " AND ".join(conditions)
+            sql += f" ORDER BY `trade_date` DESC LIMIT {int(limit)}) AS `recent_index_daily` ORDER BY `trade_date` ASC"
+        else:
+            sql += " ORDER BY `trade_date` ASC"
         return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
 
     def upsert_securities(self, rows):

@@ -5,6 +5,7 @@ from .helpers import (
     normalize_trade_date,
     normalize_ts_code,
     security_from_source,
+    stock_code_filter,
 )
 from .models import DailyQuote, IndexDaily, Security
 from .repository import MarketDataRepository
@@ -20,4 +21,5 @@ __all__ = [
     "normalize_trade_date",
     "normalize_ts_code",
     "security_from_source",
+    "stock_code_filter",
 ]
