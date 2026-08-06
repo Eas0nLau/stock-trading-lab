@@ -49,17 +49,17 @@ def strategy(filtered_codes, target_date):
         DataFrame: 选中的股票（ts_code, stock_name, trade_date, close）
     """
     stock_code = db.mysql_localhost(f"""
-       SELECT x.ts_code FROM stock_kdj x
-        inner join stock_kdj x2
+       SELECT x.ts_code FROM kdj_indicators x
+        inner join kdj_indicators x2
         on x.ts_code = x2.ts_code 
         WHERE x.trade_date ={target_date}
-        and x2.trade_date = (SELECT MAX(trade_date) FROM stock_kdj x WHERE trade_date < {target_date})
-        and x.J < 50
-        and x.J>X.D*1.4
-        and x2.D>x2.j*1.4
-        and x2.J > (
-          SELECT MAX(recent_records.J) FROM (
-              SELECT x3.j FROM stock_kdj x3 
+        and x2.trade_date = (SELECT MAX(trade_date) FROM kdj_indicators x WHERE trade_date < {target_date})
+        and x.j_value < 50
+        and x.j_value>x.d_value*1.4
+        and x2.d_value>x2.j_value*1.4
+        and x2.j_value > (
+          SELECT MAX(recent_records.j_value) FROM (
+              SELECT x3.j_value FROM kdj_indicators x3
               WHERE x3.ts_code =  x2.ts_code
                 AND x3.trade_date <  x2.trade_date
               ORDER BY x3.trade_date DESC 
@@ -298,12 +298,12 @@ def simulated_sell(sell_out_fall_threshold=None,
             # 获取上一个交易日
             stock_pre_date_df = range_data[range_data['ts_code'] == ts_code].iloc[-2]
             kdj_data = db.mysql_localhost(f"""
-               SELECT x.J as J,x2.J AS J2 FROM stock_kdj x
-                inner join stock_kdj x2
+               SELECT x.j_value as J,x2.j_value AS J2 FROM kdj_indicators x
+                inner join kdj_indicators x2
                 on x.ts_code = x2.ts_code 
                WHERE x.trade_date ={now_date}
-               and x.ts_code = {ts_code}
-               and x2.trade_date = (SELECT MAX(trade_date) FROM stock_kdj x WHERE trade_date < {now_date})
+               and LPAD(SUBSTRING_INDEX(x.ts_code, '.', 1), 6, '0') = LPAD(CAST({ts_code} AS CHAR), 6, '0')
+               and x2.trade_date = (SELECT MAX(trade_date) FROM kdj_indicators x WHERE trade_date < {now_date})
             """, fetch=True)
             if len(kdj_data) == 0:
                 logger.error(f"{ts_code} {stock_info['name']} kdj_data is null")

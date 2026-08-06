@@ -192,11 +192,13 @@ def _读取本地5分k(target_date, ts_code):
     code = int(str(ts_code).split('.')[0])
     df = pd.read_sql(
         f"""
-            SELECT date, time, code, open, high, low, close, volume, amount
-            FROM t_stock_5_min_k
-            WHERE date = {int(target_date)}
-              AND code = {code}
-            ORDER BY time
+            SELECT trade_date AS date, trade_time AS time, stock_code AS code,
+                   open_price AS open, high_price AS high, low_price AS low,
+                   close_price AS close, volume, turnover AS amount
+            FROM intraday_bars_5m
+            WHERE trade_date = {int(target_date)}
+              AND stock_code = '{code:06d}'
+            ORDER BY trade_time
         """,
         db.engine,
     )

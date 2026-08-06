@@ -50,14 +50,14 @@ def strategy(filtered_codes, target_date):
         DataFrame: 选中的股票（ts_code, stock_name, trade_date, close）
     """
     stock_code = db.mysql_localhost(f"""
-       SELECT x.ts_code FROM stock_kdj x
-        inner join stock_kdj x2
+       SELECT x.ts_code FROM kdj_indicators x
+        inner join kdj_indicators x2
         on x.ts_code = x2.ts_code 
         WHERE x.trade_date ={target_date}
-        and x2.trade_date = (SELECT MAX(trade_date) FROM stock_kdj x WHERE trade_date < {target_date})
-        and x.J < 30
-        and x.J>X.D*1.4
-        and x2.D>x2.j*1.4
+        and x2.trade_date = (SELECT MAX(trade_date) FROM kdj_indicators x WHERE trade_date < {target_date})
+        and x.j_value < 30
+        and x.j_value>x.d_value*1.4
+        and x2.d_value>x2.j_value*1.4
     """, fetch=True)
     filtered_codes = [item["ts_code"] for item in stock_code]
     if not filtered_codes:

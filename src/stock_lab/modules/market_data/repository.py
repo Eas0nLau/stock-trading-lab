@@ -74,6 +74,46 @@ class MarketDataRepository:
             sql += " ORDER BY `trade_date` ASC"
         return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
 
+    def intraday_bars_5m(self, trade_date=None, stock_code=None):
+        conditions = []
+        params = []
+        if trade_date is not None:
+            conditions.append("`trade_date` = %s")
+            params.append(int(trade_date))
+        if stock_code is not None:
+            conditions.append("`stock_code` = %s")
+            params.append(normalize_symbol(stock_code))
+        sql = "SELECT `data_id`, `trade_date`, `trade_time`, `stock_code`, `open_price`, `high_price`, `low_price`, `close_price`, `volume`, `turnover`, `adjustment_flag` FROM `intraday_bars_5m`"
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY `trade_time`"
+        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+
+    def intraday_bars_5m_legacy(self, trade_date, stock_code):
+        sql = "SELECT `trade_date` AS `date`, `trade_time` AS `time`, `stock_code` AS `code`, `open_price` AS `open`, `high_price` AS `high`, `low_price` AS `low`, `close_price` AS `close`, `volume`, `turnover` AS `amount`, `adjustment_flag` AS `adjustflag` FROM `intraday_bars_5m` WHERE `trade_date` = %s AND `stock_code` = %s ORDER BY `trade_time`"
+        return self._query(
+            sql, params=(int(trade_date), normalize_symbol(stock_code)), fetch=True
+        ) or []
+
+    def kdj_indicators(self, stock_codes=None, start_date=None, end_date=None):
+        conditions = []
+        params = []
+        if stock_codes:
+            code_sql, code_params = stock_code_filter(stock_codes)
+            conditions.append(code_sql)
+            params.extend(code_params)
+        if start_date is not None:
+            conditions.append("`trade_date` >= %s")
+            params.append(int(start_date))
+        if end_date is not None:
+            conditions.append("`trade_date` <= %s")
+            params.append(int(end_date))
+        sql = "SELECT `data_id`, `ts_code`, `trade_date`, `k_value`, `d_value`, `j_value` FROM `kdj_indicators`"
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY `trade_date`, `ts_code`"
+        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+
     def upsert_securities(self, rows):
         return self._write("securities", rows, ("ts_code",))
 
@@ -91,6 +131,12 @@ class MarketDataRepository:
 
     def upsert_index_daily(self, rows):
         return self._write("index_daily", rows, ("trade_date",))
+
+    def upsert_intraday_bars_5m(self, rows):
+        return self._write("intraday_bars_5m", rows, ("data_id",))
+
+    def upsert_kdj_indicators(self, rows):
+        return self._write("kdj_indicators", rows, ("data_id",))
 
     def _write(self, table, rows, keys):
         rows = list(rows)

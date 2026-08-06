@@ -84,7 +84,7 @@
 6. 采集龙虎榜数据。
 7. 从开盘啦接口补充日线 DDE 净额。
 
-项目还实现了 5 分钟 K 线、KDJ、同花顺行业/概念成分股、韭研公社异动和龙虎榜溢价分析等更新模块；其中部分步骤在默认每日流水线中被注释，需要按研究需要单独启用。
+项目还实现了 5 分钟 K 线、KDJ、同花顺行业/概念成分股、韭研公社异动和龙虎榜溢价分析等更新模块。5 分钟行情和 KDJ 的正式入口分别是 `stock_lab.jobs.intraday_bars_5m` 与 `stock_lab.jobs.kdj_indicators`；它们不在默认每日流水线中，需要按研究需要单独调用。
 
 ### 2.6 盘前纪要股票提取（盘前用，用来捕捉热启动的题材和隔夜消息）
 
@@ -231,6 +231,8 @@ flowchart LR
 | `data/` | 股票基础数据、采集缓存和浏览器用户目录等本地数据 |
 | `output/` | 研究 CSV、策略结果和盘前纪要 INI 等生成物 |
 | `记录/` | 按月份保存的 Excel 记录 |
+
+5 分钟行情通过 `IntradayBarSource` 注入数据源，默认 `BaoStockSource` 仅在实际采集时导入并登录 BaoStock。`fetch_intraday_bars_5m()` 只采集和标准化数据，`update_intraday_bars_5m()` 写入 `intraday_bars_5m`。`update_kdj_indicators()` 从 `daily_quotes` 计算标准 KDJ 并写入 `kdj_indicators`。旧的 `task._2_分时数据获取_5分k.get_data()` 只负责把正式结果投影为历史策略使用的列表顺序。
 
 ## 6. 数据存储分工
 

@@ -14,7 +14,9 @@
 | `实时监控/热门板块情绪.py` | `stock_lab.modules.emotion` | 英文 API 和查询已迁移；旧路由暂时保留 |
 | `task/每日更新.py` | `stock_lab.modules.emotion.jobs` | 情绪 job 已迁移；调度入口仍为兼容文件 |
 | `task/data_sources.py` | `index_daily` / `securities` / `daily_quotes` | 默认写入已切换英文表 |
+| `task/_2_分时数据获取_5分k.py` | `stock_lab.jobs.intraday_bars_5m` | 已恢复薄兼容入口；正式采集写入 `intraday_bars_5m` |
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
+| KDJ 更新与策略 SQL | `stock_lab.jobs.kdj_indicators` / `kdj_indicators` | 已切换英文任务、列名和表名 |
 | `游资溢价分析/` | `stock_lab.modules.dragon_tiger` | canonical models, parsers, repositories, collectors, and premium analysis migrated; executable paths are thin adapters |
 | `strategy/` | `stock_lab.modules.research` | 待研究模块迁移 |
 
@@ -44,6 +46,22 @@ preserved, so `1.SZ` becomes `000001.SZ` and never becomes an integer.
 The 57 strategy files, TDX monitor files, and unrelated research SQL remain deferred
 consumers. They can migrate to the repository interfaces without depending on the
 legacy tables.
+
+Five-minute bars and KDJ
+-----------------------
+
+`stock_lab.infrastructure.market_data.BaoStockSource` is a lazy adapter: importing
+the application does not import, log in to, or contact BaoStock. The official job
+depends only on `IntradayBarSource.fetch_5m_bars()` so tests and alternate sources
+can be injected without network access. Source rows are normalized to English
+columns before `MarketDataRepository` upserts deterministic `data_id` values into
+`intraday_bars_5m`.
+
+`stock_lab.jobs.kdj_indicators` reads canonical `daily_quotes`, calculates K, D,
+and J independently for each `ts_code`, and upserts `kdj_indicators`. Active KDJ
+and five-minute strategy SQL now reads the English tables; SQL aliases preserve
+historical `J`, `J2`, `date`, `time`, `open`, and `close` consumer shapes. The
+Chinese five-minute task module contains no source or persistence implementation.
 
 前端 `IndexCycle.vue` 和 `HotBoardEmotion.vue` 已使用 `/api/v1/emotion/*` 与英文模型字段。旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 已停止注册，避免读取不再更新的旧表。
 

@@ -197,11 +197,12 @@ def simulated_buy():
             continue
         # 计算五分k
         # query = f"""
-        #     SELECT time, open, high, low, close, volume, amount
-        #     FROM t_stock_5_min_k
-        #     WHERE code = {ts_code}
-        #     AND date = {stock_name_buy_date}
-        #     AND time <= {f'{stock_name_buy_date}0945'}
+        #     SELECT trade_time AS time, open_price AS open, high_price AS high,
+        #            low_price AS low, close_price AS close, volume, turnover AS amount
+        #     FROM intraday_bars_5m
+        #     WHERE stock_code = {ts_code}
+        #     AND trade_date = {stock_name_buy_date}
+        #     AND trade_time <= {f'{stock_name_buy_date}0945'}
         #     order by time
         # """
         # stock_5_min_k_data = db.mysql_localhost(sql=query, fetch=True)

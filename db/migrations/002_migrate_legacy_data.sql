@@ -35,7 +35,10 @@ FROM `stock_daily`
 ON DUPLICATE KEY UPDATE `close_price`=VALUES(`close_price`), `volume`=VALUES(`volume`), `turnover`=VALUES(`turnover`), `dde_net_amount`=VALUES(`dde_net_amount`);
 
 INSERT INTO `kdj_indicators` (`data_id`, `ts_code`, `trade_date`, `k_value`, `d_value`, `j_value`)
-SELECT `data_id`, CAST(`ts_code` AS CHAR), `trade_date`, `k`, `d`, `j`
+SELECT
+  CONCAT(CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END, '_', `trade_date`),
+  CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END,
+  `trade_date`, `k`, `d`, `j`
 FROM `stock_kdj`
 ON DUPLICATE KEY UPDATE `k_value`=VALUES(`k_value`), `d_value`=VALUES(`d_value`), `j_value`=VALUES(`j_value`);
 

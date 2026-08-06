@@ -30,7 +30,7 @@
 
 ## 当前切换状态
 
-`index_daily`、`securities`、`daily_quotes`、`index_market_breadth`、`index_emotion_daily` 和 `hot_board_emotion_daily` 已接入默认数据流水线或新版 API。`jiuyan_actions` 已被新版情绪 job 读取，但采集任务仍需完成写入切换。
+`index_daily`、`securities`、`daily_quotes`、`intraday_bars_5m`、`kdj_indicators`、`index_market_breadth`、`index_emotion_daily` 和 `hot_board_emotion_daily` 已接入正式 repository、任务或新版 API。`jiuyan_actions` 已被新版情绪 job 读取，但采集任务仍需完成写入切换。
 
 市场数据的正式访问边界是 `stock_lab.modules.market_data`。Repository 只返回英文规范列：
 `securities.ts_code`、`securities.symbol`、`daily_quotes.ts_code`、
@@ -40,4 +40,6 @@
 
 龙虎榜和营业部的正式访问边界是 `stock_lab.modules.dragon_tiger`。采集、分析和活跃策略查询已切换到 `dragon_tiger`、`broker_listing_history`、`broker_top_stats`、`brokers` 和 `daily_quotes`；旧中文路径只保留无导入副作用的执行适配器，因此龙虎榜相关代码不再阻塞旧表删除。
 
-同花顺、KDJ、5 分钟行情、韭研采集、实时监控和其他研究脚本仍存在旧表引用，因此仍禁止执行 `003_drop_legacy_schema.sql`。
+KDJ 与 5 分钟行情的正式写入和活跃策略读取已切换到 `kdj_indicators` 与 `intraday_bars_5m`。KDJ 迁移和新任务都按规范 `ts_code` 与日期生成稳定标识；5 分钟行情按证券、时间和复权标记生成稳定标识，因此重复运行更新同一记录。旧 `task._2_分时数据获取_5分k` 仅投影历史列表字段，不再访问旧表。
+
+同花顺、韭研采集、实时监控和其他研究脚本仍存在旧表引用，因此仍禁止执行 `003_drop_legacy_schema.sql`。
