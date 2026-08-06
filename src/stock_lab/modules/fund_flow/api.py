@@ -1,17 +1,18 @@
 from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
 
+from stock_lab.config import get_settings
+
 from .service import FundFlowService
 
 
 def register_fund_flow_routes(app: FastAPI, *, repository=None):
     if repository is None:
-        from stock_lab.config import get_settings
         from stock_lab.infrastructure.cache.redis_client import create_redis_client
         from .repository import FundFlowRepository
 
         repository = FundFlowRepository(create_redis_client(get_settings()))
-    service = FundFlowService(repository)
+    service = FundFlowService(repository, default_top_n=get_settings().fund_flow_history_top_n)
 
     @app.get("/api/v1/fund-flow/{flow_type}/dates")
     def get_dates(flow_type: str):
@@ -21,10 +22,9 @@ def register_fund_flow_routes(app: FastAPI, *, repository=None):
 
     @app.get("/api/v1/fund-flow/{flow_type}/history/{trade_date}")
     def get_history(flow_type: str, trade_date: str, top_n: int | None = Query(default=None, ge=0)):
-        del top_n
         if flow_type not in {"industry", "concept"}:
             return {"status": "error", "error_message": "Unsupported flow type"}
-        return service.history(flow_type, trade_date)
+        return service.history(flow_type, trade_date, top_n=top_n)
 
     @app.get("/api/v1/fund-flow/stream")
     def stream():

@@ -12,6 +12,10 @@ class Redis:
     def set(self, key, value): self.values[key] = value
     def sadd(self, key, value): self.sets.setdefault(key, set()).add(value)
     def smembers(self, key): return self.sets.get(key, set())
+    def delete(self, *keys):
+        for key in keys:
+            self.values.pop(key, None)
+            self.sets.pop(key, None)
 
 
 def test_fund_flow_v1_exposes_english_history_contract():
@@ -26,6 +30,22 @@ def test_fund_flow_v1_exposes_english_history_contract():
     assert response.status_code == 200
     assert response.json()["format"] == "matrix-v2"
     assert response.json()["boards"] == []
+
+
+def test_fund_flow_v1_forwards_top_n_to_matrix_shaping():
+    redis = Redis()
+    repository = FundFlowRepository(redis)
+    repository.save_history("industry", "20260806", [
+        {"time": "10:00", "board_name": "A", "net_inflow_100m": 5},
+        {"time": "10:00", "board_name": "B", "net_inflow_100m": 3},
+    ])
+    app = FastAPI()
+    register_fund_flow_routes(app, repository=repository)
+
+    response = TestClient(app).get("/api/v1/fund-flow/industry/history/20260806?top_n=1")
+
+    assert response.json()["top_n"] == 1
+    assert [board["name"] for board in response.json()["boards"]] == ["A"]
 
 
 def test_fund_flow_v1_stream_emits_english_snapshot_event():

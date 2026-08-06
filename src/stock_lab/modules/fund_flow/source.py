@@ -78,10 +78,18 @@ def parse_fund_flow_packets(packets, collected_at, flow_type, excluded_names=())
 
 
 class FundFlowSource:
-    def __init__(self, page_factory, repository, *, settings=None, sleeper=time.sleep, clock=datetime.datetime.now):
+    def __init__(self, page_factory, repository, *, settings=None, history_service=None, sleeper=time.sleep, clock=datetime.datetime.now):
         self.page_factory = page_factory
         self.repository = repository
         self.settings = settings or get_settings()
+        if history_service is None:
+            from .service import FundFlowService
+
+            history_service = FundFlowService(
+                repository,
+                default_top_n=self.settings.fund_flow_history_top_n,
+            )
+        self.history_service = history_service
         self.sleeper = sleeper
         self.clock = clock
         self.page = None
@@ -98,7 +106,21 @@ class FundFlowSource:
         return self.page
 
     def warm_history(self):
-        return None
+        top_n = max(int(self.settings.fund_flow_history_top_n or 0), 0)
+        if top_n <= 0:
+            return []
+        warmed = []
+        for flow_type in FLOW_CONFIG:
+            dates = self.history_service.dates(flow_type).get("dates") or []
+            if not dates:
+                continue
+            trade_date = max(str(date) for date in dates)
+            try:
+                self.history_service.history(flow_type, trade_date, top_n=top_n)
+                warmed.append((flow_type, trade_date))
+            except Exception as error:
+                logger.warning("Could not warm {} fund-flow history for {}: {}", flow_type, trade_date, error)
+        return warmed
 
     def wait_until_next_run(self, interval_seconds=None):
         interval = interval_seconds or self.collection_interval_seconds()

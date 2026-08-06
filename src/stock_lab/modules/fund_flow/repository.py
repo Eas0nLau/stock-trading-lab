@@ -20,6 +20,14 @@ class FundFlowRepository:
     def dates_key(flow_type):
         return f"fund_flow:v1:{flow_type}:dates"
 
+    @staticmethod
+    def chart_cache_key(flow_type, trade_date, top_n):
+        return f"fund_flow:v1:{flow_type}:chart:{trade_date}:top:{int(top_n)}"
+
+    @staticmethod
+    def chart_cache_index_key(flow_type, trade_date):
+        return f"fund_flow:v1:{flow_type}:chart-index:{trade_date}"
+
     def save_history(self, flow_type, trade_date, payload):
         key = self.history_key(flow_type, trade_date)
         existing = self.history(flow_type, trade_date)
@@ -34,6 +42,7 @@ class FundFlowRepository:
             payload = snapshots
         self.redis.set(key, json.dumps(payload, ensure_ascii=False))
         self.redis.sadd(self.dates_key(flow_type), trade_date)
+        self.clear_chart_cache(flow_type, trade_date)
 
     def history(self, flow_type, trade_date):
         value = self.redis.get(self.history_key(flow_type, trade_date))
@@ -47,6 +56,29 @@ class FundFlowRepository:
             for value in self.redis.smembers(self.dates_key(flow_type))
         }
         return sorted(current)
+
+    def cached_chart(self, flow_type, trade_date, top_n):
+        key = self.chart_cache_key(flow_type, trade_date, top_n)
+        value = self.redis.get(key)
+        if not value:
+            return None
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self.redis.delete(key)
+            return None
+
+    def save_chart(self, flow_type, trade_date, top_n, payload):
+        key = self.chart_cache_key(flow_type, trade_date, top_n)
+        self.redis.set(key, json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        self.redis.sadd(self.chart_cache_index_key(flow_type, trade_date), key)
+
+    def clear_chart_cache(self, flow_type, trade_date):
+        index_key = self.chart_cache_index_key(flow_type, trade_date)
+        keys = [value.decode() if isinstance(value, bytes) else value for value in self.redis.smembers(index_key)]
+        if keys:
+            self.redis.delete(*keys)
+        self.redis.delete(index_key)
 
     def publish_snapshot(self, flow_type, trade_date, collected_at, record_count):
         event = {

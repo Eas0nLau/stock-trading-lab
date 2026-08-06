@@ -1,7 +1,10 @@
+import json
+
 import pytest
 
 from stock_lab.modules.fund_flow.contracts import translate_legacy_fund_flow
 from stock_lab.modules.fund_flow.repository import FundFlowRepository
+from stock_lab.modules.fund_flow.service import FundFlowService
 
 
 class FakeRedis:
@@ -10,11 +13,16 @@ class FakeRedis:
         self.sets = {}
         self.lists = {}
         self.publish_calls = []
+        self.get_calls = []
 
     def set(self, key, value): self.values[key] = value
-    def get(self, key): return self.values.get(key)
-    def sadd(self, key, value): self.sets.setdefault(key, set()).add(value)
+    def get(self, key): self.get_calls.append(key); return self.values.get(key)
+    def sadd(self, key, *values): self.sets.setdefault(key, set()).update(values)
     def smembers(self, key): return self.sets.get(key, set())
+    def delete(self, *keys):
+        for key in keys:
+            self.values.pop(key, None)
+            self.sets.pop(key, None)
     def lrange(self, key, start, end): return self.lists.get(key, [])
     def keys(self, pattern):
         prefix = pattern.removesuffix("*")
@@ -47,6 +55,77 @@ def test_repository_replaces_same_time_snapshot_without_duplicate():
         [{"time": "10:00:00", "board_name": "新"}],
         [{"time": "10:01:00", "board_name": "后续"}],
     ]
+
+
+def test_service_filters_top_inflow_and_outflow_and_replaces_duplicate_times():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+    repository.save_history("industry", "20260806", [
+        {"time": "10:00", "board_name": "old", "net_inflow_100m": 99},
+    ])
+    repository.save_history("industry", "20260806", [
+        {"time": "10:00", "board_name": "inflow", "board_code": "A", "net_inflow_100m": 5, "leader": "甲"},
+        {"time": "10:00", "board_name": "second", "net_inflow_100m": 3},
+        {"time": "10:00", "board_name": "outflow", "board_code": "B", "net_inflow_100m": -6, "leader": "乙"},
+        {"time": "10:00", "board_name": "less-negative", "net_inflow_100m": -2},
+        {"time": "10:00", "board_name": "zero", "net_inflow_100m": 0},
+    ])
+
+    result = FundFlowService(repository, default_top_n=1).history("industry", "20260806")
+
+    assert result == {
+        "format": "matrix-v2",
+        "top_n": 1,
+        "times": ["10:00"],
+        "boards": [
+            {"code": "A", "name": "inflow", "points": [[0, 5, "甲"]]},
+            {"code": "B", "name": "outflow", "points": [[0, -6, "乙"]]},
+        ],
+    }
+
+
+def test_service_shapes_unfiltered_history_as_sparse_matrix_v1():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+    repository.save_history("industry", "20260806", [
+        {"time": "10:00", "board_name": "A", "net_inflow_100m": 1, "leader": "甲"},
+    ])
+    repository.save_history("industry", "20260806", [
+        {"time": "10:01", "board_name": "B", "net_inflow_100m": 2, "leader": "乙"},
+    ])
+
+    result = FundFlowService(repository).history("industry", "20260806", top_n=0)
+
+    assert result == {
+        "format": "matrix-v1",
+        "top_n": 0,
+        "times": ["10:00", "10:01"],
+        "boards": [
+            {"code": "", "name": "A", "values": [1, None], "leaders": ["甲", ""]},
+            {"code": "", "name": "B", "values": [None, 2], "leaders": ["", "乙"]},
+        ],
+    }
+
+
+def test_chart_cache_recovers_from_invalid_json_and_is_invalidated_on_save():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+    repository.save_history("industry", "20260806", [
+        {"time": "10:00", "board_name": "A", "net_inflow_100m": 1},
+    ])
+    service = FundFlowService(repository, default_top_n=1)
+    expected = service.history("industry", "20260806")
+    cache_key = repository.chart_cache_key("industry", "20260806", 1)
+    assert json.loads(redis.values[cache_key]) == expected
+
+    redis.values[cache_key] = "not-json"
+    assert service.history("industry", "20260806") == expected
+    assert json.loads(redis.values[cache_key]) == expected
+
+    repository.save_history("industry", "20260806", [
+        {"time": "10:01", "board_name": "B", "net_inflow_100m": 2},
+    ])
+    assert cache_key not in redis.values
 
 
 def test_repository_does_not_fall_back_to_legacy_industry_history():

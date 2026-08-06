@@ -1,7 +1,9 @@
 import threading
+from types import SimpleNamespace
 
 from stock_lab.modules.fund_flow import collector
 from stock_lab.modules.fund_flow.collector import save_snapshot
+from stock_lab.modules.fund_flow.source import FundFlowSource
 
 
 class Repository:
@@ -56,4 +58,29 @@ def test_monitor_uses_injected_source_contract_and_logs_startup(monkeypatch):
         ("Fund-flow scheduler started with a {} second interval", 30),
         "initialize",
         "warm_history",
+    ]
+
+
+def test_source_warms_latest_history_for_both_flow_types():
+    calls = []
+
+    class HistoryService:
+        def dates(self, flow_type):
+            return {"dates": ["20260805", "20260806"] if flow_type == "industry" else ["20260804"]}
+
+        def history(self, flow_type, trade_date, top_n=None):
+            calls.append((flow_type, trade_date, top_n))
+
+    source = FundFlowSource(
+        lambda *_args, **_kwargs: None,
+        object(),
+        settings=SimpleNamespace(fund_flow_interval_seconds=30, fund_flow_history_top_n=5),
+        history_service=HistoryService(),
+    )
+
+    source.warm_history()
+
+    assert calls == [
+        ("industry", "20260806", 5),
+        ("concept", "20260804", 5),
     ]
