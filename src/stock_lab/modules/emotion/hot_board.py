@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from stock_lab.config import get_settings
 
 
+_legacy_config = None
+
+
 @dataclass(frozen=True)
 class HotBoardConfig:
     selection_threshold: int = 8
@@ -29,7 +32,7 @@ class HotBoardConfig:
 
 
 def legacy_runtime_config(config=None):
-    config = config or HotBoardConfig.from_settings()
+    config = config or get_legacy_config()
     return {
         "热门板块入选数量阈值": config.selection_threshold,
         "高潮数量阈值": config.climax_threshold,
@@ -38,8 +41,41 @@ def legacy_runtime_config(config=None):
     }
 
 
+def get_legacy_config():
+    global _legacy_config
+    if _legacy_config is None:
+        _legacy_config = HotBoardConfig.from_settings()
+    return _legacy_config
+
+
+def refresh_legacy_config():
+    global _legacy_config
+    _legacy_config = HotBoardConfig.from_settings()
+    return legacy_runtime_config(_legacy_config)
+
+
+def legacy_config_value(name):
+    config = get_legacy_config()
+    values = {
+        "_config": config,
+        "热门板块入选数量阈值": config.selection_threshold,
+        "高潮数量阈值": config.climax_threshold,
+        "强势延续晋级比例": config.strong_continuation_ratio,
+        "高潮基础分": config.climax_score,
+        "晋级涨幅阈值": config.promotion_change_pct,
+        "热门板块排除集合": set(),
+    }
+    if name == "状态强弱排序":
+        from .service import STATE_STRENGTH_RANK
+
+        return STATE_STRENGTH_RANK
+    if name not in values:
+        raise AttributeError(name)
+    return values[name]
+
+
 def analyze_legacy_hot_board_day(values, config=None):
-    config = config or HotBoardConfig.from_settings()
+    config = config or get_legacy_config()
     previous_stocks = [
         {"stock_code": str(row.get("股票代码") or "").zfill(6), "stock_name": row.get("股票名称")}
         for row in values.get("前日股票", [])
