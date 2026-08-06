@@ -5,7 +5,7 @@ import pandas as pd
 from loguru import logger
 
 from utils import db, common
-from stock_lab.modules.market_data.helpers import stock_code_filter
+from stock_lab.modules.market_data.helpers import normalize_symbol, stock_code_filter
 
 # 初始金额
 init_amount = float(1000000)
@@ -27,6 +27,13 @@ next_date_pre_selection_stocks = {
     'selected_stocks': None,
     'target_date': None,
 }
+
+
+def _quote_rows_for_holding(range_data, code):
+    """Match a holding key to daily quotes regardless of exchange suffix."""
+    if range_data.empty:
+        return range_data
+    return range_data[range_data["ts_code"].map(normalize_symbol) == normalize_symbol(code)]
 
 
 def print_account_info():
@@ -81,7 +88,7 @@ def sync_open_market_before(now_date):
         range_data = pd.read_sql(query, db.engine, params=code_params)
         for ts_code in selected_stocks:
             stock_info = holding_stocks[ts_code]
-            ts_code_df = range_data[range_data['ts_code'] == ts_code]
+            ts_code_df = _quote_rows_for_holding(range_data, ts_code)
             if ts_code_df.empty:
                 logger.error(f"{ts_code} {now_date} 当日数据为空。")
                 continue
@@ -148,7 +155,7 @@ def sync_close_market(now_date):
         range_data = pd.read_sql(query, db.engine, params=code_params)
         for ts_code in selected_stocks:
             stock_info = holding_stocks[ts_code]
-            ts_code_df = range_data[range_data['ts_code'] == ts_code]
+            ts_code_df = _quote_rows_for_holding(range_data, ts_code)
             if ts_code_df.empty:
                 logger.error(f"{ts_code} {now_date} 当日数据为空。")
                 continue
@@ -212,15 +219,16 @@ def simulated_sell(sell_out_fall_threshold=None,
             if stock_info['lots'] == 0:
                 # logger.error(f"{ts_code} {stock_info['name']} 已卖出")
                 continue
-            if len(range_data[range_data['ts_code'] == ts_code]) < 3:
+            stock_range_data = _quote_rows_for_holding(range_data, ts_code)
+            if len(stock_range_data) < 3:
                 continue
             # 持仓持仓最高回撤达到止损率卖出
             _持仓最高回撤 = stock_info['持仓最高回撤']
             _持仓最高市值 = stock_info['持仓最高市值']
             # 获取当前交易日
-            stock_now_date_df = range_data[range_data['ts_code'] == ts_code].iloc[-1]
+            stock_now_date_df = stock_range_data.iloc[-1]
             # 获取上一个交易日
-            stock_pre_date_df = range_data[range_data['ts_code'] == ts_code].iloc[-2]
+            stock_pre_date_df = stock_range_data.iloc[-2]
 
             # 昨日收益率达到止损率卖出
             # if stock_pre_date_df['pct_chg'] < sell_out_fall_threshold:
@@ -291,7 +299,8 @@ def simulated_buy():
     buy_date = common.get_next_date(target_date)
 
     for stock_name in stock_name_list:
-        stock_name_df = range_data[range_data['stock_name'] == stock_name]
+        selected_row = selected_stocks[selected_stocks['stock_name'] == stock_name].iloc[0]
+        stock_name_df = _quote_rows_for_holding(range_data, selected_row['ts_code'])
         if stock_name_df.empty:
             logger.error(f"{stock_name} 入选后可统计的交易日期为空")
             continue
