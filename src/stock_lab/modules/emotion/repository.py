@@ -60,7 +60,7 @@ class EmotionRepository:
 
     def index_daily_rows(self, limit: int):
         if self._market_data is not None:
-            return list(reversed(self._market_data.index_daily(limit=limit)))
+            return list(self._market_data.index_daily(limit=limit))
         rows = self._query(
             f"""
             SELECT `trade_date`, `open_price`, `close_price`, `high_price`, `low_price`, `turnover`, `change_pct`

@@ -68,12 +68,15 @@ def test_hot_board_service_groups_english_rows():
 def test_market_data_repository_can_supply_canonical_emotion_sources():
     class MarketData:
         def index_daily(self, limit=None):
-            return [{"trade_date": 20260806, "close_price": 10}]
+            return [
+                {"trade_date": 20260805, "close_price": 9},
+                {"trade_date": 20260806, "close_price": 10},
+            ]
 
         def daily_quotes_for_date(self, trade_date, stock_codes):
             return [{"ts_code": "000001.SZ", "previous_close": 9, "change_pct": 1}]
 
     repository = EmotionRepository(lambda *_args, **_kwargs: [], market_data=MarketData())
 
-    assert repository.index_daily_rows(10)[0]["close_price"] == 10
+    assert repository.index_daily_rows(10)[-1]["close_price"] == 10
     assert repository.daily_quote_rows(20260806, ["000001"])["000001"]["previous_close"] == 9

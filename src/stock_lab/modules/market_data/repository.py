@@ -35,8 +35,18 @@ class MarketDataRepository:
         params = []
         if stock_codes:
             codes = sorted({normalize_ts_code(code) for code in stock_codes if code})
-            conditions.append(f"`ts_code` IN ({','.join(['%s'] * len(codes))})")
-            params.extend(codes)
+            qualified = [code for code in codes if "." in code]
+            symbols = [code.split(".", 1)[0] for code in codes if "." not in code]
+            code_conditions = []
+            if qualified:
+                code_conditions.append(f"`ts_code` IN ({','.join(['%s'] * len(qualified))})")
+                params.extend(qualified)
+            if symbols:
+                code_conditions.append(
+                    f"LPAD(SUBSTRING_INDEX(`ts_code`, '.', 1), 6, '0') IN ({','.join(['%s'] * len(symbols))})"
+                )
+                params.extend(symbols)
+            conditions.append("(" + " OR ".join(code_conditions) + ")")
         if start_date is not None:
             conditions.append("`trade_date` >= %s")
             params.append(int(start_date))

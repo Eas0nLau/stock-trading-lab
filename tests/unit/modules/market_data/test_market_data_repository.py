@@ -33,6 +33,14 @@ def test_daily_quotes_query_uses_canonical_columns_and_preserves_code():
     assert "stock_daily" not in sql
 
 
+def test_daily_quotes_bare_symbol_matches_exchange_qualified_storage():
+    query = FakeQuery([])
+
+    MarketDataRepository(query).daily_quotes_for_date(20260806, ["000001"])
+
+    assert "SUBSTRING_INDEX(`ts_code`, '.', 1)" in query.calls[0][0]
+
+
 def test_securities_query_supports_market_filter():
     query = FakeQuery([{"ts_code": "600000.SH", "symbol": "600000"}])
 
