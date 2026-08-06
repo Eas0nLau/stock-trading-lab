@@ -1,0 +1,1 @@
+"""Strategy-pick monitoring module."""
