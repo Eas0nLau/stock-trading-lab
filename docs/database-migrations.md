@@ -29,7 +29,7 @@
 - legacy JSON 在复制前通过 `JSON_VALID`；canonical JSON 在复制后再次通过 `JSON_VALID`。
 - 新 schema 中不存在非 ASCII 标识符。
 
-`002` 开始时删除旧的 `002` 版本和 `002_parity_v1` 成功标记，避免失败重跑沿用陈旧成功状态。全部 gate 成功后，它先写入 `migration_validations(validation_version='002_parity_v1', status='succeeded')`，再幂等写入 `schema_migrations`。因此仅看脚本输出或仅看迁移版本都不构成删除授权，`003` 同时检查两类状态。
+`002` 开始时先提交 `migration_validations(validation_version='002_parity_v1', status='running')`，再开启数据复制事务并在事务内移除陈旧的 `002` 版本/validation。SQL 异常 handler 会回滚复制 DML、写入 `failed` 及 MySQL 错误信息并重新抛出；全部 gate 成功后才在同一事务中写入 `succeeded` 和 `schema_migrations`。因此中断、失败和成功都可跨进程观察，应用 lifespan 会拒绝 `running`/`failed` 状态。仅看脚本输出或仅看迁移版本不构成删除授权，`003` 同时检查两类状态。
 
 ## 当前切换状态
 

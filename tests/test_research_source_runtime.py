@@ -5,7 +5,7 @@ import pytest
 from stock_lab.modules.research.context import ResearchExecutionError
 from stock_lab.modules.research.providers import OfflineResearchProvider
 from stock_lab.modules.research.results import SelectionResult
-from stock_lab.modules.research.source_runtime import run_source_selector
+from stock_lab.modules.research.source_runtime import SAFE_BUILTINS, run_source_selector
 
 
 def test_source_runtime_skips_imports_and_top_level_calls_but_preserves_literals(tmp_path):
@@ -100,6 +100,60 @@ def test_source_runtime_does_not_hide_name_errors(tmp_path):
     with pytest.raises(NameError, match="missing_dependency"):
         run_source_selector(
             "missing_name", "缺失依赖", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+
+
+def test_source_runtime_rejects_executable_class_body(tmp_path):
+    source = tmp_path / "side_effect_class.py"
+    marker = tmp_path / "marker"
+    source.write_text(
+        f"class Dangerous:\n    open({str(marker)!r}, 'w')\n"
+        "def strategy(filtered_codes, target_date):\n"
+        "    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchExecutionError, match="class body"):
+        run_source_selector(
+            "side_effect_class", "副作用", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+    assert not marker.exists()
+    assert "open" not in SAFE_BUILTINS
+
+
+def test_source_runtime_rejects_non_allowlisted_dynamic_import(tmp_path):
+    source = tmp_path / "dynamic_import.py"
+    source.write_text(
+        "def strategy(filtered_codes, target_date):\n"
+        "    __import__('os')\n"
+        "    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchExecutionError, match="not allowed: os"):
+        run_source_selector(
+            "dynamic_import", "动态导入", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+
+
+def test_source_runtime_rejects_executable_class_decorator(tmp_path):
+    source = tmp_path / "decorated_class.py"
+    source.write_text(
+        "class Dangerous:\n"
+        "    @side_effect()\n"
+        "    def method(self):\n"
+        "        pass\n"
+        "def strategy(filtered_codes, target_date):\n"
+        "    return []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchExecutionError, match="class body"):
+        run_source_selector(
+            "decorated_class", "装饰器", source,
             OfflineResearchProvider.builtin().context(20260102),
         )
 

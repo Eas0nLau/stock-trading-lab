@@ -8,9 +8,9 @@ _default_collector = None
 
 
 class StrategyPickCollector:
-    def __init__(self, repository, *, adapter=None):
+    def __init__(self, repository, *, adapter=None, settings=None):
         self.repository = repository
-        self.adapter = adapter or create_strategy_pick_source(repository)
+        self.adapter = adapter or create_strategy_pick_source(repository, settings=settings)
 
     def refresh(self, strategy_id):
         return self.persist_legacy_snapshot(self.adapter.collect(strategy_id))
@@ -35,7 +35,7 @@ class StrategyPickCollector:
         return results
 
 
-def create_strategy_pick_collector(redis, *, adapter=None):
+def create_strategy_pick_collector(redis, *, adapter=None, settings=None):
     from stock_lab.config.defaults import DEFAULT_STRATEGY_PICK_STRATEGIES
 
     from .repository import StrategyPickRepository
@@ -43,23 +43,26 @@ def create_strategy_pick_collector(redis, *, adapter=None):
 
     repository = StrategyPickRepository(redis)
     StrategyPickService(repository, default_strategies=DEFAULT_STRATEGY_PICK_STRATEGIES).strategies()
-    return StrategyPickCollector(repository, adapter=adapter)
+    return StrategyPickCollector(repository, adapter=adapter, settings=settings)
 
 
-def create_strategy_pick_source(repository):
+def create_strategy_pick_source(repository, *, settings=None):
     from stock_lab.infrastructure.browser.client import create_page
 
     from .source import StrategyPickSource
 
-    return StrategyPickSource(create_page, repository)
+    return StrategyPickSource(create_page, repository, settings=settings)
 
 
-def run_strategy_pick_monitor(stop_event=None, *, collector=None, adapter=None):
+def run_strategy_pick_monitor(stop_event=None, *, settings=None, collector=None, adapter=None):
     stop_event = stop_event or threading.Event()
     if collector is None:
         from stock_lab.config import get_settings
         from stock_lab.infrastructure.cache.redis_client import create_redis_client
-        collector = create_strategy_pick_collector(create_redis_client(get_settings()), adapter=adapter)
+        settings = settings or get_settings()
+        collector = create_strategy_pick_collector(
+            create_redis_client(settings), adapter=adapter, settings=settings
+        )
     adapter = adapter or collector.adapter
     return adapter.run(stop_event, collector)
 

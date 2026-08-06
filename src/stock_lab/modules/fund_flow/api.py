@@ -6,13 +6,14 @@ from stock_lab.config import get_settings
 from .service import FundFlowService
 
 
-def register_fund_flow_routes(app: FastAPI, *, repository=None):
+def register_fund_flow_routes(app: FastAPI, *, settings=None, repository=None):
+    settings = get_settings() if settings is None else settings
     if repository is None:
         from stock_lab.infrastructure.cache.redis_client import create_redis_client
         from .repository import FundFlowRepository
 
-        repository = FundFlowRepository(create_redis_client(get_settings()))
-    service = FundFlowService(repository, default_top_n=get_settings().fund_flow_history_top_n)
+        repository = FundFlowRepository(create_redis_client(settings))
+    service = FundFlowService(repository, default_top_n=settings.fund_flow_history_top_n)
 
     @app.get("/api/v1/fund-flow/{flow_type}/dates")
     def get_dates(flow_type: str):

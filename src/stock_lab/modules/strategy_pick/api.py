@@ -5,17 +5,17 @@ from .repository import StrategyPickRepository
 from .service import StrategyPickService
 
 
-def register_strategy_pick_routes(app: FastAPI, *, repository=None, collector=None, default_strategies=None):
+def register_strategy_pick_routes(app: FastAPI, *, settings=None, repository=None, collector=None, default_strategies=None):
     if repository is None:
         from stock_lab.config import get_settings
         from stock_lab.infrastructure.cache.redis_client import create_redis_client
-        repository = StrategyPickRepository(create_redis_client(get_settings()))
+        repository = StrategyPickRepository(create_redis_client(settings or get_settings()))
     if default_strategies is None:
         from stock_lab.config.defaults import DEFAULT_STRATEGY_PICK_STRATEGIES
         default_strategies = DEFAULT_STRATEGY_PICK_STRATEGIES
     if collector is None:
         from .collector import StrategyPickCollector
-        collector = StrategyPickCollector(repository)
+        collector = StrategyPickCollector(repository, settings=settings)
     service = StrategyPickService(repository, collector=collector, default_strategies=default_strategies)
 
     @app.get("/api/v1/strategy-pick/strategies")

@@ -309,7 +309,7 @@ def test_002_has_executable_parity_gates_for_all_16_mappings():
 def test_002_records_success_only_after_all_gates_succeed():
     sql = MIGRATE_PATH.read_text(encoding="utf-8")
     last_gate = sql.rindex("CALL assert_mapping_parity(")
-    validation_record = sql.index("INSERT INTO `migration_validations`")
+    validation_record = sql.index("INSERT INTO `migration_validations`", last_gate)
     version_record = sql.index("INSERT INTO `schema_migrations` (`version`)")
 
     assert "DELETE FROM `migration_validations`" in sql[:last_gate]
@@ -317,6 +317,15 @@ def test_002_records_success_only_after_all_gates_succeed():
     assert "'002_parity_v1', 'succeeded'" in sql[validation_record:version_record]
     assert "'002_migrate_legacy_data'" in sql[version_record:]
     assert "ON DUPLICATE KEY UPDATE `applied_at`=`applied_at`" in sql[version_record:]
+
+
+def test_002_has_durable_running_failed_and_succeeded_state_transitions():
+    sql = MIGRATE_PATH.read_text(encoding="utf-8")
+
+    assert "'002_parity_v1', 'running'" in sql
+    assert "'002_parity_v1', 'failed'" in sql
+    assert "GET DIAGNOSTICS" in sql
+    assert "DECLARE EXIT HANDLER FOR SQLEXCEPTION" in sql
 
 
 def test_003_checks_versions_and_successful_validation_before_any_drop():

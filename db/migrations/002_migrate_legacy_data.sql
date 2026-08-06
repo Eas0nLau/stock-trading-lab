@@ -3,6 +3,7 @@ SET NAMES utf8mb4;
 DROP PROCEDURE IF EXISTS guard_migration_002;
 DROP PROCEDURE IF EXISTS preflight_legacy_data;
 DROP PROCEDURE IF EXISTS assert_mapping_parity;
+DROP PROCEDURE IF EXISTS run_migration_002;
 
 DELIMITER $$
 CREATE PROCEDURE guard_migration_002()
@@ -156,6 +157,27 @@ BEGIN
     p_target_invalid_json AS `target_invalid_json`;
 END$$
 DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE run_migration_002()
+BEGIN
+  DECLARE v_error_message text DEFAULT 'Migration 002 failed';
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    GET DIAGNOSTICS CONDITION 1 v_error_message = MESSAGE_TEXT;
+    ROLLBACK;
+    INSERT INTO `migration_validations` (`validation_version`, `status`, `details`)
+    VALUES ('002_parity_v1', 'failed', LEFT(v_error_message, 512))
+    ON DUPLICATE KEY UPDATE `status`=VALUES(`status`), `validated_at`=CURRENT_TIMESTAMP, `details`=VALUES(`details`);
+    COMMIT;
+    RESIGNAL;
+  END;
+
+  INSERT INTO `migration_validations` (`validation_version`, `status`, `details`)
+  VALUES ('002_parity_v1', 'running', 'Migration 002 data copy and parity validation is running')
+  ON DUPLICATE KEY UPDATE `status`=VALUES(`status`), `validated_at`=CURRENT_TIMESTAMP, `details`=VALUES(`details`);
+  COMMIT;
+  START TRANSACTION;
 
 CALL guard_migration_002();
 DELETE FROM `migration_validations` WHERE `validation_version` = '002_parity_v1';
@@ -404,6 +426,13 @@ ON DUPLICATE KEY UPDATE `status`=VALUES(`status`), `validated_at`=CURRENT_TIMEST
 INSERT INTO `schema_migrations` (`version`) VALUES ('002_migrate_legacy_data')
 ON DUPLICATE KEY UPDATE `applied_at`=`applied_at`;
 
+  COMMIT;
+END$$
+DELIMITER ;
+
+CALL run_migration_002();
+
 DROP PROCEDURE assert_mapping_parity;
 DROP PROCEDURE preflight_legacy_data;
 DROP PROCEDURE guard_migration_002;
+DROP PROCEDURE run_migration_002;

@@ -60,6 +60,13 @@ top-level calls, and legacy account/backtest entrypoints, then injects the
 context repositories. `龙虎榜_明日遴选` uses the official Dragon Tiger premium
 analytics adapter directly.
 
+Strategy files are trusted application code, not a security sandbox for
+untrusted uploads. The adapter still limits accidental execution: class bodies
+may contain only method declarations, docstrings, `pass`, and safe assignments;
+executable class statements are rejected before compilation. Runtime builtins
+are an explicit minimal set, filesystem helpers such as `open` are absent, and
+the guarded import hook permits only required harmless standard-library modules.
+
 Run against deterministic built-in fixtures:
 
 ```powershell

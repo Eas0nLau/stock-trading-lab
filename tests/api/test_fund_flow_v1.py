@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from types import SimpleNamespace
 
 from stock_lab.modules.fund_flow.api import register_fund_flow_routes
 from stock_lab.modules.fund_flow.service import FundFlowService
@@ -72,3 +73,22 @@ def test_register_routes_does_not_register_legacy_fund_flow_paths():
     paths = {route.path for route in app.routes}
     assert "/api/v1/fund-flow/stream" in paths
     assert not any(path.startswith("/api/zijin") for path in paths)
+
+
+def test_custom_settings_control_fund_flow_service_default_top_n():
+    redis = Redis()
+    repository = FundFlowRepository(redis)
+    repository.save_history("industry", "20260806", [
+        {"time": "10:00", "board_name": "A", "net_inflow_100m": 5},
+        {"time": "10:00", "board_name": "B", "net_inflow_100m": 3},
+    ])
+    app = FastAPI()
+    register_fund_flow_routes(
+        app,
+        settings=SimpleNamespace(fund_flow_history_top_n=1),
+        repository=repository,
+    )
+
+    response = TestClient(app).get("/api/v1/fund-flow/industry/history/20260806")
+
+    assert response.json()["top_n"] == 1

@@ -84,3 +84,36 @@ def test_source_warms_latest_history_for_both_flow_types():
         ("industry", "20260806", 5),
         ("concept", "20260804", 5),
     ]
+
+
+def test_monitor_stop_interrupts_long_wait_and_closes_page():
+    stop_event = threading.Event()
+    waiting = threading.Event()
+    closed = []
+
+    class Page:
+        def close(self):
+            closed.append(True)
+
+    class Source:
+        def collection_interval_seconds(self): return 3600
+        def initialize(self): self.page = Page()
+        def warm_history(self): pass
+        def wait_until_next_run(self, stop_event=None):
+            waiting.set()
+            stop_event.wait(timeout=3600)
+        def close(self): self.page.close()
+
+    source = Source()
+    thread = threading.Thread(
+        target=collector.run_fund_flow_monitor,
+        args=(stop_event,),
+        kwargs={"source": source},
+    )
+    thread.start()
+    assert waiting.wait(timeout=1)
+    stop_event.set()
+    thread.join(timeout=1)
+
+    assert not thread.is_alive()
+    assert closed == [True]

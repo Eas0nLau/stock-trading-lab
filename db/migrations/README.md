@@ -17,7 +17,7 @@ paths are thin wrappers. This is readiness evidence only. Migration `003` was no
 executed as part of the cutover and still requires a stopped application, a fresh
 full backup, successful parity state, sampling, and separate destructive approval.
 
-Each `002` gate compares source/target rows and distinct mapped keys. Date-bearing mappings also compare date ranges; fact mappings compare selected amount, volume, count, or indicator aggregates; JSON mappings verify target validity. A mismatch raises SQLSTATE `45000`. The success validation and `002` version are written only after all gates return, and reruns clear stale success first.
+Each `002` gate compares source/target rows and distinct mapped keys. Date-bearing mappings also compare date ranges; fact mappings compare selected amount, volume, count, or indicator aggregates; JSON mappings verify target validity. Before DML, `002` commits a durable `running` validation. Its transactional procedure rolls back copy DML and commits `failed` plus the MySQL error on any exception; it commits `succeeded` and the `002` version together only after all gates return. Application startup rejects durable `running` or `failed` state.
 
 `ths_boards`, `ths_board_constituents`, and `ths_stock_relations` are archived,
 import-only reference tables. `002_migrate_legacy_data.sql` is their only writer;

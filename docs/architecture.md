@@ -42,7 +42,7 @@ infrastructure -> shared
 
 ## 应用启动
 
-`stock_lab.bootstrap.application.create_app()` 创建 FastAPI 应用。路由只注册一次，worker 只在 lifespan 启动。根目录 `app.py` 保留 `app` 对象和直接启动能力，但不再包含路由或调度实现。
+`stock_lab.bootstrap.application.create_app()` 创建 FastAPI 应用。调用方提供的同一个 `Settings` 对象会显式传给路由、service factory、基础设施 client 和 worker 组装，不会在应用工厂中被忽略或替换为全局配置。路由只注册一次，worker 只在 lifespan 启动。启动时会读取 `002_parity_v1`；`running` 或 `failed` 状态会阻止 worker 和 Web 服务启动。根目录 `app.py` 保留 `app` 对象和直接启动能力，但不再包含路由或调度实现。
 
 MySQL 连接池按第一次查询创建，Redis 客户端创建时不执行网络请求，因此导入模块不会等待外部服务。
 
@@ -56,7 +56,9 @@ MySQL 连接池按第一次查询创建，Redis 客户端创建时不执行网�
 
 ## 数据库
 
-数据库使用版本化 SQL 迁移。`001` 可在中断后重跑，但会根据 `information_schema` 校验完整列和索引签名，已有不兼容表会直接中止。`002` 在复制前校验 legacy JSON 和自由格式营业部统计，显式收敛全部复制列，并为 16 组映射执行行数、去重键、适用日期范围、关键聚合和 JSON gate。只有全部 gate 成功才写入 `002_parity_v1/succeeded` 和迁移版本。应用逐模块切换后，`003` 还必须验证 `001`、`002` 与该成功状态，才允许删除任何旧表。详细流程见 `docs/database-migrations.md`。
+数据库使用版本化 SQL 迁移。`001` 可在中断后重跑，但会根据 `information_schema` 校验完整列和索引签名，已有不兼容表会直接中止。`002` 先持久化 `running`，再在 MySQL 支持事务的 DML 范围内复制和校验；异常 handler 回滚 DML 并持久化 `failed`，只有全部 16 组 gate 成功才提交 `succeeded` 和迁移版本。应用逐模块切换后，`003` 还必须验证 `001`、`002` 与该成功状态，才允许删除任何旧表。详细流程见 `docs/database-migrations.md`。
+
+MySQL 执行、断线有限重试和 DataFrame 批量写入由 `stock_lab.infrastructure.database.operations` 拥有。`utils.db` 仅保留历史名称投影，不实现重试循环或递归写入。
 
 `stock_lab.modules.ths` owns canonical read-only access to `ths_boards`,
 `ths_board_constituents`, and `ths_stock_relations`. These tables are archived

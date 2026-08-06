@@ -122,13 +122,30 @@ class FundFlowSource:
                 logger.warning("Could not warm {} fund-flow history for {}: {}", flow_type, trade_date, error)
         return warmed
 
-    def wait_until_next_run(self, interval_seconds=None):
+    def wait_until_next_run(self, interval_seconds=None, *, stop_event=None):
         interval = interval_seconds or self.collection_interval_seconds()
         now = self.clock()
         elapsed = now.hour * 3600 + now.minute * 60 + now.second + now.microsecond / 1_000_000
         wait_seconds = (interval - elapsed % interval) % interval
         if wait_seconds:
-            self.sleeper(wait_seconds)
+            if stop_event is None:
+                self.sleeper(wait_seconds)
+            else:
+                stop_event.wait(wait_seconds)
+
+    def close(self):
+        page, self.page = self.page, None
+        if page is None:
+            return
+        listener = getattr(page, "listen", None)
+        stop = getattr(listener, "stop", None)
+        try:
+            if callable(stop):
+                stop()
+        finally:
+            close = getattr(page, "close", None)
+            if callable(close):
+                close()
 
     @staticmethod
     def is_collection_time(now):

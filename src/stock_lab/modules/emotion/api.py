@@ -8,13 +8,13 @@ from .contracts import translate_legacy_payload
 from .hot_board import HotBoardConfig
 
 
-def load_current_index_emotion():
+def load_current_index_emotion(*, settings=None):
     from stock_lab.infrastructure.database import create_database_client
 
     from .repository import EmotionRepository
     from .service import EmotionService
 
-    return EmotionService(EmotionRepository(create_database_client().query)).current_index_emotion()
+    return EmotionService(EmotionRepository(create_database_client(settings).query)).current_index_emotion()
 
 
 def load_current_hot_board_emotion(days: int, *, repository=None, settings=None):
@@ -24,7 +24,7 @@ def load_current_hot_board_emotion(days: int, *, repository=None, settings=None)
     if repository is None:
         from stock_lab.infrastructure.database import create_database_client
 
-        repository = EmotionRepository(create_database_client().query)
+        repository = EmotionRepository(create_database_client(settings).query)
     config = HotBoardConfig.from_settings(settings or get_settings())
     return EmotionService(
         repository,
@@ -40,7 +40,12 @@ def register_emotion_routes(
     *,
     index_loader: Callable[[], dict] = load_current_index_emotion,
     hot_board_loader: Callable[[int], dict] = load_current_hot_board_emotion,
+    settings=None,
 ) -> None:
+    if index_loader is load_current_index_emotion:
+        index_loader = lambda: load_current_index_emotion(settings=settings)
+    if hot_board_loader is load_current_hot_board_emotion:
+        hot_board_loader = lambda days: load_current_hot_board_emotion(days, settings=settings)
     @app.get("/api/v1/emotion/current")
     def get_current_emotion():
         return translate_legacy_payload(index_loader())

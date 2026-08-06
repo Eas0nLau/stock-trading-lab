@@ -1,4 +1,5 @@
 import ast
+import builtins
 import importlib
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,38 @@ LEGACY_DAILY_COLUMNS = (
     "change", "pct_chg", "vol", "amount", "stock_name", "total_mv", "circ_mv",
 )
 SAFE_IMPORTS = {"datetime", "decimal", "json", "math", "pathlib"}
+SAFE_BUILTIN_NAMES = {
+    "ArithmeticError", "AssertionError", "AttributeError", "Exception", "IndexError",
+    "KeyError", "LookupError", "NameError", "RuntimeError", "StopIteration",
+    "TypeError", "ValueError", "ZeroDivisionError", "__build_class__", "abs", "all",
+    "any", "bool", "callable", "classmethod", "dict", "enumerate", "filter", "float",
+    "frozenset", "getattr", "hasattr", "hash", "int", "isinstance", "issubclass",
+    "iter", "len", "list", "map", "max", "min", "next", "object", "pow",
+    "property", "range", "repr", "reversed", "round", "set", "setattr", "slice",
+    "sorted", "staticmethod", "str", "sum", "super", "tuple", "type", "zip",
+}
+SAFE_BUILTINS = {name: getattr(builtins, name) for name in SAFE_BUILTIN_NAMES}
+SAFE_RUNTIME_IMPORTS = SAFE_IMPORTS | {"_strptime", "calendar", "locale", "time"}
+
+
+def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if level or name.split(".", 1)[0] not in SAFE_RUNTIME_IMPORTS:
+        raise ImportError(f"strategy runtime import is not allowed: {name}")
+    return builtins.__import__(name, globals, locals, fromlist, level)
+
+
+SAFE_BUILTINS["__import__"] = _safe_import
+
+
+class StrategyDateTime(datetime):
+    @classmethod
+    def strptime(cls, value, format):
+        if format != "%Y%m%d":
+            raise ValueError("strategy runtime only supports %Y%m%d date parsing")
+        value = str(value)
+        if len(value) != 8 or not value.isdigit():
+            raise ValueError(f"time data {value!r} does not match format {format!r}")
+        return cls(int(value[:4]), int(value[4:6]), int(value[6:8]))
 
 
 class SequentialPool:
@@ -163,6 +196,7 @@ def _load_selector_namespace(path, context):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in reachable:
             body.append(node)
         elif isinstance(node, ast.ClassDef):
+            _validate_class_body(node, path)
             body.append(node)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)) and _is_safe_assignment(node):
             body.append(node)
@@ -170,9 +204,9 @@ def _load_selector_namespace(path, context):
     common = CommonProxy(context)
     account = SimpleNamespace(holding_stocks={}, next_date_pre_selection_stocks={"selected_stocks": None, "target_date": None})
     namespace = {
-        "__builtins__": __builtins__, "__file__": str(path), "Path": Path,
+        "__builtins__": dict(SAFE_BUILTINS), "__file__": str(path), "__name__": "__strategy__", "Path": Path,
         "pd": pd, "np": np, "logger": logger,
-        "datetime": datetime, "timedelta": timedelta, "Pool": SequentialPool,
+        "datetime": StrategyDateTime, "timedelta": timedelta, "Pool": SequentialPool,
         "tqdm": lambda values, **kwargs: values, "common": common,
         "timer_statistics": common.timer_statistics,
         "db": DbProxy(context.query_provider), "account": account,
@@ -182,6 +216,8 @@ def _load_selector_namespace(path, context):
         "normalize_symbol": normalize_symbol, "normalize_ts_code": normalize_ts_code,
     }
     _inject_safe_imports(tree, namespace)
+    if namespace.get("datetime") is datetime:
+        namespace["datetime"] = StrategyDateTime
     exec(compile(module, str(path), "exec"), namespace)
     return namespace
 
@@ -198,6 +234,38 @@ def _is_safe_assignment(node):
         if not isinstance(root, ast.Name) or root.id not in safe_roots:
             return False
     return True
+
+
+def _validate_class_body(node, path):
+    for statement in node.body:
+        harmless = isinstance(statement, ast.Pass)
+        harmless = harmless or (
+            isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and not statement.decorator_list
+            and not any(
+                isinstance(item, (ast.Call, ast.Await, ast.Lambda, ast.NamedExpr))
+                for expression in (*statement.args.defaults, *statement.args.kw_defaults)
+                if expression is not None
+                for item in ast.walk(expression)
+            )
+        )
+        harmless = harmless or (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        )
+        harmless = harmless or (
+            isinstance(statement, (ast.Assign, ast.AnnAssign))
+            and _is_safe_assignment(statement)
+            and not any(
+                isinstance(item, (ast.Call, ast.Await, ast.Lambda, ast.NamedExpr, ast.comprehension))
+                for item in ast.walk(statement.value)
+            )
+        )
+        if not harmless:
+            raise ResearchExecutionError(
+                f"{path} class body contains executable statement in {node.name}"
+            )
 
 
 def _reachable_functions(functions, root):
