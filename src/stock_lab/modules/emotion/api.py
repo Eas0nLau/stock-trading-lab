@@ -2,7 +2,10 @@ from collections.abc import Callable
 
 from fastapi import FastAPI
 
+from stock_lab.config import get_settings
+
 from .contracts import translate_legacy_payload
+from .hot_board import HotBoardConfig
 
 
 def load_current_index_emotion():
@@ -14,13 +17,22 @@ def load_current_index_emotion():
     return EmotionService(EmotionRepository(create_database_client().query)).current_index_emotion()
 
 
-def load_current_hot_board_emotion(days: int):
-    from stock_lab.infrastructure.database import create_database_client
-
+def load_current_hot_board_emotion(days: int, *, repository=None, settings=None):
     from .repository import EmotionRepository
     from .service import EmotionService
 
-    return EmotionService(EmotionRepository(create_database_client().query)).hot_board_emotion(days=days)
+    if repository is None:
+        from stock_lab.infrastructure.database import create_database_client
+
+        repository = EmotionRepository(create_database_client().query)
+    config = HotBoardConfig.from_settings(settings or get_settings())
+    return EmotionService(
+        repository,
+        selection_threshold=config.selection_threshold,
+        climax_threshold=config.climax_threshold,
+        strong_continuation_ratio=config.strong_continuation_ratio,
+        excluded_boards=config.excluded_boards,
+    ).hot_board_emotion(days=days)
 
 
 def register_emotion_routes(

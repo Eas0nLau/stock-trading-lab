@@ -20,14 +20,16 @@ class HotBoardConfig:
     minimum_quote_coverage: float = 70.0
     climax_score: float = 100.0
     continuation_weight: float = 0.30
+    excluded_boards: tuple[str, ...] = ("ST板块", "公告", "其他")
 
     @classmethod
-    def from_settings(cls):
-        settings = get_settings()
+    def from_settings(cls, settings=None):
+        settings = settings or get_settings()
         return cls(
             selection_threshold=settings.hot_board_emotion_selection_threshold,
             climax_threshold=settings.hot_board_emotion_climax_threshold,
             strong_continuation_ratio=settings.hot_board_emotion_strong_continuation_ratio,
+            excluded_boards=tuple(settings.hot_board_emotion_excluded_boards),
         )
 
 
@@ -37,7 +39,7 @@ def legacy_runtime_config(config=None):
         "热门板块入选数量阈值": config.selection_threshold,
         "高潮数量阈值": config.climax_threshold,
         "强势延续晋级比例": config.strong_continuation_ratio,
-        "排除板块": [],
+        "排除板块": sorted(config.excluded_boards),
     }
 
 
@@ -63,7 +65,7 @@ def legacy_config_value(name):
         "强势延续晋级比例": config.strong_continuation_ratio,
         "高潮基础分": config.climax_score,
         "晋级涨幅阈值": config.promotion_change_pct,
-        "热门板块排除集合": set(),
+        "热门板块排除集合": set(config.excluded_boards),
     }
     if name == "状态强弱排序":
         from .service import STATE_STRENGTH_RANK
