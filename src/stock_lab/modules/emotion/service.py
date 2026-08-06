@@ -3,6 +3,22 @@ import json
 from .contracts import translate_legacy_payload
 
 
+STATE_STRENGTH_RANK = {
+    "高潮": 100,
+    "强势延续": 90,
+    "良性承接": 80,
+    "升温": 70,
+    "分化": 60,
+    "活跃": 55,
+    "分歧": 40,
+    "数据不足": 30,
+    "退潮": 20,
+    "沉寂": 10,
+    "未上榜": 5,
+    "数据缺失": 0,
+}
+
+
 class EmotionService:
     def __init__(
         self,
@@ -11,12 +27,16 @@ class EmotionService:
         selection_threshold: int = 8,
         climax_threshold: int = 20,
         strong_continuation_ratio: float = 0.5,
+        promotion_change_pct: float = 9.5,
+        climax_score: float = 100.0,
         excluded_boards=("ST板块", "公告", "其他"),
     ):
         self.repository = repository
         self.selection_threshold = selection_threshold
         self.climax_threshold = climax_threshold
         self.strong_continuation_ratio = strong_continuation_ratio
+        self.promotion_change_pct = promotion_change_pct
+        self.climax_score = climax_score
         self.excluded_boards = set(excluded_boards)
 
     def current_index_emotion(self):
@@ -54,6 +74,7 @@ class EmotionService:
             if peak_count < self.selection_threshold:
                 continue
             latest = next((item for item in reversed(trend) if int(item["trade_date"]) == latest_date), trend[-1])
+            recent_strength = _recent_strength(trend)
             climax_dates = [
                 int(item["trade_date"])
                 for item in trend
@@ -66,11 +87,21 @@ class EmotionService:
                 "climax_count": len(climax_dates),
                 "latest_status": latest.get("overall_status"),
                 "latest_emotion_score": latest.get("emotion_score"),
+                "recent_strength": recent_strength,
                 "latest_record": latest,
                 "recent_trend": trend,
+                "sort_value": (
+                    STATE_STRENGTH_RANK.get(latest.get("overall_status"), 0) * 1000
+                    + _float_value(latest.get("emotion_score")) * 5
+                    + recent_strength
+                ),
             })
 
-        boards.sort(key=lambda item: (-(float(item.get("latest_emotion_score") or 0)), -item["peak_count_30d"], item["board_name"]))
+        boards.sort(key=lambda item: (-item["sort_value"], -item["peak_count_30d"], item["board_name"]))
+        for board in boards:
+            board.pop("sort_value")
+        excluded = "、".join(sorted(self.excluded_boards))
+        ratio = self.strong_continuation_ratio * 100
         return {
             "status": "success",
             "latest_trade_date": latest_date,
@@ -83,6 +114,18 @@ class EmotionService:
                 "climax_threshold": self.climax_threshold,
                 "strong_continuation_ratio": self.strong_continuation_ratio,
                 "excluded_boards": sorted(self.excluded_boards),
+            },
+            "methodology": {
+                "hot_board_definition": f"近{len(dates)}个交易日内至少一天板块个股数量达到{self.selection_threshold}只，排除板块：{excluded}",
+                "climax_definition": f"仅当日板块数量达到{self.climax_threshold}只触发，与平均涨幅、晋级率和情绪分无关",
+                "ebb_definition": "上一交易日上榜而当日未上榜时，不受可跟踪样本数量限制，综合状态直接判定为退潮",
+                "strong_continuation_definition": f"旧池晋级家数或新增涨停家数达到上一日股票池的{ratio:.0f}%",
+                "dispersion_definition": f"旧池至少1只继续连板、但未达到{ratio:.0f}%强势延续门槛时判定为分化；当日未上榜仍按退潮处理",
+                "positive_continuation_threshold": f"强势延续或良性承接仅在板块达到{self.selection_threshold}只入选阈值后生效；低热度小样本最多按活跃处理",
+                "emotion_score_methodology": f"当日板块数量贡献0至{self.climax_score:.0f}分，承接指标仅按样本置信度小幅修正；高潮固定为{self.climax_score:.0f}分",
+                "continuation_methodology": "严格使用上一交易日实际落库股票池，统计本交易日平均涨幅、振幅、晋级率等指标",
+                "promotion_definition": f"当日涨幅达到{self.promotion_change_pct:g}%",
+                "stock_universe": "仅统计沪深主板股票，并剔除股票名称中含ST的股票",
             },
         }
 
@@ -121,3 +164,18 @@ def _json_value(value, default):
         return json.loads(value)
     except (TypeError, ValueError, json.JSONDecodeError):
         return default
+
+
+def _recent_strength(trend):
+    scores = [_float_value(item.get("emotion_score")) for item in trend[-3:]]
+    if not scores:
+        return 0.0
+    weights = [0.2, 0.3, 0.5][-len(scores):]
+    return round(sum(score * weight for score, weight in zip(scores, weights)) / sum(weights), 1)
+
+
+def _float_value(value):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0

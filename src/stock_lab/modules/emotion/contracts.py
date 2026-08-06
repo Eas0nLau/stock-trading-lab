@@ -131,6 +131,10 @@ CONTEXT_KEY_MAP = {
     ("score_components", "市场宽度"): "breadth",
     ("methodology", "承接情绪"): "continuation_methodology",
 }
+CANONICAL_KEY_MAP = {target: source for source, target in LEGACY_KEY_MAP.items()}
+CANONICAL_CONTEXT_KEY_MAP = {
+    ("methodology", "continuation_methodology"): "承接情绪",
+}
 
 
 def translate_legacy_payload(value, *, parent_key=None):
@@ -147,4 +151,17 @@ def translate_legacy_payload(value, *, parent_key=None):
         translated_value = translate_legacy_payload(nested, parent_key=target_key)
         if target_key not in translated or translated_value is not None:
             translated[target_key] = translated_value
+    return translated
+
+
+def translate_canonical_payload(value, *, parent_key=None):
+    if isinstance(value, list):
+        return [translate_canonical_payload(item, parent_key=parent_key) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    translated = {}
+    for key, nested in value.items():
+        target_key = CANONICAL_CONTEXT_KEY_MAP.get((parent_key, key), CANONICAL_KEY_MAP.get(key, key))
+        translated[target_key] = translate_canonical_payload(nested, parent_key=key)
     return translated
