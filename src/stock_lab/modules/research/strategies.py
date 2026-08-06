@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -14,6 +14,30 @@ from .source_runtime import run_source_selector
 ROOT = Path(__file__).resolve().parents[4]
 STRATEGY_DIR = ROOT / "strategy"
 LEGACY_CAPABILITIES = ("database", "account")
+STRATEGY_FAMILY_MEMBERS = {
+    "daily_quotes": (
+        "legacy_strategy_001",
+        *(f"legacy_strategy_{index:03d}" for index in range(3, 34)),
+        *(f"legacy_strategy_{index:03d}" for index in range(35, 40)),
+        "legacy_strategy_041",
+        *(f"legacy_strategy_{index:03d}" for index in range(43, 48)),
+        "legacy_strategy_050",
+        "strategy_demo",
+    ),
+    "dragon_tiger": (
+        "legacy_strategy_002", "legacy_strategy_040",
+        *(f"legacy_strategy_{index:03d}" for index in range(52, 57)),
+    ),
+    "jiuyan": ("legacy_strategy_034",),
+    "fund_flow": ("legacy_strategy_042",),
+    "kdj": ("legacy_strategy_048", "legacy_strategy_049"),
+    "dragon_tiger_premium": ("legacy_strategy_057",),
+}
+STRATEGY_FAMILY_BY_IDENTIFIER = {
+    identifier: family
+    for family, identifiers in STRATEGY_FAMILY_MEMBERS.items()
+    for identifier in identifiers
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +50,10 @@ class StrategyMetadata:
     safety_status: str
     requires_target_date: bool
     adapter_family: str = "source_selector"
+    strategy_family: str = field(init=False)
+
+    def __post_init__(self):
+        object.__setattr__(self, "strategy_family", STRATEGY_FAMILY_BY_IDENTIFIER[self.identifier])
 
 
 CATALOG = (

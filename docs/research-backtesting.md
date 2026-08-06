@@ -46,7 +46,11 @@ uv run python -m stock_lab.modules.research list
 
 Each entry has an explicit ASCII English identifier, the original Chinese
 display name, compatibility source path, declared selector, capabilities,
-target-date requirement, and adapter family. The catalog is static.
+target-date requirement, adapter family, and selection-data family. The static
+catalog classifies every entry as `daily_quotes`, `dragon_tiger`, `jiuyan`,
+`fund_flow`, `kdj`, or `dragon_tiger_premium`. Date and parameter variants may
+share a family; tests require at least one non-empty behavioral fixture for
+every declared family in addition to executing all 57 entries offline.
 
 All 57 entries implement the same operation: `entry.run(context)` performs
 single-date selection for `context.target_date` and returns `SelectionResult`.

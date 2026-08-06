@@ -5,7 +5,17 @@ import pytest
 
 from stock_lab.modules.research.providers import OfflineResearchProvider
 from stock_lab.modules.research.results import SelectionResult
-from stock_lab.modules.research.strategies import get_strategy
+from stock_lab.modules.research.strategies import discover_strategies, get_strategy
+
+
+FAMILY_REPRESENTATIVES = {
+    "daily_quotes": "legacy_strategy_003",
+    "dragon_tiger": "legacy_strategy_040",
+    "jiuyan": "legacy_strategy_034",
+    "fund_flow": "legacy_strategy_042",
+    "kdj": "legacy_strategy_048",
+    "dragon_tiger_premium": "legacy_strategy_057",
+}
 
 
 @pytest.mark.parametrize("identifier", [
@@ -56,7 +66,17 @@ def _trend_quotes():
     return quotes
 
 
-@pytest.mark.parametrize("identifier", ["legacy_strategy_003", "legacy_strategy_009", "legacy_strategy_035"])
+def test_non_empty_representatives_cover_every_declared_strategy_family():
+    declared = {entry.metadata.strategy_family for entry in discover_strategies()}
+
+    assert set(FAMILY_REPRESENTATIVES) == declared
+    assert all(
+        get_strategy(identifier).metadata.strategy_family == family
+        for family, identifier in FAMILY_REPRESENTATIVES.items()
+    )
+
+
+@pytest.mark.parametrize("identifier", [FAMILY_REPRESENTATIVES["daily_quotes"], "legacy_strategy_009", "legacy_strategy_035"])
 def test_price_trend_and_new_high_families_select_non_empty_fixture(identifier):
     fixture = {"securities": [_qualified_security()], "daily_quotes": _trend_quotes()}
 
@@ -77,7 +97,9 @@ def test_jiuyan_family_selects_non_empty_fixture():
         }],
     }
 
-    result = get_strategy("legacy_strategy_034").run(OfflineResearchProvider(fixture).context(20260110))
+    result = get_strategy(FAMILY_REPRESENTATIVES["jiuyan"]).run(
+        OfflineResearchProvider(fixture).context(20260110)
+    )
 
     assert result.rows
     assert result.rows[0]["ts_code"] == "000001.SZ"
@@ -96,7 +118,9 @@ def test_fund_flow_family_selects_non_empty_fixture():
         "redis_lists": {"fund_flow:history:20260110": [json.dumps(snapshot)]},
     }
 
-    result = get_strategy("legacy_strategy_042").run(OfflineResearchProvider(fixture).context(20260110))
+    result = get_strategy(FAMILY_REPRESENTATIVES["fund_flow"]).run(
+        OfflineResearchProvider(fixture).context(20260110)
+    )
 
     assert result.rows
     assert result.rows[0]["ts_code"] == "000001.SZ"
@@ -112,13 +136,49 @@ def test_kdj_family_selects_non_empty_fixture():
         ],
     }
 
-    result = get_strategy("legacy_strategy_048").run(OfflineResearchProvider(fixture).context(20260110))
+    result = get_strategy(FAMILY_REPRESENTATIVES["kdj"]).run(
+        OfflineResearchProvider(fixture).context(20260110)
+    )
 
     assert result.rows
     assert result.rows[0]["ts_code"] == "000001.SZ"
 
 
-@pytest.mark.parametrize("identifier", ["legacy_strategy_052", "legacy_strategy_057"])
+def test_dragon_tiger_listing_count_family_uses_canonical_lookup_keys():
+    target_date = 20260120
+    dates = [
+        int((datetime(2026, 1, 20) - timedelta(days=19 - index)).strftime("%Y%m%d"))
+        for index in range(20)
+    ]
+    closes = [20.0] * 15 + [10.2, 10.1, 10.0, 9.9, 10.0]
+    volumes = [1000.0] * 15 + [500.0, 400.0, 300.0, 100.0, 200.0]
+    quotes = [{
+        "ts_code": "000001.SZ", "trade_date": trade_date,
+        "open_price": close - 0.1, "high_price": close + 0.2,
+        "low_price": close - 0.2, "close_price": close,
+        "previous_close": close - 0.1, "change_pct": 1.0,
+        "volume": volume, "turnover": volume * close,
+        "stock_name": "Fixture",
+    } for trade_date, close, volume in zip(dates, closes, volumes)]
+    fixture = {
+        "securities": [_qualified_security()],
+        "daily_quotes": quotes,
+        "dragon_tiger": [{
+            "data_id": f"listing-{index}", "stock_code": "000001",
+            "stock_name": "Fixture", "trade_date": target_date,
+        } for index in range(11)],
+    }
+
+    result = get_strategy(FAMILY_REPRESENTATIVES["dragon_tiger"]).run(
+        OfflineResearchProvider(fixture).context(target_date)
+    )
+
+    assert result.rows
+    assert result.rows[0]["ts_code"] == "000001.SZ"
+    assert result.rows[0]["龙虎榜上榜次数"] == 11
+
+
+@pytest.mark.parametrize("identifier", ["legacy_strategy_052", FAMILY_REPRESENTATIVES["dragon_tiger_premium"]])
 def test_dragon_tiger_premium_family_returns_canonical_qualified_code(identifier):
     latest = 20260110
     brokers = (("B1", "Broker One", "000101"), ("B2", "Broker Two", "000102"), ("B3", "Broker Three", "000103"))

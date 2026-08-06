@@ -108,6 +108,12 @@ class OfflineRedisProxy:
         return []
 
 
+class IniOutputProxy:
+    @staticmethod
+    def 写入列表ini(*args, **kwargs):
+        return None
+
+
 class PremiumAnalysisProxy:
     def __init__(self, context):
         self.context = context
@@ -169,6 +175,7 @@ def _load_selector_namespace(path, context):
         "tqdm": lambda values, **kwargs: values, "common": common,
         "timer_statistics": common.timer_statistics,
         "db": DbProxy(context.query_provider), "account": account,
+        "ini_util": IniOutputProxy(),
         "溢价分析": PremiumAnalysisProxy(context),
         "normalize_symbol": normalize_symbol, "normalize_ts_code": normalize_ts_code,
     }

@@ -25,6 +25,17 @@ def test_registry_discovers_all_legacy_strategy_files_with_ascii_ids():
     assert get_strategy(entries[0].identifier) is entries[0]
 
 
+def test_registry_explicitly_classifies_every_strategy_family():
+    entries = discover_strategies()
+    expected_families = {
+        "daily_quotes", "dragon_tiger", "jiuyan", "fund_flow", "kdj",
+        "dragon_tiger_premium",
+    }
+
+    assert {entry.metadata.strategy_family for entry in entries} == expected_families
+    assert all(entry.metadata.strategy_family for entry in entries)
+
+
 def test_registry_listing_does_not_import_legacy_modules():
     discover_strategies()
     assert not any(name.startswith("strategy_") for name in sys.modules)

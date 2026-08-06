@@ -49,7 +49,7 @@ def _提取整数股票代码集合(codes):
     if codes_series.empty:
         return set()
 
-    return set(codes_series.map(common.normalize_symbol).tolist())
+    return set(codes_series.map(common.normalize_ts_code).tolist())
 
 
 def _生成每日入选股票ini(选中_df, target_date):
@@ -242,7 +242,7 @@ def strategy(filtered_codes, target_date):
     龙虎榜上榜次数 = _加载龙虎榜上榜次数(最终候选池, target_date)
     最终候选池 = [
         code for code in 最终候选池
-        if int(龙虎榜上榜次数.get(common.normalize_symbol(code), 0)) > 龙虎榜上榜次数阈值
+        if int(龙虎榜上榜次数.get(common.normalize_ts_code(code), 0)) > 龙虎榜上榜次数阈值
     ]
     if not 最终候选池:
         logger.warning(f"{target_date} 无近90天龙虎榜上榜次数大于{龙虎榜上榜次数阈值}的股票")
@@ -262,7 +262,7 @@ def strategy(filtered_codes, target_date):
         if 股票代码文本[:2] in ['92', '68', '30']:
             continue
 
-        股票龙虎榜上榜次数 = int(龙虎榜上榜次数.get(common.normalize_symbol(ts_code), 0))
+        股票龙虎榜上榜次数 = int(龙虎榜上榜次数.get(common.normalize_ts_code(ts_code), 0))
 
         单股数据 = 日线数据[日线数据['ts_code'] == ts_code].sort_values('trade_date').reset_index(drop=True).copy()
         if len(单股数据) < 均线天数:
