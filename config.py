@@ -1,90 +1,41 @@
+"""Legacy configuration exports.
 
-import os
-from pathlib import Path
+New code must import ``stock_lab.config.get_settings`` instead.
+"""
 
-from dotenv import load_dotenv
-
-
-project_root = Path(__file__).resolve().parent
-load_dotenv(project_root / ".env", override=False)
+from stock_lab.config import get_settings
 
 
-def _required_env(name):
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"缺少必需环境变量 {name}，请在项目根目录 .env 中配置")
-    return value
+get_settings.cache_clear()
+_settings = get_settings()
 
-
-def _required_int_env(name):
-    value = _required_env(name)
-    try:
-        return int(value)
-    except ValueError as error:
-        raise RuntimeError(f"环境变量 {name} 必须是整数") from error
-
-
+project_root = _settings.project_root
 project_path = str(project_root)
 
-mysql_localhost_host = _required_env("MYSQL_HOST")
-mysql_localhost_port = _required_int_env("MYSQL_PORT")
-mysql_localhost_user = _required_env("MYSQL_USER")
-mysql_localhost_password = _required_env("MYSQL_PASSWORD")
-mysql_localhost_database = _required_env("MYSQL_DATABASE")
+mysql_localhost_host = _settings.mysql.host
+mysql_localhost_port = _settings.mysql.port
+mysql_localhost_user = _settings.mysql.user
+mysql_localhost_password = _settings.mysql.password
+mysql_localhost_database = _settings.mysql.database
 
-ts_token_list = [
-    token.strip()
-    for token in os.getenv("TUSHARE_TOKENS", "").split(",")
-    if token.strip()
-]
+ts_token_list = list(_settings.tushare_tokens)
 ts_token = ts_token_list[0] if ts_token_list else ""
+deepseek_api_key = _settings.deepseek_api_key
+tdx_root = _settings.tdx_root
 
+tdx_cache_refresh_interval_seconds = _settings.tdx_cache_refresh_interval_seconds
+init_url = _settings.init_url
+启动时关闭旧浏览器页面 = _settings.browser_close_old_tabs
+资金流向采集间隔秒 = _settings.fund_flow_interval_seconds
+资金流向历史返回Top数量 = _settings.fund_flow_history_top_n
+东方财富概念排除名单 = list(_settings.concept_exclusions)
+策略选股采集超时秒 = _settings.strategy_pick_timeout_seconds
+策略选股采集最大重试次数 = _settings.strategy_pick_max_retries
+热门板块情绪入选数量阈值 = _settings.hot_board_emotion_selection_threshold
+热门板块情绪高潮数量阈值 = _settings.hot_board_emotion_climax_threshold
+热门板块情绪强势延续晋级比例 = _settings.hot_board_emotion_strong_continuation_ratio
+热门板块情绪排除板块 = list(_settings.hot_board_emotion_excluded_boards)
 
-
-# 通达信客户端安装目录。实时监控脚本会从这里加载 PYPlugins/user/tqcenter.py。
-tdx_root = os.getenv("TDX_ROOT", "").strip()
-
-# 通达信行情缓存刷新间隔，单位：秒。
-# 全局监控和竞价监控共用这个配置；20 表示最多每 20 秒主动 refresh_cache 一次。
-tdx_cache_refresh_interval_seconds = 20
-
-deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
-
-init_url = r"http://localhost:8990"
-
-
-# 程序启动初始化 Chrome 时，关闭同一用户数据目录里上次残留的其他标签页。
-启动时关闭旧浏览器页面 = True
-
-# 资金流向实时采集间隔，单位：秒。20 表示按系统时间对齐到 :00/:20/:40 执行。
-资金流向采集间隔秒 = 60
-
-# 资金流向历史接口每个时间点返回的流入/流出最大条数。
-# 10 表示每个时间点保留流入前 10 和流出前 10；0 表示不过滤。
-资金流向历史返回Top数量 = 10
-
-# 东方财富概念字段通用排除名单。
-# 策略选股监控会过滤字段里的概念；概念资金流向历史接口会过滤同名概念板块。
-东方财富概念排除名单 = [
-    "AB股", "AH股", "A股", "B股", "H股", "创投",
-    "HS300_", "沪股通", "深股通", "融资融券", "转融券标的",
-    "大盘股", "中盘股", "小盘股", "周期股", "题材股", "趋势股",
-    "大盘成长", "大盘价值", "中盘成长", "中盘价值", "小盘成长", "小盘价值",
-    "权重股", "百元股", "基金重仓", "QFII重仓", "养老金", "社保重仓", "股权激励",
-    "央国企改革", "国企改革", "富时罗素", "标准普尔", "MSCI中国",
-    "深成500", "深证100R", "中证500", "中证1000", "中证2000",
-    "上证180_", "上证50_", "上证380", "创业板综", "深证成指", "长期破净", "中特估", "国产芯片",
-    "昨日高振幅", "昨日高换手", "昨日涨停", "昨日涨停_含一字", "昨日首板", "昨日连板", "参股银行",
-    "最近多板", "近期强势", "近期新高", "百日新高", "历史新高", "IPO受益",
-    "东方财富热股", "热门股", "行业龙头", "科技风格", "专精特新", "一带一路", "中俄贸易概念",
-    "小米概念", "显示技术", "虚拟现实", "苹果概念", "智能穿戴", "荣耀概念", "混合现实",
-    "华为概念", "智慧城市", "人工智能", "2025年报预增", "创业成份", "行业龙头", "物联网",
-    "基金重仓", "车联网(车路云)", "超清视频", "2026一季报预增", "湖北自贸", "行业龙头", "并购重组概念",
-    "红利股", "独角兽", "央视50_", "机构重仓", "长江三角", "破净股", "金融地产风格",
-]
-# 东方财富策略选股监控
-策略选股采集超时秒 = 30
-策略选股采集最大重试次数 = 3
 默认策略选股列表 = [
     {
         "id": "eastmoney_1",
@@ -103,15 +54,5 @@ init_url = r"http://localhost:8990"
         "监控时间段": [["09:20", "11:31"], ["13:00", "15:01"]],
         "监控频率秒": 30,
         "启用": True,
-    }
+    },
 ]
-
-
-# 热门板块情绪参数：直接修改下面的数值即可。
-# 入选阈值只决定哪些板块进入近30日观察池；高潮阈值独立判断当日是否高潮。
-热门板块情绪入选数量阈值 = 8
-热门板块情绪高潮数量阈值 = 20
-# 强势延续：旧池晋级或新增涨停达到上一日可跟踪股票池的比例；0.5 表示二分之一。
-热门板块情绪强势延续晋级比例 = 0.5
-热门板块情绪排除板块 = ["ST板块", "公告", "其他"]
-
