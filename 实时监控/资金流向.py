@@ -506,6 +506,16 @@ def _写入资金流向redis(redis_key_prefix, today, current_time_text, records
             pipeline.sadd(获取资金流向轻量快照索引key(redis_key_prefix, today), str(top_n))
 
         pipeline.execute()
+        # Keep the official V1 key in sync while the browser collector remains a legacy adapter.
+        from stock_lab.modules.fund_flow.contracts import translate_legacy_fund_flow
+        from stock_lab.modules.fund_flow.repository import FundFlowRepository
+
+        flow_type = "concept" if redis_key_prefix == "fund_flow_概念" else "industry"
+        FundFlowRepository(db.redis_con_localhost).save_history(
+            flow_type,
+            today,
+            translate_legacy_fund_flow(records),
+        )
         清理资金流向图表缓存(redis_key_prefix, today)
 
 
