@@ -254,6 +254,8 @@ Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 | 策略选股监控 | `/api/strategy-pick/*` | 已实现 |
 | 指数周期 | `/api/emotion/current` | 已实现 |
 | 热门板块情绪 | `/api/hot-board-emotion/current` | 已实现 |
+| 指数情绪 V1 | `/api/v1/emotion/current` | 英文字段，前端已切换 |
+| 热门板块情绪 V1 | `/api/v1/emotion/hot-boards` | 英文字段，前端已切换 |
 
 后端另外提供 `/api/emotion/index/current` 和 `/api/emotion/topic/current`。当前前端指数周期页面使用 `/api/emotion/current` 返回的指数周期结果；独立指数接口和题材周期接口尚未形成单独页面。
 

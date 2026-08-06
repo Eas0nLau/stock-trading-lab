@@ -10,8 +10,12 @@
 | `app.py` 后台线程 | `stock_lab.jobs.realtime_monitor` | 已迁移装配逻辑 |
 | `实时监控/资金流向.py` | `stock_lab.modules.fund_flow` | 待业务模块迁移 |
 | `实时监控/策略选股.py` | `stock_lab.modules.strategy_pick` | 待业务模块迁移 |
-| `实时监控/情绪周期.py` | `stock_lab.modules.emotion` | 待业务模块迁移 |
-| `task/每日更新.py` | `stock_lab.jobs.daily_update` | 待业务模块迁移 |
+| `实时监控/情绪周期.py` | `stock_lab.modules.emotion` | 英文 API 和数据读写已迁移；旧算法暂作适配器 |
+| `实时监控/热门板块情绪.py` | `stock_lab.modules.emotion` | 英文 API 和查询已迁移；旧路由暂时保留 |
+| `task/每日更新.py` | `stock_lab.modules.emotion.jobs` | 情绪 job 已迁移；调度入口仍为兼容文件 |
+| `task/data_sources.py` | `index_daily` / `securities` / `daily_quotes` | 默认写入已切换英文表 |
 | `strategy/` | `stock_lab.modules.research` | 待研究模块迁移 |
 
 兼容文件只允许转发。业务模块完成英文 API、数据库、前端和测试迁移后，更新本表并删除对应旧入口。
+
+前端 `IndexCycle.vue` 和 `HotBoardEmotion.vue` 已使用 `/api/v1/emotion/*` 与英文模型字段。旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 仍供兼容调用，待其他调用方确认后删除。

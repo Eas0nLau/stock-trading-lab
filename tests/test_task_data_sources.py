@@ -26,8 +26,8 @@ def test_index_payload_maps_akshare_columns():
 
     payload = data_sources.标准化指数行(row)
 
-    assert payload["日期"] == 20260805
-    assert payload["涨跌幅"] == 7
+    assert payload["trade_date"] == 20260805
+    assert payload["change_pct"] == 7
 
 
 def test_stock_daily_upsert_key_is_date_and_code():
@@ -45,5 +45,5 @@ def test_stock_daily_upsert_key_is_date_and_code():
 
     payload = data_sources.股票日线记录(row)
 
-    assert payload["ts_code"] == 600000
-    assert payload["data_id"] == "600000_20260805"
+    assert payload["ts_code"] == "600000.SH"
+    assert payload["data_id"] == "600000.SH_20260805"

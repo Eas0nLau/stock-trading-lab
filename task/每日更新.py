@@ -25,15 +25,15 @@ def 韭研公社异动采集(date):
 
 
 def 落库热门板块情绪(date, source_date):
-    from task.emotion_analysis import 落库热门板块情绪 as write_hot_board
+    from stock_lab.modules.emotion.jobs import run_hot_board_emotion_job
 
-    return write_hot_board(date, source_date)
+    return run_hot_board_emotion_job(date, source_date)
 
 
 def 落库指数周期(date):
-    from task.emotion_analysis import 落库指数周期 as write_index
+    from stock_lab.modules.emotion.jobs import run_index_emotion_job
 
-    return write_index(date)
+    return run_index_emotion_job(date)
 
 
 def _date_int(value):

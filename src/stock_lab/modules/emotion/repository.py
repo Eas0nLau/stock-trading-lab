@@ -56,3 +56,78 @@ class EmotionRepository:
             params=tuple(dates),
             fetch=True,
         ) or []
+
+    def index_daily_rows(self, limit: int):
+        rows = self._query(
+            f"""
+            SELECT `trade_date`, `open_price`, `close_price`, `high_price`, `low_price`, `turnover`, `change_pct`
+            FROM `index_daily`
+            ORDER BY `trade_date` DESC
+            LIMIT {int(limit)}
+            """,
+            fetch=True,
+        ) or []
+        return list(reversed(rows))
+
+    def market_breadth_rows(self, limit: int):
+        return self._query(
+            f"""
+            SELECT
+                `trade_date`,
+                COUNT(*) AS `total_count`,
+                SUM(CASE WHEN `change_pct` > 0 THEN 1 ELSE 0 END) AS `up_count`,
+                SUM(CASE WHEN `change_pct` < 0 THEN 1 ELSE 0 END) AS `down_count`,
+                SUM(CASE WHEN `change_pct` >= 5 THEN 1 ELSE 0 END) AS `up_gt5_count`,
+                SUM(CASE WHEN `change_pct` <= -5 THEN 1 ELSE 0 END) AS `down_lt5_count`,
+                SUM(CASE WHEN `previous_close` > 0 AND `close_price` >= ROUND(`previous_close` * 1.10, 2) THEN 1 ELSE 0 END) AS `limit_up_count`,
+                SUM(CASE WHEN `previous_close` > 0 AND `close_price` <= ROUND(`previous_close` * 0.90, 2) THEN 1 ELSE 0 END) AS `limit_down_count`,
+                SUM(`turnover`) AS `amount`,
+                AVG(`change_pct`) AS `avg_pct_chg`
+            FROM `daily_quotes`
+            WHERE `trade_date` IN (
+                SELECT `trade_date` FROM (
+                    SELECT DISTINCT `trade_date`
+                    FROM `daily_quotes`
+                    ORDER BY `trade_date` DESC
+                    LIMIT {int(limit)}
+                ) AS `recent_dates`
+            )
+              AND (CAST(SUBSTRING_INDEX(`ts_code`, '.', 1) AS UNSIGNED) BETWEEN 1 AND 3999
+                   OR CAST(SUBSTRING_INDEX(`ts_code`, '.', 1) AS UNSIGNED) BETWEEN 600000 AND 609999)
+              AND (`stock_name` IS NULL OR `stock_name` NOT LIKE '%ST%')
+            GROUP BY `trade_date`
+            ORDER BY `trade_date`
+            """,
+            fetch=True,
+        ) or []
+
+    def board_action_rows(self, trade_date: int):
+        return self._query(
+            """
+            SELECT `board_name`, `board_stock_count`, `stock_code`, `stock_name`
+            FROM `jiuyan_actions`
+            WHERE `trade_date` = %s
+            ORDER BY `board_name`, `stock_code`
+            """,
+            params=(int(trade_date),),
+            fetch=True,
+        ) or []
+
+    def daily_quote_rows(self, trade_date: int, stock_codes):
+        codes = sorted({str(code).zfill(6) for code in stock_codes if code})
+        if not codes:
+            return {}
+        placeholders = ",".join(["%s"] * len(codes))
+        rows = self._query(
+            f"""
+            SELECT
+                LPAD(SUBSTRING_INDEX(`ts_code`, '.', 1), 6, '0') AS `stock_code`,
+                `previous_close`, `high_price`, `low_price`, `change_pct`
+            FROM `daily_quotes`
+            WHERE `trade_date` = %s
+              AND LPAD(SUBSTRING_INDEX(`ts_code`, '.', 1), 6, '0') IN ({placeholders})
+            """,
+            params=(int(trade_date), *codes),
+            fetch=True,
+        ) or []
+        return {row["stock_code"]: row for row in rows}

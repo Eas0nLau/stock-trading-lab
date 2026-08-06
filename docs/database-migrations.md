@@ -27,3 +27,9 @@
 - 关键金额、成交量和样本数聚合值一致。
 - JSON 字段可以由 MySQL 解析。
 - 新 schema 中不存在非 ASCII 标识符。
+
+## 当前切换状态
+
+`index_daily`、`securities`、`daily_quotes`、`index_market_breadth`、`index_emotion_daily` 和 `hot_board_emotion_daily` 已接入默认数据流水线或新版 API。`jiuyan_actions` 已被新版情绪 job 读取，但采集任务仍需完成写入切换。
+
+龙虎榜、同花顺、KDJ、5 分钟行情、实时监控和研究脚本仍存在旧表引用，因此禁止执行 `003_drop_legacy_schema.sql`。
