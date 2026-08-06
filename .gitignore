@@ -8,6 +8,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+data/
 
 # Node dependency workspace (browser dependencies are vendored under static/)
 node_modules/
