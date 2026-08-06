@@ -19,13 +19,16 @@ def strategy(filtered_codes, target_date):
     # range_days = 45
 
     filtered_codes = []
-    data_list = db.mysql_localhost(f"""
-        SELECT x.* FROM jiuyan_actions x
-        where date = {target_date}
-        AND 板块 NOT IN ('ST板块','ST','其他','公告')
-        AND 板块个股数量 > 10
-        ORDER BY `板块个股数量` DESC,涨停时间 ASC
-    """, fetch=True)
+    data_list = db.mysql_localhost("""
+        SELECT source_code AS code, board_name AS `板块`,
+               board_stock_count AS `板块个股数量`, stock_code AS `股票代码`,
+               stock_name AS `股票名称`, limit_up_at AS `涨停时间`
+        FROM jiuyan_actions
+        WHERE trade_date = %s
+          AND board_name NOT IN ('ST板块','ST','其他','公告')
+          AND board_stock_count > 10
+        ORDER BY board_stock_count DESC, limit_up_at ASC
+    """, params=(int(target_date),), fetch=True)
     板块_top = {}
     for row in data_list:
         if row['code'][2] == '3' or row['code'][2:5] == '688':
@@ -34,7 +37,7 @@ def strategy(filtered_codes, target_date):
             continue
         板块_top[row['板块']] =row
         logger.warning(f"{row['板块']} {row['板块个股数量']} {row['code']} {row['股票名称']} {row['涨停时间']}")
-        filtered_codes.append(row['股票代码'])
+        filtered_codes.append(common.normalize_ts_code(row['股票代码']))
     if not filtered_codes:
         return pd.DataFrame([])
     # 加载日线数据

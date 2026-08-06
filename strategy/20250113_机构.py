@@ -49,7 +49,7 @@ def strategy(filtered_codes, target_date):
             #     机构买入家数 = 2
         if 机构买入家数 >= 1:
             logger.warning(f"{row['股票代码']} {row['股票名称']} 机构买入家数：{机构买入家数}")
-            filtered_codes.append(int(row['股票代码']))
+            filtered_codes.append(common.normalize_ts_code(row['股票代码']))
     if not filtered_codes:
         return pd.DataFrame([])
     # 加载日线数据

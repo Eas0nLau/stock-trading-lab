@@ -65,7 +65,7 @@ def _提取整数代码(代码列表):
     代码序列 = pd.Series(list(代码列表)).astype(str).str.extract(r'(\d+)')[0].dropna()
     if 代码序列.empty:
         return set()
-    return set(代码序列.astype(int).tolist())
+    return set(代码序列.map(common.normalize_ts_code).tolist())
 
 
 def _最近交易日(结束日期参数, 天数):
@@ -86,11 +86,9 @@ def _最近交易日(结束日期参数, 天数):
 
 
 def _加载日线数据(filtered_codes, 交易日列表):
-    交易日元组 = str(tuple([common.normalize_ts_code(i) for i in 交易日列表])).replace(',)', ')')
     股票代码列表 = sorted(_提取整数代码(filtered_codes))
-    代码过滤条件 = ''
-    if 股票代码列表:
-        代码过滤条件 = f"AND sd.ts_code IN {common.stock_code_literals(股票代码列表)}"
+    代码条件, 代码参数 = common.stock_code_filter(股票代码列表, "sd.ts_code")
+    日期占位符 = ", ".join(["%s"] * len(交易日列表))
 
     查询语句 = f"""
         SELECT
@@ -109,8 +107,8 @@ def _加载日线数据(filtered_codes, 交易日列表):
             sb.list_status
         FROM daily_quotes sd
         LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
-        WHERE sd.trade_date IN {交易日元组}
-          {代码过滤条件}
+        WHERE sd.trade_date IN ({日期占位符})
+          AND {代码条件}
           AND sb.market = '主板'
           AND sb.list_status = 'L'
           AND sd.stock_name NOT REGEXP 'ST|退'
@@ -124,7 +122,7 @@ def _加载日线数据(filtered_codes, 交易日列表):
           AND sd.change_pct IS NOT NULL
         ORDER BY sd.ts_code, sd.trade_date
     """
-    return pd.read_sql(查询语句, db.engine)
+    return db.read_sql(查询语句, (*交易日列表, *代码参数))
 
 
 def _计算指标(日线数据):

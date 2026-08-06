@@ -17,7 +17,16 @@ def normalize_ts_code(value):
     if "." in raw:
         symbol, exchange = raw.split(".", 1)
         return f"{symbol.zfill(6)}.{exchange}"
-    return raw.zfill(6) if raw.isdigit() else raw
+    if not raw.isdigit():
+        return raw
+    symbol = raw.zfill(6)
+    if symbol.startswith(("4", "8")) or symbol.startswith("92"):
+        exchange = "BJ"
+    elif symbol.startswith(("5", "6", "9")):
+        exchange = "SH"
+    else:
+        exchange = "SZ"
+    return f"{symbol}.{exchange}"
 
 
 def normalize_symbol(value):
@@ -29,7 +38,8 @@ def stock_code_filter(codes, column="ts_code"):
     if not symbols:
         return "1 = 0", ()
     placeholders = ", ".join(["%s"] * len(symbols))
-    return f"LPAD(SUBSTRING_INDEX(`{column}`, '.', 1), 6, '0') IN ({placeholders})", tuple(symbols)
+    quoted_column = ".".join(f"`{part}`" for part in column.split("."))
+    return f"LPAD(SUBSTRING_INDEX({quoted_column}, '.', 1), 6, '0') IN ({placeholders})", tuple(symbols)
 
 
 def normalize_trade_date(value):

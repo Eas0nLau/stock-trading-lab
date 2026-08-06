@@ -10,7 +10,9 @@ from stock_lab.modules.market_data.helpers import (
 
 def test_normalize_ts_code_preserves_exchange_and_leading_zeroes():
     assert normalize_ts_code(" 000001.sz ") == "000001.SZ"
-    assert normalize_ts_code(1) == "000001"
+    assert normalize_ts_code(1) == "000001.SZ"
+    assert normalize_ts_code("600000") == "600000.SH"
+    assert normalize_ts_code("430001") == "430001.BJ"
 
 
 def test_normalize_symbol_returns_six_digit_code_without_exchange():

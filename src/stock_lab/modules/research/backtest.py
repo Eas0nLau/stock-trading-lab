@@ -59,18 +59,18 @@ def run_backtest(entry, context_factory, start_date, end_date):
     start_date = int(start_date)
     end_date = int(end_date)
     seed_context = context_factory(start_date)
-    dates = [
+    all_dates = sorted({
         int(date)
         for date in seed_context.market_data.market_data.trading_dates(10000)
-        if start_date <= int(date) <= end_date
-    ]
+    })
+    signal_dates = [date for date in all_dates if start_date <= date <= end_date]
     selections = []
     trades = []
-    for signal_date in dates:
+    for signal_date in signal_dates:
         context = context_factory(signal_date)
         selection = entry.run(context)
         selections.append(selection)
-        trade_date = next_trade_date(dates, signal_date)
+        trade_date = next_trade_date(all_dates, signal_date)
         if trade_date is None:
             continue
         for row in selection.rows:

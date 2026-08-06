@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+from stock_lab.modules.market_data.helpers import normalize_ts_code
+
 
 EXCLUDED_BROKER_NAMES = {"深股通专用", "沪股通专用"}
 
@@ -99,4 +101,4 @@ def analyze_broker_premium(
                 )
 
     ranked_codes = sorted(selected_codes, key=lambda code: ranking_scores[code], reverse=True)
-    return [int(code) for code in ranked_codes]
+    return [normalize_ts_code(code) for code in ranked_codes]

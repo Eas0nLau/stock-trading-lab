@@ -55,11 +55,6 @@ from utils import account, common, db
 最大持仓天数 = 10
 
 
-def _sql_in(值列表):
-    值列表 = [common.normalize_ts_code(i) for i in 值列表]
-    return str(tuple(值列表)).replace(',)', ')')
-
-
 def _提取整数代码(代码列表):
     if 代码列表 is None:
         return set()
@@ -73,7 +68,7 @@ def _提取整数代码(代码列表):
     代码序列 = pd.Series(list(代码列表)).astype(str).str.extract(r'(\d+)')[0].dropna()
     if 代码序列.empty:
         return set()
-    return set(代码序列.astype(int).tolist())
+    return set(代码序列.map(common.normalize_ts_code).tolist())
 
 
 def _最近交易日(结束日期参数, 天数):
@@ -95,9 +90,8 @@ def _最近交易日(结束日期参数, 天数):
 
 def _加载日线数据(filtered_codes, 交易日列表):
     股票代码列表 = sorted(_提取整数代码(filtered_codes))
-    代码过滤条件 = ''
-    if 股票代码列表:
-        代码过滤条件 = f"AND sd.ts_code IN {_sql_in(股票代码列表)}"
+    代码条件, 代码参数 = common.stock_code_filter(股票代码列表, "sd.ts_code")
+    日期占位符 = ", ".join(["%s"] * len(交易日列表))
 
     查询语句 = f"""
         SELECT
@@ -127,8 +121,8 @@ def _加载日线数据(filtered_codes, 交易日列表):
                 WHERE circulating_market_value IS NOT NULL
             ) latest_date ON latest_sd.trade_date = latest_date.最新市值日期
         ) mv ON sd.ts_code = mv.ts_code
-        WHERE sd.trade_date IN {_sql_in(交易日列表)}
-          {代码过滤条件}
+        WHERE sd.trade_date IN ({日期占位符})
+          AND {代码条件}
           AND sb.market = '主板'
           AND sb.list_status = 'L'
           AND sd.stock_name NOT REGEXP 'ST|退'
@@ -141,7 +135,7 @@ def _加载日线数据(filtered_codes, 交易日列表):
           AND sd.change_pct IS NOT NULL
         ORDER BY sd.ts_code, sd.trade_date
     """
-    return pd.read_sql(查询语句, db.engine)
+    return db.read_sql(查询语句, (*交易日列表, *代码参数))
 
 
 def _计算指标(日线数据):

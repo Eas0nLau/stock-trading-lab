@@ -61,13 +61,11 @@ def _最近交易日列表(end_date, days):
 
 
 def _读取日线数据(trade_dates, filtered_codes=None):
-    trade_date_tuple = str(tuple([common.normalize_ts_code(i) for i in trade_dates])).replace(',)', ')')
-    code_filter = ''
     codes = sorted(_提取整数股票代码集合(filtered_codes))
-    if codes:
-        code_filter = f"AND sd.ts_code IN {common.stock_code_literals(codes)}"
+    code_clause, code_params = common.stock_code_filter(codes, "sd.ts_code")
+    date_placeholders = ", ".join(["%s"] * len(trade_dates))
 
-    return pd.read_sql(
+    return db.read_sql(
         f"""
             SELECT
                 sd.ts_code,
@@ -84,8 +82,8 @@ def _读取日线数据(trade_dates, filtered_codes=None):
                 sb.list_status
             FROM daily_quotes sd
             LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
-            WHERE sd.trade_date IN {trade_date_tuple}
-              {code_filter}
+            WHERE sd.trade_date IN ({date_placeholders})
+              AND {code_clause}
               AND sb.market = '主板'
               AND sb.list_status = 'L'
               AND sd.open_price IS NOT NULL
@@ -99,7 +97,7 @@ def _读取日线数据(trade_dates, filtered_codes=None):
               AND sd.stock_name NOT REGEXP 'ST|退'
             ORDER BY sd.ts_code, sd.trade_date
         """,
-        db.engine,
+        (*trade_dates, *code_params),
     )
 
 
@@ -284,7 +282,7 @@ def simulated_buy():
         if bought_count >= 单日最多买入数:
             break
 
-        ts_code = int(row.ts_code)
+        ts_code = common.normalize_ts_code(row.ts_code)
         stock_name = str(row.stock_name)
         if ts_code in account.holding_stocks:
             logger.error(f"{stock_name} {ts_code} 已经买过，本策略不允许重复买，跳过")

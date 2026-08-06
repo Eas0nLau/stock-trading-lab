@@ -1,3 +1,6 @@
+import json
+from datetime import datetime, timedelta
+
 import pytest
 
 from stock_lab.modules.research.providers import OfflineResearchProvider
@@ -12,13 +15,111 @@ from stock_lab.modules.research.strategies import get_strategy
     "legacy_strategy_048",  # KDJ
     "legacy_strategy_052",  # Dragon Tiger with intraday confirmation
 ])
-def test_representative_source_families_select_with_offline_context(identifier):
+def test_representative_source_families_execute_with_offline_context(identifier):
     result = get_strategy(identifier).run(OfflineResearchProvider.builtin().context(20260102))
     assert isinstance(result, SelectionResult)
     assert result.strategy_id == identifier
 
 
-def test_dragon_tiger_premium_family_returns_canonical_qualified_code():
+def _qualified_security():
+    return {
+        "ts_code": "000001.SZ", "symbol": "000001", "name": "Fixture",
+        "market": "主板", "list_status": "L",
+    }
+
+
+def _trend_quotes():
+    dates = [
+        int((datetime(2026, 1, 10) - timedelta(days=39 - index)).strftime("%Y%m%d"))
+        for index in range(40)
+    ]
+    quotes = []
+    for index, trade_date in enumerate(dates):
+        close = 10 + index * 0.05
+        high = 15.0 if index == 5 else close + 0.1
+        open_price = close - 0.05
+        change_pct = 1.0
+        if index == 34:
+            open_price = close + 0.05
+            change_pct = -0.5
+        if index == 39:
+            close = 16.0
+            high = 16.2
+            open_price = 15.8
+        quotes.append({
+            "ts_code": "000001.SZ", "trade_date": trade_date,
+            "open_price": open_price, "high_price": high, "low_price": open_price - 0.1,
+            "close_price": close, "previous_close": close - 0.1,
+            "change_pct": change_pct, "volume": 1000 + index,
+            "turnover": 200000 + index * 1000, "stock_name": "Fixture",
+        })
+    return quotes
+
+
+@pytest.mark.parametrize("identifier", ["legacy_strategy_003", "legacy_strategy_009", "legacy_strategy_035"])
+def test_price_trend_and_new_high_families_select_non_empty_fixture(identifier):
+    fixture = {"securities": [_qualified_security()], "daily_quotes": _trend_quotes()}
+
+    result = get_strategy(identifier).run(OfflineResearchProvider(fixture).context(20260110))
+
+    assert result.rows
+    assert result.rows[0]["ts_code"] == "000001.SZ"
+
+
+def test_jiuyan_family_selects_non_empty_fixture():
+    fixture = {
+        "securities": [_qualified_security()],
+        "daily_quotes": _trend_quotes()[-3:],
+        "jiuyan_actions": [{
+            "trade_date": 20260110, "board_name": "Bank", "board_stock_count": 12,
+            "stock_code": "000001", "stock_name": "Fixture", "source_code": "sz000001",
+            "limit_up_at": "09:30:00",
+        }],
+    }
+
+    result = get_strategy("legacy_strategy_034").run(OfflineResearchProvider(fixture).context(20260110))
+
+    assert result.rows
+    assert result.rows[0]["ts_code"] == "000001.SZ"
+
+
+def test_fund_flow_family_selects_non_empty_fixture():
+    snapshot = [{
+        "时间": "09:35", "板块代码": "BK001", "板块名称": "Banks",
+        "龙头": "Fixture", "资金净流入(亿)": 60000,
+    }]
+    fixture = {
+        "securities": [_qualified_security()],
+        "daily_quotes": [{
+            **_trend_quotes()[-1], "total_market_value": 6000000,
+        }],
+        "redis_lists": {"fund_flow:history:20260110": [json.dumps(snapshot)]},
+    }
+
+    result = get_strategy("legacy_strategy_042").run(OfflineResearchProvider(fixture).context(20260110))
+
+    assert result.rows
+    assert result.rows[0]["ts_code"] == "000001.SZ"
+
+
+def test_kdj_family_selects_non_empty_fixture():
+    fixture = {
+        "securities": [_qualified_security()],
+        "daily_quotes": _trend_quotes()[-2:],
+        "kdj_indicators": [
+            {"ts_code": "000001", "trade_date": 20260109, "d_value": 20, "j_value": 10},
+            {"ts_code": "000001", "trade_date": 20260110, "d_value": 10, "j_value": 20},
+        ],
+    }
+
+    result = get_strategy("legacy_strategy_048").run(OfflineResearchProvider(fixture).context(20260110))
+
+    assert result.rows
+    assert result.rows[0]["ts_code"] == "000001.SZ"
+
+
+@pytest.mark.parametrize("identifier", ["legacy_strategy_052", "legacy_strategy_057"])
+def test_dragon_tiger_premium_family_returns_canonical_qualified_code(identifier):
     latest = 20260110
     brokers = (("B1", "Broker One", "000101"), ("B2", "Broker Two", "000102"), ("B3", "Broker Three", "000103"))
     history = []
@@ -42,7 +143,12 @@ def test_dragon_tiger_premium_family_returns_canonical_qualified_code():
         })
     fixture = {
         "securities": [{"ts_code": "000001.SZ", "symbol": "000001", "name": "Fixture"}],
-        "daily_quotes": quotes,
+        "daily_quotes": quotes + [{
+            "ts_code": "000001.SZ", "trade_date": latest, "open_price": 10,
+            "high_price": 11, "low_price": 9, "close_price": 10.5,
+            "previous_close": 10, "change_pct": 5, "volume": 1000,
+            "turnover": 10000, "stock_name": "Fixture",
+        }],
         "dragon_tiger": [{
             "stock_code": "000001", "stock_name": "Fixture", "detail_type": "Reason",
             "trade_date": latest, "buy_1_broker_name": "Broker One",
@@ -53,8 +159,9 @@ def test_dragon_tiger_premium_family_returns_canonical_qualified_code():
     }
     context = OfflineResearchProvider(fixture).context(latest).with_parameters(start_date=20260101)
 
-    result = get_strategy("legacy_strategy_057").run(context)
+    result = get_strategy(identifier).run(context)
 
-    assert result.rows == [{
-        "ts_code": "000001.SZ", "stock_name": "Fixture", "trade_date": latest,
-    }]
+    assert len(result.rows) == 1
+    assert result.rows[0]["ts_code"] == "000001.SZ"
+    assert result.rows[0]["stock_name"] == "Fixture"
+    assert result.rows[0]["trade_date"] == latest

@@ -59,23 +59,24 @@ def test_listings_use_bound_filters_and_canonical_columns():
     )
 
     sql, params, fetch = query.calls[0]
-    assert result[0]["stock_code"] == "000001"
+    assert result[0]["stock_code"] == "000001.SZ"
     assert "FROM `dragon_tiger`" in sql
     assert "`trade_date` >= %s" in sql
-    assert "`stock_code` IN (%s,%s)" in sql
+    assert "LPAD(SUBSTRING_INDEX(`stock_code`, '.', 1), 6, '0') IN (%s, %s)" in sql
     assert params == (20260801, 20260806, "000001", "600000")
     assert fetch is True
 
 
 def test_broker_history_uses_canonical_table_and_broker_filter():
-    query = FakeQuery([])
+    query = FakeQuery([{"stock_code": "600000"}])
 
-    DragonTigerRepository(query).broker_history(20260701, 20260806, ["B2", "B1"])
+    result = DragonTigerRepository(query).broker_history(20260701, 20260806, ["B2", "B1"])
 
     sql, params, _ = query.calls[0]
     assert "FROM `broker_listing_history`" in sql
     assert "`broker_id` IN (%s,%s)" in sql
     assert params == (20260701, 20260806, "B1", "B2")
+    assert result[0]["stock_code"] == "600000.SH"
 
 
 def test_upsert_brokers_uses_schema_fields_and_primary_key():
@@ -96,6 +97,28 @@ def test_empty_upsert_does_not_open_transaction():
 
     assert DragonTigerRepository(FakeQuery(), engine).upsert_brokers([]) == 0
     assert engine.connection.calls == []
+
+
+def test_upsert_listings_persists_canonical_stock_code():
+    engine = FakeEngine()
+
+    DragonTigerRepository(FakeQuery(), engine).upsert_listings([{
+        "data_id": "row-1", "stock_code": "600000",
+    }])
+
+    _, rows = engine.connection.calls[0]
+    assert rows[0]["stock_code"] == "600000.SH"
+
+
+def test_upsert_broker_history_persists_canonical_stock_code():
+    engine = FakeEngine()
+
+    DragonTigerRepository(FakeQuery(), engine).upsert_broker_history([{
+        "data_id": "row-1", "stock_code": "430001",
+    }])
+
+    _, rows = engine.connection.calls[0]
+    assert rows[0]["stock_code"] == "430001.BJ"
 
 
 def test_broker_top_stats_reads_all_canonical_columns():

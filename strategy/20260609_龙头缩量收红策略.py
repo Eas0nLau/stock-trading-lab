@@ -115,25 +115,20 @@ def _加载龙虎榜上榜次数(股票代码列表, target_date):
 
     target_date_obj = datetime.strptime(str(target_date), "%Y%m%d")
     龙虎榜起始日期 = int((target_date_obj - timedelta(days=前期龙头窗口天数)).strftime("%Y%m%d"))
+    code_clause, code_params = common.stock_code_filter(股票代码列表, "stock_code")
     query = f"""
         SELECT `stock_code` AS `股票代码`, COUNT(*) AS `龙虎榜上榜次数`
         FROM `dragon_tiger`
-        WHERE `trade_date` >= {龙虎榜起始日期}
-          AND `trade_date` <= {target_date}
-          AND `stock_code` IN {str(tuple(股票代码列表)).replace(",)", ")")}
+        WHERE `trade_date` >= %s
+          AND `trade_date` <= %s
+          AND {code_clause}
         GROUP BY `stock_code`
     """
-    龙虎榜次数_df = pd.read_sql(query, db.engine)
+    龙虎榜次数_df = db.read_sql(query, (龙虎榜起始日期, int(target_date), *code_params))
     if 龙虎榜次数_df.empty:
         return {}
 
-    龙虎榜次数_df['股票代码'] = (
-        龙虎榜次数_df['股票代码']
-        .astype(str)
-        .str.extract(r'(\d+)')[0]
-        .dropna()
-        .astype(int)
-    )
+    龙虎榜次数_df['股票代码'] = 龙虎榜次数_df['股票代码'].map(common.normalize_ts_code)
     return 龙虎榜次数_df.set_index('股票代码')['龙虎榜上榜次数'].astype(int).to_dict()
 
 

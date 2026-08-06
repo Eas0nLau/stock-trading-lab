@@ -47,12 +47,11 @@ def _读取股票基础信息():
     global _股票基础信息缓存
 
     if _股票基础信息缓存 is None:
-        _股票基础信息缓存 = pd.read_sql(
+        _股票基础信息缓存 = db.read_sql(
             """
                 SELECT ts_code, symbol, name, market, list_status
                 FROM securities
             """,
-            db.engine,
         )
     return _股票基础信息缓存
 
@@ -67,7 +66,7 @@ def _读取最新市值达标股票():
         sql="""
             SELECT MAX(trade_date) AS trade_date
             FROM daily_quotes
-            WHERE total_mv IS NOT NULL
+            WHERE total_market_value IS NOT NULL
         """,
         fetch=True,
     )
@@ -75,23 +74,23 @@ def _读取最新市值达标股票():
         raise ValueError('未找到可用的 total_mv 市值数据')
 
     mv_date = int(result[0]['trade_date'])
-    mv_df = pd.read_sql(
-        f"""
-            SELECT ts_code, total_mv
+    mv_df = db.read_sql(
+        """
+            SELECT ts_code, total_market_value AS total_mv
             FROM daily_quotes
-            WHERE trade_date = {mv_date}
-              AND total_mv IS NOT NULL
-              AND total_mv > {市值阈值_万元}
+            WHERE trade_date = %s
+              AND total_market_value IS NOT NULL
+              AND total_market_value > %s
         """,
-        db.engine,
+        (mv_date, 市值阈值_万元),
     )
     if mv_df.empty:
         raise ValueError(f'最新市值日期 {mv_date} 无市值>{市值阈值_亿元}亿股票')
 
-    mv_df['symbol_int'] = mv_df['ts_code'].map(common.normalize_symbol)
+    mv_df['symbol'] = mv_df['ts_code'].map(common.normalize_symbol)
     mv_df['市值_亿元'] = mv_df['total_mv'] / 10000
     mv_df['市值统计日期'] = mv_date
-    _最新市值达标股票缓存 = mv_df[['symbol_int', 'total_mv', '市值_亿元', '市值统计日期']]
+    _最新市值达标股票缓存 = mv_df[['symbol', 'total_mv', '市值_亿元', '市值统计日期']]
     return _最新市值达标股票缓存
 
 
@@ -162,10 +161,8 @@ def strategy(filtered_codes, target_date):
         logger.warning(f"{target_date} 市值数据不足：{exc}")
         return pd.DataFrame([])
 
-    selected_df['symbol_int'] = pd.to_numeric(selected_df['symbol'], errors='coerce')
-    selected_df = selected_df[selected_df['symbol_int'].notna()].copy()
-    selected_df['symbol_int'] = selected_df['symbol_int'].map(common.normalize_symbol)
-    selected_df = selected_df.merge(市值_df, on='symbol_int', how='inner')
+    selected_df['symbol'] = selected_df['symbol'].map(common.normalize_symbol)
+    selected_df = selected_df.merge(市值_df, on='symbol', how='inner')
     if selected_df.empty:
         logger.warning(
             f"{target_date} {信号时间} 入选龙头无主板、上市状态正常且市值>{市值阈值_亿元}亿的股票"
@@ -189,18 +186,18 @@ def strategy(filtered_codes, target_date):
 
 
 def _读取本地5分k(target_date, ts_code):
-    code = int(str(ts_code).split('.')[0])
-    df = pd.read_sql(
-        f"""
+    code = common.normalize_symbol(ts_code)
+    df = db.read_sql(
+        """
             SELECT trade_date AS date, trade_time AS time, stock_code AS code,
                    open_price AS open, high_price AS high, low_price AS low,
                    close_price AS close, volume, turnover AS amount
             FROM intraday_bars_5m
-            WHERE trade_date = {int(target_date)}
-              AND stock_code = '{code:06d}'
+            WHERE trade_date = %s
+              AND stock_code = %s
             ORDER BY trade_time
         """,
-        db.engine,
+        (int(target_date), code),
     )
     if df.empty:
         return df
@@ -266,15 +263,16 @@ def _价格四舍五入(price):
 
 
 def _读取当日日线(target_date, ts_code):
-    code = int(str(ts_code).split('.')[0])
+    code = common.normalize_symbol(ts_code)
     rows = db.mysql_localhost(
-        sql=f"""
-            SELECT ts_code, trade_date, stock_name, pre_close
+        sql="""
+            SELECT ts_code, trade_date, stock_name, previous_close AS pre_close
             FROM daily_quotes
-            WHERE trade_date = {int(target_date)}
-              AND ts_code = {code}
+            WHERE trade_date = %s
+              AND LPAD(SUBSTRING_INDEX(ts_code, '.', 1), 6, '0') = %s
             LIMIT 1
         """,
+        params=(int(target_date), code),
         fetch=True,
     )
     if not rows:

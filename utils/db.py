@@ -87,6 +87,10 @@ def mysql_localhost(sql=None, params: tuple = None, fetch: bool = False, commit:
                     pass
 
 
+def read_sql(sql, params=None):
+    return pd.read_sql(sql, engine, params=tuple(params or ()))
+
+
 def load_data_infile(db_engine, df, table_name):
     """使用LOAD DATA INFILE（最高效）"""
     # # 保存为CSV

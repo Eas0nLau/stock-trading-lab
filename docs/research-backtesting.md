@@ -27,6 +27,11 @@ context = ResearchContext(
 boundaries return qualified string `ts_code` values and six-character symbols.
 Tests and local experiments can use `OfflineResearchProvider`; it creates an
 in-memory SQLite provider and never opens MySQL, Redis, or a network client.
+Fixture rows for securities, quotes, KDJ, Jiuyan, and Dragon Tiger are
+normalized to qualified exchange codes at this boundary. Offline SQL schema or
+query errors raise `ResearchExecutionError` instead of being treated as empty
+results. Fixtures may also provide `redis_lists` for deterministic strategies
+that consume captured Redis list snapshots.
 
 Pure return calculations are available from `stock_lab.modules.research.backtest`.
 They operate on caller-owned data and do not mutate the legacy global account.
@@ -65,7 +70,9 @@ connection. Configuration failures return nonzero without a traceback.
 
 `backtest` iterates repository trading dates, invokes the same single-date
 selector for each signal date, and calculates next-session open-to-close
-returns. It does not execute legacy global account functions.
+returns. Pricing dates include the first available session after the requested
+signal end date, so an end-date selection can still be evaluated. It does not
+execute legacy global account functions.
 
 Chinese files under `strategy/` remain source-compatible launchers and preserve
 their original display names. They are parsed, not imported, by registry runs.
@@ -78,4 +85,5 @@ Active strategy SQL uses the canonical English schema: `daily_quotes`,
 `broker_top_stats`, and `brokers`. The contract test scans active strategy and
 shared research sources for legacy table names. Additional scans reject integer
 stock-code conversion, raw tuple-based `ts_code IN` clauses, and unnormalized
-daily-quote/security joins.
+daily-quote/security joins. Official stock-code filters use bound parameters;
+strategy execution does not expose a helper for rendering SQL literals.

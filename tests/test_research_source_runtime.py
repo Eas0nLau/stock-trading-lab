@@ -67,3 +67,56 @@ def test_source_runtime_uses_cache_injected_by_provider(tmp_path):
     result = run_source_selector("cached", "缓存", source, context)
 
     assert result.rows == [{"ts_code": "000001.SZ"}]
+
+
+def test_source_runtime_injects_allowlisted_standard_imports(tmp_path):
+    source = tmp_path / "standard_imports.py"
+    source.write_text(
+        "import json\n"
+        "from decimal import Decimal, ROUND_HALF_UP\n"
+        "def strategy(filtered_codes, target_date):\n"
+        "    payload = json.loads('{\"ts_code\": \"1\", \"close\": \"10.55\"}')\n"
+        "    close = Decimal(payload['close']).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)\n"
+        "    return pd.DataFrame([{'ts_code': payload['ts_code'], 'close': float(close)}])\n",
+        encoding="utf-8",
+    )
+
+    result = run_source_selector(
+        "standard_imports", "标准导入", source,
+        OfflineResearchProvider.builtin().context(20260102),
+    )
+
+    assert result.rows == [{"ts_code": "000001.SZ", "close": 10.6}]
+
+
+def test_source_runtime_does_not_hide_name_errors(tmp_path):
+    source = tmp_path / "missing_name.py"
+    source.write_text(
+        "def strategy(filtered_codes, target_date):\n"
+        "    return missing_dependency(filtered_codes)\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(NameError, match="missing_dependency"):
+        run_source_selector(
+            "missing_name", "缺失依赖", source,
+            OfflineResearchProvider.builtin().context(20260102),
+        )
+
+
+def test_source_runtime_executes_parameterized_stock_code_queries(tmp_path):
+    source = tmp_path / "parameterized.py"
+    source.write_text(
+        "def strategy(filtered_codes, target_date):\n"
+        "    clause, params = common.stock_code_filter(filtered_codes)\n"
+        "    rows = db.read_sql(f'SELECT ts_code FROM daily_quotes WHERE {clause}', params)\n"
+        "    return rows\n",
+        encoding="utf-8",
+    )
+
+    result = run_source_selector(
+        "parameterized", "参数化", source,
+        OfflineResearchProvider.builtin().context(20260102),
+    )
+
+    assert result.rows == [{"ts_code": "000001.SZ"}]

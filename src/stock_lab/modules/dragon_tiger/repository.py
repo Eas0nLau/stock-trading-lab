@@ -2,6 +2,8 @@ from dataclasses import asdict, is_dataclass
 
 from sqlalchemy import text
 
+from stock_lab.modules.market_data.helpers import normalize_ts_code, stock_code_filter
+
 from .models import Broker, BrokerListingHistory, BrokerTopStats, DragonTigerListing
 
 
@@ -36,11 +38,13 @@ class DragonTigerRepository:
         if end_date is not None:
             conditions.append("`trade_date` <= %s")
             params.append(int(end_date))
-        codes = sorted({str(code).zfill(6) for code in stock_codes or []})
-        if codes:
-            conditions.append(f"`stock_code` IN ({','.join(['%s'] * len(codes))})")
-            params.extend(codes)
-        return self._select("dragon_tiger", LISTING_COLUMNS, conditions, params, "`trade_date`, `stock_code`, `data_id`")
+        if stock_codes:
+            code_clause, code_params = stock_code_filter(stock_codes, "stock_code")
+            conditions.append(code_clause)
+            params.extend(code_params)
+        return self._normalize_stock_codes(
+            self._select("dragon_tiger", LISTING_COLUMNS, conditions, params, "`trade_date`, `stock_code`, `data_id`")
+        )
 
     def brokers(self):
         rows = self._select("brokers", BROKER_COLUMNS, [], [], "`broker_id`")
@@ -59,8 +63,11 @@ class DragonTigerRepository:
         if ids:
             conditions.append(f"`broker_id` IN ({','.join(['%s'] * len(ids))})")
             params.extend(ids)
-        return self._select(
-            "broker_listing_history", HISTORY_COLUMNS, conditions, params, "`trade_date`, `broker_id`, `data_id`"
+        return self._normalize_stock_codes(
+            self._select(
+                "broker_listing_history", HISTORY_COLUMNS, conditions, params,
+                "`trade_date`, `broker_id`, `data_id`",
+            )
         )
 
     def broker_top_stats(self):
@@ -86,10 +93,22 @@ class DragonTigerRepository:
         sql += f" ORDER BY {order_by}"
         return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
 
+    @staticmethod
+    def _normalize_stock_codes(rows):
+        return [
+            {**row, "stock_code": normalize_ts_code(row["stock_code"])}
+            if row.get("stock_code") else dict(row)
+            for row in rows
+        ]
+
     def _write(self, table, rows, keys):
         rows = [asdict(row) if is_dataclass(row) else dict(row) for row in rows]
         if not rows:
             return 0
+        if table in {"dragon_tiger", "broker_listing_history"}:
+            for row in rows:
+                if row.get("stock_code"):
+                    row["stock_code"] = normalize_ts_code(row["stock_code"])
         columns = list(rows[0])
         values = ", ".join(f":{column}" for column in columns)
         updates = ", ".join(

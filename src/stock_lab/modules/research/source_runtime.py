@@ -1,4 +1,5 @@
 import ast
+import importlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +9,7 @@ import pandas as pd
 from loguru import logger
 
 from stock_lab.modules.dragon_tiger.analytics import analyze_broker_premium
-from stock_lab.modules.market_data.helpers import normalize_symbol, normalize_ts_code
+from stock_lab.modules.market_data.helpers import normalize_symbol, normalize_ts_code, stock_code_filter
 
 from .context import ResearchConfigurationError, ResearchExecutionError
 from .results import SelectionResult
@@ -18,6 +19,7 @@ LEGACY_DAILY_COLUMNS = (
     "ts_code", "trade_date", "open", "high", "low", "close", "pre_close",
     "change", "pct_chg", "vol", "amount", "stock_name", "total_mv", "circ_mv",
 )
+SAFE_IMPORTS = {"datetime", "decimal", "json", "math", "pathlib"}
 
 
 class SequentialPool:
@@ -60,10 +62,7 @@ class CommonProxy:
     normalize_symbol = staticmethod(normalize_symbol)
     normalize_ts_code = staticmethod(normalize_ts_code)
 
-    @staticmethod
-    def stock_code_literals(codes):
-        normalized = sorted({normalize_ts_code(code) for code in codes})
-        return "(" + ", ".join(f"'{code}'" for code in normalized) + ")" if normalized else "(NULL)"
+    stock_code_filter = staticmethod(stock_code_filter)
 
     load_stock_daily_data = load_daily_quotes_data
 
@@ -97,6 +96,9 @@ class DbProxy:
     def mysql_localhost(self, sql=None, params=None, fetch=False, commit=False):
         return self._provider.query(sql, params=params, fetch=fetch, commit=commit)
 
+    def read_sql(self, sql, params=None):
+        return self._provider.read_sql(sql, params=params)
+
 
 class OfflineRedisProxy:
     def get(self, key):
@@ -129,6 +131,8 @@ def run_source_selector(strategy_id, display_name, source_path, context):
     codes = context.market_data.security_codes()
     try:
         selected = strategy(codes, int(context.target_date))
+    except NameError:
+        raise
     except Exception as error:
         raise ResearchExecutionError(f"strategy {strategy_id} failed: {error}") from error
     frame = selected if isinstance(selected, pd.DataFrame) else pd.DataFrame(selected or [])
@@ -168,6 +172,7 @@ def _load_selector_namespace(path, context):
         "溢价分析": PremiumAnalysisProxy(context),
         "normalize_symbol": normalize_symbol, "normalize_ts_code": normalize_ts_code,
     }
+    _inject_safe_imports(tree, namespace)
     exec(compile(module, str(path), "exec"), namespace)
     return namespace
 
@@ -201,3 +206,18 @@ def _reachable_functions(functions, root):
         }
         pending.extend(called - reachable)
     return reachable
+
+
+def _inject_safe_imports(tree, namespace):
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name not in SAFE_IMPORTS:
+                    continue
+                namespace[alias.asname or alias.name] = importlib.import_module(alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module in SAFE_IMPORTS:
+            module = importlib.import_module(node.module)
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                namespace[alias.asname or alias.name] = getattr(module, alias.name)

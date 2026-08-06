@@ -56,11 +56,9 @@ def _最近交易日列表(end_date, days):
 
 
 def _读取日线数据(filtered_codes, trade_dates):
-    trade_date_tuple = str(tuple(trade_dates)).replace(',)', ')')
-    code_filter = ''
     codes = sorted(_提取整数股票代码集合(filtered_codes))
-    if codes:
-        code_filter = f"AND sd.ts_code IN {common.stock_code_literals(codes)}"
+    code_clause, code_params = common.stock_code_filter(codes, "sd.ts_code")
+    date_placeholders = ", ".join(["%s"] * len(trade_dates))
 
     query = f"""
         SELECT
@@ -78,8 +76,8 @@ def _读取日线数据(filtered_codes, trade_dates):
             sb.list_status
         FROM daily_quotes sd
         LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
-        WHERE sd.trade_date IN {trade_date_tuple}
-          {code_filter}
+        WHERE sd.trade_date IN ({date_placeholders})
+          AND {code_clause}
           AND sb.market = '主板'
           AND sb.list_status = 'L'
           AND sd.previous_close > 0
@@ -89,7 +87,7 @@ def _读取日线数据(filtered_codes, trade_dates):
           AND sd.low_price IS NOT NULL
           AND sd.close_price IS NOT NULL
     """
-    return pd.read_sql(query, db.engine)
+    return db.read_sql(query, (*trade_dates, *code_params))
 
 
 def strategy(filtered_codes, target_date):

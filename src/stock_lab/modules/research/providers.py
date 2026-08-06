@@ -10,7 +10,7 @@ from stock_lab.modules.dragon_tiger.repository import HISTORY_COLUMNS, LISTING_C
 from stock_lab.modules.dragon_tiger.repository import DragonTigerRepository
 from stock_lab.modules.market_data.repository import MarketDataRepository
 
-from .context import ResearchContext
+from .context import ResearchContext, ResearchExecutionError
 from .data import ResearchData
 
 
@@ -36,12 +36,12 @@ class OfflineQueryProvider:
     is_offline = True
 
     def __init__(self, tables):
+        self.cache = FixtureRedis(tables.get("redis_lists", {}))
         self.engine = sqlite3.connect(":memory:")
         self.engine.row_factory = sqlite3.Row
         self.engine.create_function("SUBSTRING_INDEX", 3, self._substring_index)
         self.engine.create_function("LPAD", 3, lambda value, size, fill: str(value).rjust(int(size), str(fill)))
         self.engine.create_function("REGEXP", 2, lambda pattern, value: bool(re.search(pattern, str(value or ""))))
-        self.unsupported_queries = []
         for table, columns in TABLE_COLUMNS.items():
             frame = pd.DataFrame(tables.get(table, []), columns=columns)
             frame.to_sql(table, self.engine, index=False, if_exists="replace")
@@ -55,17 +55,34 @@ class OfflineQueryProvider:
         sql = str(sql).replace("%s", "?")
         try:
             cursor = self.engine.execute(sql, tuple(params or ()))
-        except sqlite3.OperationalError:
-            if fetch:
-                self.unsupported_queries.append(sql)
-                return []
-            raise
+        except sqlite3.Error as error:
+            raise ResearchExecutionError(f"offline SQL failed: {error}; SQL: {sql}") from error
         if fetch:
             return [dict(row) for row in cursor.fetchall()]
         if commit:
             self.engine.commit()
             return cursor.rowcount
         return None
+
+    def read_sql(self, sql, params=None):
+        sql = str(sql).replace("%s", "?")
+        try:
+            return pd.read_sql(sql, self.engine, params=tuple(params or ()))
+        except Exception as error:
+            raise ResearchExecutionError(f"offline SQL failed: {error}; SQL: {sql}") from error
+
+
+class FixtureRedis:
+    def __init__(self, lists):
+        self._lists = {str(key): list(values) for key, values in lists.items()}
+
+    def get(self, key):
+        return None
+
+    def lrange(self, key, start, end):
+        values = self._lists.get(str(key), [])
+        stop = None if int(end) == -1 else int(end) + 1
+        return values[int(start):stop]
 
 
 class FixtureMarketDataRepository:
@@ -210,6 +227,9 @@ class LocalQueryProvider:
             cursor.close()
             connection.close()
 
+    def read_sql(self, sql, params=None):
+        return pd.read_sql(sql, self.engine, params=tuple(params or ()))
+
 
 def configured_local_context(target_date):
     from stock_lab.config import get_settings
@@ -231,7 +251,11 @@ def configured_local_context(target_date):
 
 
 def _normalize_fixture(fixture):
-    result = {name: [dict(row) for row in rows] for name, rows in fixture.items()}
+    result = {
+        name: ({str(key): list(values) for key, values in rows.items()}
+               if name == "redis_lists" else [dict(row) for row in rows])
+        for name, rows in fixture.items()
+    }
     securities = []
     for row in result.get("securities", []):
         row["ts_code"] = normalize_ts_code(row.get("ts_code", row.get("symbol")))
@@ -246,4 +270,13 @@ def _normalize_fixture(fixture):
         normalized["data_id"] = row.get("data_id") or f"{normalized['ts_code']}_{row.get('trade_date')}"
         quotes.append(normalized)
     result["daily_quotes"] = quotes
+    for table, column in (
+        ("kdj_indicators", "ts_code"),
+        ("dragon_tiger", "stock_code"),
+        ("broker_listing_history", "stock_code"),
+        ("jiuyan_actions", "stock_code"),
+    ):
+        for row in result.get(table, []):
+            if row.get(column):
+                row[column] = normalize_ts_code(row[column])
     return result

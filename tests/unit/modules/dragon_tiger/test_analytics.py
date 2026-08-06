@@ -77,7 +77,7 @@ def test_analysis_selects_latest_stock_when_three_broker_lineup_has_premium():
 
     result = analyze_broker_premium(20260701, latest_date, repository, market_data)
 
-    assert result == [1]
+    assert result == ["000001.SZ"]
     assert repository.calls[0] == ("listings", {"trade_date": latest_date})
     assert all(call[2] <= latest_date for call in market_data.calls)
 
@@ -147,7 +147,7 @@ def test_analysis_ranks_multiple_reasons_by_highest_qualifying_reason_score():
         minimum_samples=1,
     )
 
-    assert result == [1, 2]
+    assert result == ["000001.SZ", "000002.SZ"]
 
 
 def test_analysis_excludes_brokers_below_minimum_sample_count():

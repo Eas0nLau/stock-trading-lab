@@ -36,13 +36,14 @@ def _提取整数股票代码集合(codes):
 
 def _最近交易日列表(end_date, days):
     rows = db.mysql_localhost(
-        sql=f"""
+        sql="""
             SELECT DISTINCT trade_date
             FROM daily_quotes
-            WHERE trade_date <= {int(end_date)}
+            WHERE trade_date <= %s
             ORDER BY trade_date DESC
-            LIMIT {int(days)}
+            LIMIT %s
         """,
+        params=(int(end_date), int(days)),
         fetch=True,
     )
     trade_dates = sorted([int(row['trade_date']) for row in rows])
@@ -57,7 +58,7 @@ def _读取最新市值达标股票():
         sql="""
             SELECT MAX(trade_date) AS trade_date
             FROM daily_quotes
-            WHERE total_mv IS NOT NULL
+            WHERE total_market_value IS NOT NULL
         """,
         fetch=True,
     )
@@ -65,15 +66,15 @@ def _读取最新市值达标股票():
         raise ValueError('未找到可用的 total_mv 市值数据')
 
     mv_date = int(result[0]['trade_date'])
-    mv_df = pd.read_sql(
-        f"""
-            SELECT ts_code, total_mv
+    mv_df = db.read_sql(
+        """
+            SELECT ts_code, total_market_value AS total_mv
             FROM daily_quotes
-            WHERE trade_date = {mv_date}
-              AND total_mv IS NOT NULL
-              AND total_mv > {市值阈值_万元}
+            WHERE trade_date = %s
+              AND total_market_value IS NOT NULL
+              AND total_market_value > %s
         """,
-        db.engine,
+        (mv_date, 市值阈值_万元),
     )
     if mv_df.empty:
         raise ValueError(f'最新市值日期 {mv_date} 无市值>{市值阈值_亿元}亿股票')
@@ -84,11 +85,9 @@ def _读取最新市值达标股票():
 
 
 def _读取日线数据(filtered_codes, trade_dates):
-    trade_date_tuple = str(tuple(trade_dates)).replace(',)', ')')
-    code_filter = ''
     codes = sorted(_提取整数股票代码集合(filtered_codes))
-    if codes:
-        code_filter = f"AND sd.ts_code IN {common.stock_code_literals(codes)}"
+    code_clause, code_params = common.stock_code_filter(codes, "sd.ts_code")
+    date_placeholders = ", ".join(["%s"] * len(trade_dates))
 
     query = f"""
         SELECT
@@ -107,14 +106,14 @@ def _读取日线数据(filtered_codes, trade_dates):
             sb.name AS basic_name
         FROM daily_quotes sd
         LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
-        WHERE sd.trade_date IN {trade_date_tuple}
-          {code_filter}
+        WHERE sd.trade_date IN ({date_placeholders})
+          AND {code_clause}
           AND sb.market = '主板'
           AND sd.turnover IS NOT NULL
           AND sd.low_price IS NOT NULL
           AND sd.close_price IS NOT NULL
     """
-    return pd.read_sql(query, db.engine)
+    return db.read_sql(query, (*trade_dates, *code_params))
 
 
 def strategy(filtered_codes, target_date):
