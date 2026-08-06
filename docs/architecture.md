@@ -51,7 +51,7 @@ MySQL 连接池按第一次查询创建，Redis 客户端创建时不执行网�
 
 ## 数据库
 
-数据库使用版本化 SQL 迁移。新 schema 先建立，存量数据显式复制和校验，应用逐模块切换后才允许执行旧表删除脚本。详细流程见 `docs/database-migrations.md`。
+数据库使用版本化 SQL 迁移。`001` 可在中断后重跑，但会根据 `information_schema` 校验完整列和索引签名，已有不兼容表会直接中止。`002` 在复制前校验 legacy JSON 和自由格式营业部统计，显式收敛全部复制列，并为 16 组映射执行行数、去重键、适用日期范围、关键聚合和 JSON gate。只有全部 gate 成功才写入 `002_parity_v1/succeeded` 和迁移版本。应用逐模块切换后，`003` 还必须验证 `001`、`002` 与该成功状态，才允许删除任何旧表。详细流程见 `docs/database-migrations.md`。
 
 `stock_lab.modules.ths` owns canonical read-only access to `ths_boards`,
 `ths_board_constituents`, and `ths_stock_relations`. These tables are archived

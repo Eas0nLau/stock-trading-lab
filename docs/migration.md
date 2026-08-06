@@ -93,10 +93,11 @@ by stock code. They expose no write operation and require no database engine.
 
 No runtime THS producer or consumer exists in this repository. The three tables
 are archived reference snapshots populated only by `002_migrate_legacy_data.sql`;
-this status must not be interpreted as a missing collector. Once all three
-source/target row counts and sampled records have parity, the corresponding
-legacy THS tables in `003_drop_legacy_schema.sql` can be removed. The English
-tables remain import-only after legacy retirement.
+this status must not be interpreted as a missing collector. Their executable
+gates compare source/target rows, distinct mapped keys, and collected-date
+ranges. They contribute to `002_parity_v1/succeeded`, which is mandatory before
+`003_drop_legacy_schema.sql` can remove any legacy table. The English tables
+remain import-only after legacy retirement.
 
 Scheduled jobs migration
 ------------------------

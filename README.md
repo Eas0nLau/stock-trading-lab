@@ -231,7 +231,7 @@ flowchart LR
 | `utils/` | 迁移期兼容工具；MySQL 和 Redis 已转发到新基础设施层 |
 | `db/migrations/` | 版本化英文数据库结构和存量数据迁移脚本 |
 | `docs/` | 架构、开发、代码迁移和数据库迁移文档 |
-| `init/` | MySQL/Redis Docker 配置和数据库初始化 SQL |
+| `init/` | MySQL/Redis Docker 配置、自包含英文初始化 SQL 和明确标记的历史数据库转储 |
 | `data/` | 股票基础数据、采集缓存和浏览器用户目录等本地数据 |
 | `output/` | 研究 CSV、策略结果和盘前纪要 INI 等生成物 |
 | `记录/` | 按月份保存的 Excel 记录 |
@@ -271,7 +271,7 @@ Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 
 1. Python 3.12 和 `uv`，运行 `uv sync --all-groups --frozen` 安装依赖。
 2. Node.js 与 npm，运行 `npm --prefix front install` 安装前端依赖。
-3. MySQL 8 和 Redis；新环境使用 `init/stock_trading_lab_v2.sql`，旧库按 `docs/database-migrations.md` 迁移。
+3. MySQL 8 和 Redis；新环境使用自包含的 `init/stock_trading_lab_v2.sql`，旧库只按 `docs/database-migrations.md` 依次执行 `001`/`002`，不得导入历史中文 schema 转储。
 4. 复制 `.env.example` 为 `.env` 并配置 MySQL；可选集成按需要配置。
 5. 确保需要采集的网站可访问；部分页面采集依赖本地浏览器会话。
 
