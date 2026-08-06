@@ -8,12 +8,18 @@ class FakeRedis:
     def __init__(self):
         self.values = {}
         self.sets = {}
+        self.lists = {}
+        self.publish_calls = []
 
     def set(self, key, value): self.values[key] = value
     def get(self, key): return self.values.get(key)
     def sadd(self, key, value): self.sets.setdefault(key, set()).add(value)
     def smembers(self, key): return self.sets.get(key, set())
-    def publish(self, channel, payload): pass
+    def lrange(self, key, start, end): return self.lists.get(key, [])
+    def keys(self, pattern):
+        prefix = pattern.removesuffix("*")
+        return [key for key in self.lists if key.startswith(prefix)]
+    def publish(self, channel, payload): self.publish_calls.append((channel, payload))
 
 
 def test_translates_legacy_snapshot_fields():
@@ -41,3 +47,61 @@ def test_repository_replaces_same_time_snapshot_without_duplicate():
         [{"time": "10:00:00", "board_name": "新"}],
         [{"time": "10:01:00", "board_name": "后续"}],
     ]
+
+
+def test_repository_reads_and_translates_legacy_industry_history():
+    redis = FakeRedis()
+    redis.lists["fund_flow:history:20260805"] = [
+        json.dumps([{"时间": "10:00:00", "板块名称": "机器人", "资金净流入(亿)": 3}])
+    ]
+
+    repository = FundFlowRepository(redis)
+
+    assert repository.history("industry", "20260805") == [[{
+        "time": "10:00:00",
+        "board_name": "机器人",
+        "net_inflow_100m": 3,
+    }]]
+    assert repository.dates("industry") == ["20260805"]
+
+
+def test_repository_reads_and_translates_legacy_concept_history():
+    redis = FakeRedis()
+    redis.lists["fund_flow_概念:history:20260804"] = [
+        json.dumps([{"时间": "10:01:00", "板块名称": "算力", "龙头": "甲"}])
+    ]
+
+    repository = FundFlowRepository(redis)
+
+    assert repository.history("concept", "20260804") == [[{
+        "time": "10:01:00",
+        "board_name": "算力",
+        "leader": "甲",
+    }]]
+    assert repository.dates("concept") == ["20260804"]
+
+
+def test_stream_generator_removes_subscriber_when_closed():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+    baseline = repository.stream_subscriber_count()
+    events = repository.stream_events()
+
+    next(events)
+    assert repository.stream_subscriber_count() == baseline + 1
+    events.close()
+
+    assert repository.stream_subscriber_count() == baseline
+
+
+def test_snapshot_delivery_uses_only_the_in_process_broker():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+    events = repository.stream_events()
+    next(events)
+
+    repository.publish_snapshot("industry", "20260806", "10:00:00", 1)
+
+    assert '"type": "snapshot"' in next(events)
+    assert redis.publish_calls == []
+    events.close()

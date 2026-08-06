@@ -75,7 +75,11 @@ def test_legacy_app_entrypoint_builds_application_without_starting_workers():
     paths = [route.path for route in legacy_app.app.routes]
     assert legacy_app.app.title == "stock_trading_lab_api"
     assert "/api/v1/emotion/current" in paths
+    assert "/api/v1/fund-flow/{flow_type}/dates" in paths
+    assert "/api/v1/fund-flow/{flow_type}/history/{trade_date}" in paths
+    assert "/api/v1/fund-flow/stream" in paths
     assert "/api/emotion/current" not in paths
+    assert not any(path.startswith("/api/zijin") for path in paths)
     assert not any(
         thread.name in {"fund-flow-monitor", "strategy-pick-monitor"}
         for thread in threading.enumerate()

@@ -452,73 +452,17 @@ def init_driver():
 
 
 def _写入资金流向redis(redis_key_prefix, today, current_time_text, records):
-    history_data = json.dumps(records, ensure_ascii=False, separators=(",", ":"))
-    history_key = f"{redis_key_prefix}:history:{today}"
-    default_top_n = 获取资金流向历史返回top数量()
+    from stock_lab.modules.fund_flow.collector import save_legacy_snapshot
+    from stock_lab.modules.fund_flow.repository import FundFlowRepository
 
-    with 资金流向历史缓存锁:
-        last_history = db.redis_con_localhost.lindex(history_key, -1)
-        try:
-            last_snapshot = json.loads(last_history) if last_history else []
-        except Exception:
-            last_snapshot = []
-
-        same_snapshot_time = 获取快照时间(last_snapshot) == current_time_text
-        initialize_compact_history = last_history is None
-        if default_top_n > 0 and last_history and not db.redis_con_localhost.exists(
-            获取资金流向轻量快照key(redis_key_prefix, today, default_top_n)
-        ):
-            # 老历史只有原始快照时，在采集线程中预构建，避免用户首次打开页面等待大数据迁移。
-            logger.info(f"开始预构建 {redis_key_prefix} {today} Top {default_top_n} 轻量历史快照")
-            读取轻量资金流向快照(redis_key_prefix, today, default_top_n)
-
-        compact_top_values = {default_top_n} if default_top_n > 0 else set()
-        for value in db.redis_con_localhost.smembers(
-            获取资金流向轻量快照索引key(redis_key_prefix, today)
-        ):
-            try:
-                top_n = int(value)
-            except (TypeError, ValueError):
-                continue
-            if top_n > 0:
-                compact_top_values.add(top_n)
-
-        pipeline = db.redis_con_localhost.pipeline()
-        pipeline.set(f"{redis_key_prefix}:latest", history_data)
-        if same_snapshot_time:
-            pipeline.lset(history_key, -1, history_data)
-        else:
-            pipeline.rpush(history_key, history_data)
-
-        for top_n in compact_top_values:
-            compact_key = 获取资金流向轻量快照key(redis_key_prefix, today, top_n)
-            has_compact_history = db.redis_con_localhost.exists(compact_key)
-            if not has_compact_history and not initialize_compact_history:
-                continue
-
-            compact_snapshot = 过滤资金流向快照(records, top_n)
-            compact_data = json.dumps(compact_snapshot, ensure_ascii=False, separators=(",", ":"))
-            last_compact = db.redis_con_localhost.lindex(compact_key, -1)
-            if same_snapshot_time and last_compact is not None:
-                pipeline.lset(compact_key, -1, compact_data)
-            else:
-                pipeline.rpush(compact_key, compact_data)
-            pipeline.sadd(获取资金流向轻量快照索引key(redis_key_prefix, today), str(top_n))
-
-        pipeline.execute()
-        # Keep the official V1 key in sync while the browser collector remains a legacy adapter.
-        from stock_lab.modules.fund_flow.collector import save_legacy_snapshot
-        from stock_lab.modules.fund_flow.repository import FundFlowRepository
-
-        flow_type = "concept" if redis_key_prefix == "fund_flow_概念" else "industry"
-        save_legacy_snapshot(
-            FundFlowRepository(db.redis_con_localhost),
-            flow_type,
-            today,
-            current_time_text,
-            records,
-        )
-        清理资金流向图表缓存(redis_key_prefix, today)
+    flow_type = "concept" if redis_key_prefix == "fund_flow_概念" else "industry"
+    save_legacy_snapshot(
+        FundFlowRepository(db.redis_con_localhost),
+        flow_type,
+        today,
+        current_time_text,
+        records,
+    )
 
 
 def _资金流向采集(名称, 页面地址, redis_key_prefix):

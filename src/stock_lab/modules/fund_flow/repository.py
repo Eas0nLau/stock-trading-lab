@@ -2,14 +2,18 @@ import json
 import queue
 import threading
 
+from .legacy_adapter import LegacyFundFlowReadAdapter
 
+
+# The API and collector run as threads in one application process, so one broker owns all subscribers.
 _subscribers = set()
 _subscriber_lock = threading.Lock()
 
 
 class FundFlowRepository:
-    def __init__(self, redis):
+    def __init__(self, redis, legacy_reader=None):
         self.redis = redis
+        self.legacy_reader = legacy_reader if legacy_reader is not None else LegacyFundFlowReadAdapter(redis)
 
     @staticmethod
     def history_key(flow_type, trade_date):
@@ -36,10 +40,16 @@ class FundFlowRepository:
 
     def history(self, flow_type, trade_date):
         value = self.redis.get(self.history_key(flow_type, trade_date))
-        return json.loads(value) if value else None
+        if value:
+            return json.loads(value)
+        return self.legacy_reader.history(flow_type, trade_date)
 
     def dates(self, flow_type):
-        return sorted(self.redis.smembers(self.dates_key(flow_type)))
+        current = {
+            value.decode() if isinstance(value, bytes) else value
+            for value in self.redis.smembers(self.dates_key(flow_type))
+        }
+        return sorted(current | set(self.legacy_reader.dates(flow_type)))
 
     def publish_snapshot(self, flow_type, trade_date, collected_at, record_count):
         event = {
@@ -49,10 +59,6 @@ class FundFlowRepository:
             "collected_at": collected_at,
             "record_count": record_count,
         }
-        encoded = json.dumps(event, ensure_ascii=False)
-        publish = getattr(self.redis, "publish", None)
-        if publish:
-            publish("fund_flow:v1:stream", encoded)
         with _subscriber_lock:
             subscribers = list(_subscribers)
         for subscriber in subscribers:
@@ -81,3 +87,8 @@ class FundFlowRepository:
         finally:
             with _subscriber_lock:
                 _subscribers.discard(subscriber)
+
+    @staticmethod
+    def stream_subscriber_count():
+        with _subscriber_lock:
+            return len(_subscribers)
