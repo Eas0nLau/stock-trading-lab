@@ -1,4 +1,7 @@
+import pytest
+
 from stock_lab.modules.emotion.jobs import run_hot_board_emotion_job, run_index_emotion_job
+from stock_lab.shared.errors import DataValidationError
 
 
 class FakeRepository:
@@ -88,3 +91,11 @@ def test_hot_board_job_writes_english_rows():
     assert row["board_name"] == "机器人"
     assert row["overall_status"] == "强势延续"
     assert row["decision_reasons_json"] == '{"reason": "test"}'
+
+
+def test_index_job_rejects_previous_day_market_breadth():
+    repository = FakeRepository()
+    repository.market_breadth_rows = lambda limit: [{"trade_date": 20260805}]
+
+    with pytest.raises(DataValidationError, match="20260806"):
+        run_index_emotion_job(20260806, repository, lambda *_args: {}, lambda _tables: None)

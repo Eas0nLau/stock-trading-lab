@@ -27,7 +27,10 @@ WHERE `ts_code` IS NOT NULL AND `symbol` IS NOT NULL AND `name` IS NOT NULL
 ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `industry`=VALUES(`industry`), `market`=VALUES(`market`), `list_status`=VALUES(`list_status`);
 
 INSERT INTO `daily_quotes` (`data_id`, `ts_code`, `trade_date`, `open_price`, `high_price`, `low_price`, `close_price`, `previous_close`, `change_amount`, `change_pct`, `volume`, `turnover`, `total_market_value`, `circulating_market_value`, `free_float_shares`, `free_float_market_value`, `stock_name`, `dde_net_amount`)
-SELECT `data_id`, CAST(`ts_code` AS CHAR), `trade_date`, `open`, `high`, `low`, `close`, `pre_close`, `change`, `pct_chg`, `vol`, `amount`, `total_mv`, `circ_mv`, `free_share`, `free_mv`, `stock_name`, `dde`
+SELECT
+  CONCAT(CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END, '_', `trade_date`),
+  CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END,
+  `trade_date`, `open`, `high`, `low`, `close`, `pre_close`, `change`, `pct_chg`, `vol`, `amount`, `total_mv`, `circ_mv`, `free_share`, `free_mv`, `stock_name`, `dde`
 FROM `stock_daily`
 ON DUPLICATE KEY UPDATE `close_price`=VALUES(`close_price`), `volume`=VALUES(`volume`), `turnover`=VALUES(`turnover`), `dde_net_amount`=VALUES(`dde_net_amount`);
 

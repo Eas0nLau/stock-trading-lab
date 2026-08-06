@@ -112,6 +112,18 @@ LEGACY_KEY_MAP = {
     "情绪分口径": "emotion_score_methodology",
     "晋级定义": "promotion_definition",
     "股票范围": "stock_universe",
+    "规则版本": "rule_version",
+    "部分晋级定义": "partial_promotion_definition",
+    "情绪分样本置信度": "emotion_score_sample_confidence",
+    "命中规则": "matched_rules",
+    "阈值": "thresholds",
+    "热门板块入选数量": "selection_count",
+    "高潮数量": "climax_count",
+    "晋级涨幅": "promotion_change_pct",
+    "大涨涨幅": "large_gain_change_pct",
+    "大跌涨幅": "large_loss_change_pct",
+    "最低有效样本数": "minimum_valid_sample_count",
+    "最低行情覆盖率": "minimum_quote_coverage",
 }
 
 

@@ -208,11 +208,27 @@ def 韭研公社异动采集(date):
     for attempt in range(1, 最大尝试次数 + 1):
         try:
             rows = 解析异动响应(_采集响应(int(date)), int(date))
-            columns = [
-                "data_id", "date", "板块", "板块个股数量", "股票代码", "股票名称", "code",
-                "涨停时间", "几天几板", "涨幅", "涨停解析",
+            rows = [
+                {
+                    "data_id": row.get("data_id"),
+                    "trade_date": row.get("date"),
+                    "board_name": row.get("板块"),
+                    "board_stock_count": row.get("板块个股数量"),
+                    "stock_code": str(row.get("股票代码") or "").zfill(6),
+                    "stock_name": row.get("股票名称"),
+                    "source_code": row.get("code"),
+                    "limit_up_at": row.get("涨停时间"),
+                    "board_streak": row.get("几天几板"),
+                    "change_pct": row.get("涨幅"),
+                    "limit_up_reason": row.get("涨停解析"),
+                }
+                for row in rows
             ]
-            return _upsert_rows("t_韭研公社异动解析", columns, rows, ["data_id"])
+            columns = [
+                "data_id", "trade_date", "board_name", "board_stock_count", "stock_code", "stock_name",
+                "source_code", "limit_up_at", "board_streak", "change_pct", "limit_up_reason",
+            ]
+            return _upsert_rows("jiuyan_actions", columns, rows, ["data_id"])
         except Exception as error:
             last_error = error
             logger.warning(f"韭研公社异动采集失败，第 {attempt}/{最大尝试次数} 次：{error}")

@@ -101,3 +101,32 @@ def test_response_date_must_match_requested_date():
 
     with pytest.raises(jiuyan.IncompleteJiuyanResponse, match="响应日期"):
         jiuyan.解析异动响应(response, 20260701)
+def test_collector_writes_english_action_table(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(jiuyan, "_采集响应", lambda _date: {"data": []})
+    monkeypatch.setattr(
+        jiuyan,
+        "解析异动响应",
+        lambda _response, date: [{
+            "data_id": "id-1",
+            "date": date,
+            "板块": "机器人",
+            "板块个股数量": 20,
+            "股票代码": 1,
+            "股票名称": "平安银行",
+            "code": "000001",
+        }],
+    )
+    monkeypatch.setattr(
+        jiuyan,
+        "_upsert_rows",
+        lambda table, columns, rows, keys: captured.update(
+            table=table, columns=columns, rows=rows, keys=keys
+        ) or len(rows),
+    )
+
+    assert jiuyan.韭研公社异动采集(20260806) == 1
+    assert captured["table"] == "jiuyan_actions"
+    assert captured["rows"][0]["stock_code"] == "000001"
+    assert all(column.isascii() for column in captured["columns"])
+

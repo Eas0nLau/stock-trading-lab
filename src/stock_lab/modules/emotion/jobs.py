@@ -17,7 +17,12 @@ def run_index_emotion_job(trade_date, repository=None, calculator=None, writer=N
     trade_date = int(trade_date)
     index_rows = [row for row in repository.index_daily_rows(160) if int(row["trade_date"]) <= trade_date]
     market_rows = [row for row in repository.market_breadth_rows(80) if int(row["trade_date"]) <= trade_date]
-    if not index_rows or not market_rows or int(index_rows[-1]["trade_date"]) != trade_date:
+    if (
+        not index_rows
+        or not market_rows
+        or int(index_rows[-1]["trade_date"]) != trade_date
+        or int(market_rows[-1]["trade_date"]) != trade_date
+    ):
         raise DataValidationError(f"Missing index or market-breadth data for {trade_date}")
 
     legacy_index_rows = [

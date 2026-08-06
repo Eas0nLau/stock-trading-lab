@@ -40,7 +40,17 @@ def test_translate_legacy_hot_board_payload_preserves_nulls_and_values():
         "最新交易日": 20260806,
         "板块列表": [{
             "板块": "机器人",
-            "近期走势": [{"日期": 20260806, "综合状态": "强势延续", "情绪分": None}],
+            "近期走势": [{
+                "日期": 20260806,
+                "综合状态": "强势延续",
+                "情绪分": None,
+                "判定依据": {
+                    "规则版本": "v9",
+                    "部分晋级定义": "definition",
+                    "命中规则": ["rule"],
+                    "阈值": {"最低有效样本数": 3},
+                },
+            }],
         }],
     }
 
@@ -50,4 +60,7 @@ def test_translate_legacy_hot_board_payload_preserves_nulls_and_values():
     assert result["boards"][0]["board_name"] == "机器人"
     assert result["boards"][0]["recent_trend"][0]["overall_status"] == "强势延续"
     assert result["boards"][0]["recent_trend"][0]["emotion_score"] is None
+    reasons = result["boards"][0]["recent_trend"][0]["decision_reasons"]
+    assert reasons["rule_version"] == "v9"
+    assert reasons["thresholds"]["minimum_valid_sample_count"] == 3
     assert all(key.isascii() for key in collect_keys(result))
