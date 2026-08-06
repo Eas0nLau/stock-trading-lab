@@ -353,10 +353,10 @@ git commit -m "完成模块化基础启动改造"
 | `t_指数情绪周期_市场宽度` | `index_market_breadth` |
 | `t_指数情绪周期_每日分析` | `index_emotion_daily` |
 | `t_热门板块情绪_每日分析` | `hot_board_emotion_daily` |
-| `stock_basic` | `stock_basic` |
-| `stock_daily` | `stock_daily` |
-| `stock_kdj` | `stock_kdj` |
-| `t_stock_5_min_k` | `stock_5min` |
+| `stock_basic` | `securities` |
+| `stock_daily` | `daily_quotes` |
+| `stock_kdj` | `kdj_indicators` |
+| `t_stock_5_min_k` | `intraday_bars_5m` |
 | `t_韭研公社异动解析` | `jiuyan_actions` |
 | `t_龙虎榜` | `dragon_tiger` |
 | `t_龙虎榜_营业部_上榜历史数据` | `broker_listing_history` |
