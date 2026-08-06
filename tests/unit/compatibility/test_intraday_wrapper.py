@@ -49,6 +49,7 @@ def test_active_strategy_calls_wrapper_stock_keyword_with_injected_source(monkey
     fake_common = SimpleNamespace(
         load_stock_symbol_ts_code_dict=lambda: {"000001.SZ": "000001.SZ"},
         get_next_date=lambda _date: 20260807,
+        stock_code_literals=lambda codes: "(" + ", ".join(f"'{code}'" for code in codes) + ")",
     )
     fake_account = SimpleNamespace(
         next_date_pre_selection_stocks={

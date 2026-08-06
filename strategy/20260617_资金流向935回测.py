@@ -88,7 +88,7 @@ def _读取最新市值达标股票():
     if mv_df.empty:
         raise ValueError(f'最新市值日期 {mv_date} 无市值>{市值阈值_亿元}亿股票')
 
-    mv_df['symbol_int'] = mv_df['ts_code'].astype(int)
+    mv_df['symbol_int'] = mv_df['ts_code'].map(common.normalize_symbol)
     mv_df['市值_亿元'] = mv_df['total_mv'] / 10000
     mv_df['市值统计日期'] = mv_date
     _最新市值达标股票缓存 = mv_df[['symbol_int', 'total_mv', '市值_亿元', '市值统计日期']]
@@ -164,7 +164,7 @@ def strategy(filtered_codes, target_date):
 
     selected_df['symbol_int'] = pd.to_numeric(selected_df['symbol'], errors='coerce')
     selected_df = selected_df[selected_df['symbol_int'].notna()].copy()
-    selected_df['symbol_int'] = selected_df['symbol_int'].astype(int)
+    selected_df['symbol_int'] = selected_df['symbol_int'].map(common.normalize_symbol)
     selected_df = selected_df.merge(市值_df, on='symbol_int', how='inner')
     if selected_df.empty:
         logger.warning(

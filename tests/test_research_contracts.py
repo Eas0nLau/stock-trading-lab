@@ -38,6 +38,32 @@ def test_daily_quote_security_joins_normalize_qualified_code_to_symbol():
     assert offenders == []
 
 
+def test_strategy_launchers_do_not_convert_stock_codes_to_integers():
+    patterns = (
+        r"\[['\"](?:ts_code|stock_code|股票代码)['\"]\]\s*=\s*[^\n]*\.astype\(int\)",
+        r"(?:codes_series|\.str\.extract\([^\n]+)\.astype\(int\)",
+        r"int\((?:ts_code|stock_code|code|i)\)",
+        r"int\([^\n)]*\[['\"]ts_code['\"]\]\)",
+        r"\[int\(i\)\s+for\s+i\s+in\s+selected_stocks",
+    )
+    offenders = []
+    for path in (ROOT / "strategy").glob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for pattern in patterns:
+            if re.search(pattern, source):
+                offenders.append(f"{path.relative_to(ROOT)}: {pattern}")
+    assert offenders == [], "integer stock codes:\n" + "\n".join(offenders)
+
+
+def test_strategy_launchers_do_not_interpolate_ts_code_in_tuples():
+    offenders = []
+    pattern = r"ts_code\s+IN\s+\{[^\n}]*str\(tuple"
+    for path in (ROOT / "strategy").glob("*.py"):
+        if re.search(pattern, path.read_text(encoding="utf-8"), re.I):
+            offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == [], "literal ts_code filters:\n" + "\n".join(offenders)
+
+
 class FakeMarketData:
     def daily_quotes(self, *args, **kwargs):
         return [{"ts_code": "000001.SZ", "trade_date": 20260102, "close_price": 11}]

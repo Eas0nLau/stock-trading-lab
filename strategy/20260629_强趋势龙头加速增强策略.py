@@ -45,7 +45,7 @@ def _提取整数股票代码集合(codes):
     codes_series = pd.Series(list(codes)).astype(str).str.extract(r'(\d+)')[0].dropna()
     if codes_series.empty:
         return set()
-    return set(codes_series.astype(int).tolist())
+    return set(codes_series.map(common.normalize_symbol).tolist())
 
 
 def _最近交易日列表(end_date, days):
@@ -66,11 +66,11 @@ def _最近交易日列表(end_date, days):
 
 
 def _读取日线数据(filtered_codes, trade_dates):
-    trade_date_tuple = str(tuple([int(i) for i in trade_dates])).replace(',)', ')')
+    trade_date_tuple = str(tuple([common.normalize_ts_code(i) for i in trade_dates])).replace(',)', ')')
     codes = sorted(_提取整数股票代码集合(filtered_codes))
     code_filter = ''
     if codes:
-        code_filter = f"AND sd.ts_code IN {str(tuple(codes)).replace(',)', ')')}"
+        code_filter = f"AND sd.ts_code IN {common.stock_code_literals(codes)}"
 
     query = f"""
         SELECT
@@ -107,7 +107,7 @@ def _读取日线数据(filtered_codes, trade_dates):
 
 def _计算指标(日线数据):
     日线数据 = 日线数据.copy()
-    日线数据['ts_code'] = 日线数据['ts_code'].astype(int)
+    日线数据['ts_code'] = 日线数据['ts_code'].map(common.normalize_symbol)
     日线数据 = 日线数据.sort_values(['ts_code', 'trade_date'])
     group = 日线数据.groupby('ts_code', group_keys=False)
 
@@ -210,7 +210,7 @@ def strategy(filtered_codes, target_date):
     logger.warning(f"入选股票：{' '.join(selected_df['stock_name'].astype(str).tolist())}")
     for _, row in selected_df.iterrows():
         logger.info(
-            f"   → 候选 {row['stock_name']} {int(row['ts_code'])} | "
+            f"   → 候选 {row['stock_name']} {common.normalize_symbol(row['ts_code'])} | "
             f"排序:{int(row['排序'])} | 涨幅:{row['pct_chg']:.2f}% | 近5日:{row['近5日涨幅']:.2f}% | "
             f"成交额:{row['amount']:.2f} | 成交额倍数:{row['成交额倍数']:.2f} | "
             f"收盘位置:{row['收盘位置']:.2f} | 上影线:{row['上影线']:.2f}% | "
@@ -230,7 +230,7 @@ def strategy(filtered_codes, target_date):
 
 
 def buy(name, code, price, buy_date, close_price):
-    code = int(code)
+    code = common.normalize_symbol(code)
     if code in account.holding_stocks and account.holding_stocks[code]['lots'] > 0:
         logger.error(f"{name} {code} 已经持仓，不买了。")
         return False
@@ -291,7 +291,7 @@ def simulated_buy():
     query = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(',)', ')')}
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
           AND trade_date >= {int(target_date)}
           AND trade_date <= {range_date}
         ORDER BY trade_date
@@ -308,7 +308,7 @@ def simulated_buy():
 
     for row in selected_stocks.itertuples(index=False):
         signal_row = row._asdict()
-        ts_code = int(signal_row['ts_code'])
+        ts_code = common.normalize_symbol(signal_row['ts_code'])
         stock_name = str(signal_row['stock_name'])
         if ts_code in account.holding_stocks and account.holding_stocks[ts_code]['lots'] > 0:
             logger.error(f"{stock_name} {ts_code} 已经持仓，不买")
@@ -395,7 +395,7 @@ def simulated_sell(sell_out_fall_threshold=None,
     query = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks])).replace(',)', ')')}
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
           AND trade_date = {int(now_date)}
     """
     now_data = pd.read_sql(query, db.engine)
@@ -403,7 +403,7 @@ def simulated_sell(sell_out_fall_threshold=None,
         stock_info = account.holding_stocks[ts_code]
         if stock_info['lots'] == 0:
             continue
-        stock_now_df = now_data[now_data['ts_code'] == int(ts_code)]
+        stock_now_df = now_data[now_data['ts_code'] == common.normalize_symbol(ts_code)]
         if stock_now_df.empty:
             logger.error(f"{ts_code} {stock_info['name']} {now_date} 当日数据为空")
             continue

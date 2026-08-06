@@ -49,7 +49,7 @@ def process_stock_batch(args):
         股票名称 = 当天数据.get('stock_name', f"未知{ts_code}")
 
         候选列表.append({
-            'ts_code': int(ts_code),
+            'ts_code': common.normalize_symbol(ts_code),
             'stock_name': 股票名称,
             'trade_date': target_date,
             'close': float(当天数据['close']),
@@ -168,7 +168,7 @@ def simulated_buy():
     query = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
@@ -242,7 +242,7 @@ def simulated_sell(sell_out_fall_threshold=None,
         query = f"""
             SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
             FROM daily_quotes
-            WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date

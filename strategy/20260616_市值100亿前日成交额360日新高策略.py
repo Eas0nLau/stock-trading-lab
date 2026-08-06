@@ -31,7 +31,7 @@ def _提取整数股票代码集合(codes):
     if codes_series.empty:
         return set()
 
-    return set(codes_series.astype(int).tolist())
+    return set(codes_series.map(common.normalize_symbol).tolist())
 
 
 def _最近交易日列表(end_date, days):
@@ -78,7 +78,7 @@ def _读取最新市值达标股票():
     if mv_df.empty:
         raise ValueError(f'最新市值日期 {mv_date} 无市值>{市值阈值_亿元}亿股票')
 
-    mv_df['ts_code'] = mv_df['ts_code'].astype(int)
+    mv_df['ts_code'] = mv_df['ts_code'].map(common.normalize_symbol)
     mv_df['市值统计日期'] = mv_date
     return mv_df
 
@@ -88,7 +88,7 @@ def _读取日线数据(filtered_codes, trade_dates):
     code_filter = ''
     codes = sorted(_提取整数股票代码集合(filtered_codes))
     if codes:
-        code_filter = f"AND sd.ts_code IN {str(tuple(codes)).replace(',)', ')')}"
+        code_filter = f"AND sd.ts_code IN {common.stock_code_literals(codes)}"
 
     query = f"""
         SELECT
@@ -167,7 +167,7 @@ def strategy(filtered_codes, target_date):
         return pd.DataFrame([])
 
     日线数据 = 日线数据.copy()
-    日线数据['ts_code'] = 日线数据['ts_code'].astype(int)
+    日线数据['ts_code'] = 日线数据['ts_code'].map(common.normalize_symbol)
     日线数据['stock_name'] = 日线数据['stock_name'].fillna(日线数据['basic_name'])
     日线数据['是否涨停'] = (日线数据['pct_chg'] >= 涨停涨幅阈值) & (日线数据['close'] == 日线数据['high'])
     日线数据['是否跌停'] = (日线数据['pct_chg'] <= 跌停跌幅阈值) & (日线数据['close'] == 日线数据['low'])
@@ -394,7 +394,7 @@ def simulated_buy():
     query = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
@@ -481,7 +481,7 @@ def simulated_sell(sell_out_fall_threshold=None,
         query = f"""
             SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
             FROM daily_quotes
-            WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date

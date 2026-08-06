@@ -22,7 +22,8 @@ class MarketDataRepository:
             sql += " WHERE `market` = %s"
             params = (market,)
         sql += " ORDER BY `symbol`"
-        return self._query(sql, params=params, fetch=True) or []
+        rows = self._query(sql, params=params, fetch=True) or []
+        return [self._normalize_code_row(row, include_symbol=True) for row in rows]
 
     def security_codes(self, market=None):
         return [row["ts_code"] for row in self.securities(market)]
@@ -47,7 +48,8 @@ class MarketDataRepository:
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
         sql += " ORDER BY `trade_date`, `ts_code`"
-        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        rows = self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        return [self._normalize_code_row(row) for row in rows]
 
     def daily_quotes_for_date(self, trade_date, stock_codes):
         return self.daily_quotes(stock_codes, trade_date, trade_date)
@@ -72,7 +74,8 @@ class MarketDataRepository:
             sql += f" ORDER BY `trade_date` DESC LIMIT {int(limit)}) AS `recent_index_daily` ORDER BY `trade_date` ASC"
         else:
             sql += " ORDER BY `trade_date` ASC"
-        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        rows = self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        return rows
 
     def intraday_bars_5m(self, trade_date=None, stock_code=None):
         conditions = []
@@ -87,7 +90,24 @@ class MarketDataRepository:
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
         sql += " ORDER BY `trade_time`"
-        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        rows = self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        return [self._normalize_symbol_row(row, "stock_code") for row in rows]
+
+    @staticmethod
+    def _normalize_code_row(row, include_symbol=False):
+        row = dict(row)
+        if row.get("ts_code") is not None:
+            row["ts_code"] = normalize_ts_code(row["ts_code"])
+            if include_symbol:
+                row["symbol"] = normalize_symbol(row.get("symbol", row["ts_code"]))
+        return row
+
+    @staticmethod
+    def _normalize_symbol_row(row, column):
+        row = dict(row)
+        if row.get(column) is not None:
+            row[column] = normalize_symbol(row[column])
+        return row
 
     def intraday_bars_5m_legacy(self, trade_date, stock_code):
         sql = "SELECT `trade_date` AS `date`, `trade_time` AS `time`, `stock_code` AS `code`, `open_price` AS `open`, `high_price` AS `high`, `low_price` AS `low`, `close_price` AS `close`, `volume`, `turnover` AS `amount`, `adjustment_flag` AS `adjustflag` FROM `intraday_bars_5m` WHERE `trade_date` = %s AND `stock_code` = %s ORDER BY `trade_time`"
@@ -112,7 +132,8 @@ class MarketDataRepository:
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
         sql += " ORDER BY `trade_date`, `ts_code`"
-        return self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        rows = self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        return [self._normalize_code_row(row) for row in rows]
 
     def upsert_securities(self, rows):
         return self._write("securities", rows, ("ts_code",))

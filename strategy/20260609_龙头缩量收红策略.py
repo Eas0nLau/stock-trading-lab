@@ -49,7 +49,7 @@ def _提取整数股票代码集合(codes):
     if codes_series.empty:
         return set()
 
-    return set(codes_series.astype(int).tolist())
+    return set(codes_series.map(common.normalize_symbol).tolist())
 
 
 def _生成每日入选股票ini(选中_df, target_date):
@@ -247,7 +247,7 @@ def strategy(filtered_codes, target_date):
     龙虎榜上榜次数 = _加载龙虎榜上榜次数(最终候选池, target_date)
     最终候选池 = [
         code for code in 最终候选池
-        if int(龙虎榜上榜次数.get(int(code), 0)) > 龙虎榜上榜次数阈值
+        if int(龙虎榜上榜次数.get(common.normalize_symbol(code), 0)) > 龙虎榜上榜次数阈值
     ]
     if not 最终候选池:
         logger.warning(f"{target_date} 无近90天龙虎榜上榜次数大于{龙虎榜上榜次数阈值}的股票")
@@ -267,7 +267,7 @@ def strategy(filtered_codes, target_date):
         if 股票代码文本[:2] in ['92', '68', '30']:
             continue
 
-        股票龙虎榜上榜次数 = int(龙虎榜上榜次数.get(int(ts_code), 0))
+        股票龙虎榜上榜次数 = int(龙虎榜上榜次数.get(common.normalize_symbol(ts_code), 0))
 
         单股数据 = 日线数据[日线数据['ts_code'] == ts_code].sort_values('trade_date').reset_index(drop=True).copy()
         if len(单股数据) < 均线天数:
@@ -320,7 +320,7 @@ def strategy(filtered_codes, target_date):
             continue
 
         候选列表.append({
-            'ts_code': int(ts_code),
+            'ts_code': common.normalize_symbol(ts_code),
             'stock_name': 股票名称,
             'trade_date': target_date,
             'close': float(当天数据['close']),
@@ -428,7 +428,7 @@ def simulated_buy():
     query = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
@@ -515,7 +515,7 @@ def simulated_sell(sell_out_fall_threshold=None,
         query = f"""
             SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
             FROM daily_quotes
-            WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date

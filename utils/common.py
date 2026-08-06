@@ -11,10 +11,18 @@ from loguru import logger
 from plotly.subplots import make_subplots
 from sqlalchemy import text
 from utils import db, account
-from stock_lab.modules.market_data.helpers import normalize_symbol, stock_code_filter
+from stock_lab.modules.market_data.helpers import normalize_symbol, normalize_ts_code, stock_code_filter
 
 securities_csv_path = f'{config.project_path}/data/securities.csv'
 stock_basic_csv_path = securities_csv_path
+
+
+def stock_code_literals(codes):
+    """Render validated canonical codes for compatibility-only SQL launchers."""
+    normalized = sorted({normalize_ts_code(code) for code in codes})
+    if not normalized:
+        return "(NULL)"
+    return "(" + ", ".join(f"'{code}'" for code in normalized) + ")"
 
 
 def get_tushare_pro():

@@ -20,7 +20,7 @@
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
 | KDJ 更新与策略 SQL | `stock_lab.jobs.kdj_indicators` / `kdj_indicators` | 已切换英文任务、列名和表名 |
 | `游资溢价分析/` | `stock_lab.modules.dragon_tiger` | canonical models, parsers, repositories, collectors, and premium analysis migrated; executable paths are thin adapters |
-| `strategy/` | `stock_lab.modules.research` | 待研究模块迁移 |
+| `strategy/` | `stock_lab.modules.research` | 57 个单日选股 adapter、共享回测编排、本地/离线 provider 已迁移；中文源文件保留参数和展示名称 |
 
 TDX monitor migration
 ---------------------
@@ -45,9 +45,9 @@ for existing strategy callers and may expose legacy-shaped aliases only after th
 repository query. A bare numeric code is padded to six digits; an exchange suffix is
 preserved, so `1.SZ` becomes `000001.SZ` and never becomes an integer.
 
-The 57 strategy files, TDX monitor files, and unrelated research SQL remain deferred
-consumers. They can migrate to the repository interfaces without depending on the
-legacy tables.
+The 57 strategy files run through `stock_lab.modules.research` adapters. They use
+canonical string stock codes, English tables, normalized joins, and injected local
+or offline data providers. TDX compatibility launchers remain separate consumers.
 
 Five-minute bars and KDJ
 -----------------------

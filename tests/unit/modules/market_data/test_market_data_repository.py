@@ -33,6 +33,16 @@ def test_daily_quotes_query_uses_canonical_columns_and_preserves_code():
     assert "stock_daily" not in sql
 
 
+def test_repository_normalizes_codes_at_read_boundary():
+    query = FakeQuery([{"ts_code": "1.sz", "symbol": "1", "trade_date": 20260806}])
+    repository = MarketDataRepository(query)
+
+    assert repository.securities()[0]["ts_code"] == "000001.SZ"
+    assert repository.securities()[0]["symbol"] == "000001"
+    assert repository.daily_quotes()[0]["ts_code"] == "000001.SZ"
+    assert repository.kdj_indicators()[0]["ts_code"] == "000001.SZ"
+
+
 def test_daily_quotes_bare_symbol_matches_exchange_qualified_storage():
     query = FakeQuery([])
 

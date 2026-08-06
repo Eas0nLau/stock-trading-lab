@@ -56,7 +56,7 @@ from utils import account, common, db
 
 
 def _sql_in(值列表):
-    值列表 = [int(i) for i in 值列表]
+    值列表 = [common.normalize_ts_code(i) for i in 值列表]
     return str(tuple(值列表)).replace(',)', ')')
 
 
@@ -146,7 +146,7 @@ def _加载日线数据(filtered_codes, 交易日列表):
 
 def _计算指标(日线数据):
     日线数据 = 日线数据.copy()
-    日线数据['ts_code'] = 日线数据['ts_code'].astype(int)
+    日线数据['ts_code'] = 日线数据['ts_code'].map(common.normalize_symbol)
     日线数据 = 日线数据.sort_values(['ts_code', 'trade_date'])
     分组 = 日线数据.groupby('ts_code', group_keys=False)
 
@@ -289,7 +289,7 @@ def strategy(filtered_codes, target_date):
     logger.warning(f"入选股票：{' '.join(选中数据['stock_name'].astype(str).tolist())}")
     for _, 行 in 选中数据.iterrows():
         logger.info(
-            f"   → 候选 {行['stock_name']} {int(行['ts_code'])} | "
+            f"   → 候选 {行['stock_name']} {common.normalize_symbol(行['ts_code'])} | "
             f"排序:{int(行['排序'])} | 信号:{行['信号类型']} | "
             f"成交额:{行['amount']:.2f} | 市值:{行['最新流通市值']:.2f} | "
             f"涨幅:{行['pct_chg']:.2f}% | close:{行['close']:.2f} | "
@@ -360,7 +360,7 @@ def _计算买入止损价(买入价, 信号防守价):
 
 
 def buy(name, code, price, buy_date, close_price, signal_row):
-    code = int(code)
+    code = common.normalize_symbol(code)
     if not 允许重复买入 and code in account.holding_stocks:
         logger.error(f"{name} {code} 已经买过，本 demo 不允许重复买，不买了。")
         return False
@@ -463,7 +463,7 @@ def simulated_buy(now_date=None, 执行时间=None, 是否清空预选池=True):
     查询语句 = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
         FROM daily_quotes
-        WHERE ts_code IN {_sql_in(selected_stocks['ts_code'].tolist())}
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
           AND trade_date = {int(buy_date)}
     """
     买入日数据 = pd.read_sql(查询语句, db.engine)
@@ -477,7 +477,7 @@ def simulated_buy(now_date=None, 执行时间=None, 是否清空预选池=True):
             logger.warning(f"当前持仓已达到 {最大仓位数} 仓，停止买入")
             break
 
-        ts_code = int(候选['ts_code'])
+        ts_code = common.normalize_symbol(候选['ts_code'])
         stock_name = str(候选['stock_name'])
         if not 允许重复买入 and ts_code in account.holding_stocks:
             logger.error(f"{stock_name} {ts_code} 已经买过，本 demo 不允许重复买，跳过")
@@ -608,7 +608,7 @@ def _减半仓(持仓信息, ts_code, price, now_date, 原因):
 def simulated_sell(now_date=None, 执行时间=None):
     执行时间 = 执行时间 or _标准化执行时间列表(卖出执行时间, '卖出执行时间')[0]
     logger.warning(f"检查持仓卖出/减仓逻辑 开始 | 执行时间:{执行时间}")
-    持仓代码列表 = [int(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
+    持仓代码列表 = [common.normalize_symbol(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
     if not 持仓代码列表:
         logger.warning("检查持仓卖出/减仓逻辑 完成")
         return

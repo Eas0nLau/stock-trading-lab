@@ -136,7 +136,7 @@ _5_韭研公社异动.韭研公社异动采集(start_date)
 
 这些脚本主要是独立研究程序，不属于网页端实时策略管理功能。
 
-官方研究入口为 `stock_lab.modules.research`：它提供注入式行情/龙虎榜数据访问、纯回测基础能力、57 个策略的静态英文标识注册表，以及不会自动连接数据库或网络的 CLI。未完成上下文迁移的中文兼容启动器会在导入前被安全拒绝；只有显式声明 `run(context)` 的策略才可运行。策略研究文档见 `docs/research-backtesting.md`。`strategy/` 中的中文文件继续作为兼容启动器，并保留中文展示名称。
+官方研究入口为 `stock_lab.modules.research`：它提供注入式行情/龙虎榜数据访问、共享回测编排、57 个可执行策略的静态英文标识注册表，以及显式选择本地或离线数据源的 CLI。所有策略统一通过 `run(context)` 对 `context.target_date` 执行单日选股；日期区间模拟由共享 backtest runner 完成，不再调用历史全局账户。可用 `uv run python -m stock_lab.modules.research run strategy_demo --target-date 20260102 --offline` 直接运行内置夹具，或使用 `--provider local` 读取已配置的 MySQL。策略研究文档见 `docs/research-backtesting.md`。`strategy/` 中的中文文件继续保留原展示名称和策略参数。
 
 常见比较好理解的策略有：新高策略、量窒息策略等。
 
@@ -225,8 +225,8 @@ flowchart LR
 | `front/` | Vue 前端，包含资金流向、策略监控、指数周期和热门板块情绪页面 |
 | `实时监控/` | 迁移期兼容目录；新业务实现不再写入这里 |
 | `task/` | 迁移期批量任务兼容目录 |
-| `strategy/` | 待迁移的独立选股、回测和策略验证脚本 |
-| `游资溢价分析/` | 待迁移的龙虎榜、营业部和历史溢价分析 |
+| `strategy/` | 由正式研究注册表适配的中文策略源文件和兼容启动器 |
+| `游资溢价分析/` | 已由正式龙虎榜仓储与分析服务适配的历史入口 |
 | `utils/` | 迁移期兼容工具；MySQL 和 Redis 已转发到新基础设施层 |
 | `db/migrations/` | 版本化英文数据库结构和存量数据迁移脚本 |
 | `docs/` | 架构、开发、代码迁移和数据库迁移文档 |

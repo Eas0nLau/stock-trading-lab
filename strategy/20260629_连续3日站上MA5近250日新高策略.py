@@ -77,11 +77,11 @@ def _最近交易日(结束日期参数, 天数):
 
 
 def _加载日线数据(filtered_codes, 交易日列表):
-    交易日元组 = str(tuple([int(i) for i in 交易日列表])).replace(',)', ')')
+    交易日元组 = str(tuple([common.normalize_ts_code(i) for i in 交易日列表])).replace(',)', ')')
     股票代码列表 = sorted(_提取整数代码(filtered_codes))
     代码过滤条件 = ''
     if 股票代码列表:
-        代码过滤条件 = f"AND sd.ts_code IN {str(tuple(股票代码列表)).replace(',)', ')')}"
+        代码过滤条件 = f"AND sd.ts_code IN {common.stock_code_literals(股票代码列表)}"
 
     查询语句 = f"""
         SELECT
@@ -118,7 +118,7 @@ def _加载日线数据(filtered_codes, 交易日列表):
 
 def _计算指标(日线数据):
     日线数据 = 日线数据.copy()
-    日线数据['ts_code'] = 日线数据['ts_code'].astype(int)
+    日线数据['ts_code'] = 日线数据['ts_code'].map(common.normalize_symbol)
     日线数据 = 日线数据.sort_values(['ts_code', 'trade_date'])
     分组 = 日线数据.groupby('ts_code', group_keys=False)
 
@@ -221,7 +221,7 @@ def strategy(filtered_codes, target_date):
     logger.warning(f"入选股票：{' '.join(选中数据['stock_name'].astype(str).tolist())}")
     for _, 行 in 选中数据.iterrows():
         logger.info(
-            f"   → 候选 {行['stock_name']} {int(行['ts_code'])} | "
+            f"   → 候选 {行['stock_name']} {common.normalize_symbol(行['ts_code'])} | "
             f"排序:{int(行['排序'])} | 成交额:{行['amount']:.2f} | "
             f"涨幅:{行['pct_chg']:.2f}% | close:{行['close']:.2f} | "
             f"{均线列名.upper()}:{行[均线列名]:.2f} | "
@@ -248,7 +248,7 @@ def _当前持仓数量():
 
 
 def buy(name, code, price, buy_date, close_price, signal_date, signal_ma10):
-    code = int(code)
+    code = common.normalize_symbol(code)
     if code in account.holding_stocks:
         logger.error(f"{name} {code} 已经买过，本策略不允许重复买，不买了。")
         return False
@@ -327,7 +327,7 @@ def simulated_buy():
     查询语句 = f"""
         SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
         FROM daily_quotes
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(',)', ')')}
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
           AND trade_date = {int(buy_date)}
     """
     买入日数据 = pd.read_sql(查询语句, db.engine)
@@ -341,7 +341,7 @@ def simulated_buy():
             logger.warning(f"当前持仓已达到 {最大仓位数} 仓，停止买入")
             break
 
-        ts_code = int(候选['ts_code'])
+        ts_code = common.normalize_symbol(候选['ts_code'])
         stock_name = str(候选['stock_name'])
         if ts_code in account.holding_stocks:
             logger.error(f"{stock_name} {ts_code} 已经买过，本策略不允许重复买，跳过")
@@ -404,7 +404,7 @@ def simulated_buy():
 
 def simulated_sell(now_date=None):
     logger.warning(f"检查持仓是否收盘跌破MA{乖离均线天数} 开始")
-    持仓代码列表 = [int(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
+    持仓代码列表 = [common.normalize_symbol(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
     if not 持仓代码列表:
         logger.warning(f"检查持仓是否收盘跌破MA{乖离均线天数} 完成")
         return
