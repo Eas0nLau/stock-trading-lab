@@ -45,11 +45,16 @@ class BaoStockSource:
         return self._injected_client or importlib.import_module("baostock")
 
     def fetch_5m_bars(self, start_date, end_date, ts_code):
-        client = self._client()
-        login = client.login()
+        try:
+            client = self._client()
+            login = client.login()
+        except Exception as error:
+            raise InfrastructureError(f"BaoStock login failed: {error}") from error
         if str(login.error_code) != "0":
             raise InfrastructureError(f"BaoStock login failed: {login.error_msg}")
 
+        request_error = None
+        request_cause = None
         try:
             result = client.query_history_k_data_plus(
                 _baostock_code(ts_code),
@@ -67,10 +72,19 @@ class BaoStockSource:
                 if len(values) != len(result.fields):
                     raise InfrastructureError("BaoStock returned a malformed row")
                 rows.append(dict(zip(result.fields, values)))
-            return rows
-        except (DataValidationError, InfrastructureError):
-            raise
+        except (DataValidationError, InfrastructureError) as error:
+            request_error = error
         except Exception as error:
-            raise InfrastructureError(f"BaoStock request failed: {error}") from error
+            request_error = InfrastructureError(f"BaoStock request failed: {error}")
+            request_cause = error
         finally:
-            client.logout()
+            try:
+                client.logout()
+            except Exception as error:
+                if request_error is None:
+                    raise InfrastructureError(f"BaoStock logout failed: {error}") from error
+        if request_error is not None:
+            if request_cause is not None:
+                raise request_error from request_cause
+            raise request_error
+        return rows

@@ -12,11 +12,19 @@ def _legacy_code(value):
     ts_code = normalize_ts_code(value)
     symbol, separator, exchange = ts_code.partition(".")
     if not separator:
-        exchange = "SH" if symbol.startswith(("5", "6", "9")) else "SZ"
+        if symbol.startswith(("4", "8")):
+            exchange = "BJ"
+        else:
+            exchange = "SH" if symbol.startswith(("5", "6", "9")) else "SZ"
     return f"{exchange.lower()}.{symbol}"
 
 
-def get_data(start_date, end_date, code, source=None):
+def get_data(start_date, end_date, code=None, source=None, *, stock=None):
+    if code is not None and stock is not None:
+        raise TypeError("Pass either code or stock, not both")
+    code = code if code is not None else stock
+    if code is None:
+        raise TypeError("Pass either code or stock")
     rows = fetch_intraday_bars_5m(start_date, end_date, code, source=source)
     return [[
         _legacy_number(row["open_price"]),

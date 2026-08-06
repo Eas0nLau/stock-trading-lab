@@ -28,22 +28,22 @@ ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `industry`=VALUES(`industry`), `m
 
 INSERT INTO `daily_quotes` (`data_id`, `ts_code`, `trade_date`, `open_price`, `high_price`, `low_price`, `close_price`, `previous_close`, `change_amount`, `change_pct`, `volume`, `turnover`, `total_market_value`, `circulating_market_value`, `free_float_shares`, `free_float_market_value`, `stock_name`, `dde_net_amount`)
 SELECT
-  CONCAT(CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END, '_', `trade_date`),
-  CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END,
+  CONCAT(CASE WHEN LEFT(LPAD(`ts_code`, 6, '0'), 1) IN ('4', '8') THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.BJ') WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END, '_', `trade_date`),
+  CASE WHEN LEFT(LPAD(`ts_code`, 6, '0'), 1) IN ('4', '8') THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.BJ') WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END,
   `trade_date`, `open`, `high`, `low`, `close`, `pre_close`, `change`, `pct_chg`, `vol`, `amount`, `total_mv`, `circ_mv`, `free_share`, `free_mv`, `stock_name`, `dde`
 FROM `stock_daily`
 ON DUPLICATE KEY UPDATE `close_price`=VALUES(`close_price`), `volume`=VALUES(`volume`), `turnover`=VALUES(`turnover`), `dde_net_amount`=VALUES(`dde_net_amount`);
 
 INSERT INTO `kdj_indicators` (`data_id`, `ts_code`, `trade_date`, `k_value`, `d_value`, `j_value`)
 SELECT
-  CONCAT(CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END, '_', `trade_date`),
-  CASE WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END,
+  CONCAT(CASE WHEN LEFT(LPAD(`ts_code`, 6, '0'), 1) IN ('4', '8') THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.BJ') WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END, '_', `trade_date`),
+  CASE WHEN LEFT(LPAD(`ts_code`, 6, '0'), 1) IN ('4', '8') THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.BJ') WHEN `ts_code` >= 600000 THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.SH') ELSE CONCAT(LPAD(`ts_code`, 6, '0'), '.SZ') END,
   `trade_date`, `k`, `d`, `j`
 FROM `stock_kdj`
 ON DUPLICATE KEY UPDATE `k_value`=VALUES(`k_value`), `d_value`=VALUES(`d_value`), `j_value`=VALUES(`j_value`);
 
 INSERT INTO `intraday_bars_5m` (`data_id`, `trade_date`, `trade_time`, `stock_code`, `open_price`, `high_price`, `low_price`, `close_price`, `volume`, `turnover`, `adjustment_flag`)
-SELECT `data_id`, `date`, `time`, LPAD(CAST(`code` AS CHAR), 6, '0'), `open`, `high`, `low`, `close`, `volume`, `amount`, `adjustflag`
+SELECT CONCAT(LPAD(CAST(`code` AS CHAR), 6, '0'), '_', `time`, '_', `adjustflag`), `date`, `time`, LPAD(CAST(`code` AS CHAR), 6, '0'), `open`, `high`, `low`, `close`, `volume`, `amount`, `adjustflag`
 FROM `t_stock_5_min_k`
 ON DUPLICATE KEY UPDATE `close_price`=VALUES(`close_price`), `volume`=VALUES(`volume`), `turnover`=VALUES(`turnover`);
 

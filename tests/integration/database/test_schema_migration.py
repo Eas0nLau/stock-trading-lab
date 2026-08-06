@@ -54,3 +54,10 @@ def test_clean_initialization_never_runs_legacy_drop_script():
     assert "003_drop_legacy_schema" not in init_sql
     assert "DROP TABLE IF EXISTS" in drop_sql
     assert all(identifier.isascii() for identifier in sql_identifiers(init_sql))
+
+
+def test_market_data_migration_uses_canonical_ids_and_beijing_exchange():
+    migrate_sql = MIGRATE_PATH.read_text(encoding="utf-8")
+
+    assert "CONCAT(LPAD(CAST(`code` AS CHAR), 6, '0'), '_', `time`, '_', `adjustflag`)" in migrate_sql
+    assert migrate_sql.count("THEN CONCAT(LPAD(`ts_code`, 6, '0'), '.BJ')") == 4
