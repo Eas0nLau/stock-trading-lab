@@ -22,7 +22,7 @@ def process_stock_batch(args):
     for ts_code in codes_batch:
         # 使用预分组数据
         if ts_code not in grouped.groups:
-            # logger.warning(f"ts_code {ts_code} not found in stock_daily, skipping")
+            # logger.warning(f"ts_code {ts_code} not found in daily_quotes, skipping")
             continue
         # 只要主板
         if len(str(ts_code)) > 5 and str(ts_code)[0:2] in ['92','68','30']:
@@ -51,7 +51,7 @@ def process_stock_batch(args):
 
         query_max_price = db.mysql_localhost(f"""
             SELECT trade_date, close
-            FROM stock_daily 
+            FROM daily_quotes
             WHERE ts_code = {target_row['ts_code']}
             AND trade_date < {target_date}
             and close > {target_row['close']}
@@ -62,7 +62,7 @@ def process_stock_batch(args):
 
         query_max_price = db.mysql_localhost(f"""
             SELECT trade_date, close
-            FROM stock_daily 
+            FROM daily_quotes
             WHERE ts_code = {target_row['ts_code']}
             AND trade_date < {df.tail(2).iloc[-2]['trade_date']}
             and close > {df.tail(2).iloc[-2]['close']}
@@ -94,12 +94,12 @@ def strategy(filtered_codes, target_date):
         '%Y%m%d')  # 余量确保足够数据
 
     # 加载日线数据
-    stock_daily = common.load_stock_daily_data(filtered_codes, start_date, target_date)
+    daily_quotes = common.load_daily_quotes_data(filtered_codes, start_date, target_date)
 
     logger.info(f"根据策略选择股票 开始")
     selected_stocks = []
-    # 预分组 stock_daily
-    grouped = stock_daily.groupby('ts_code')
+    # 预分组 daily_quotes
+    grouped = daily_quotes.groupby('ts_code')
 
     # 分批，每批 200 个代码（3000 ÷ 200 = 15 批）
     batch_size = 300
@@ -186,8 +186,8 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
         WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
@@ -256,8 +256,8 @@ def simulated_sell(now_date=None):
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
+            FROM daily_quotes
             WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}

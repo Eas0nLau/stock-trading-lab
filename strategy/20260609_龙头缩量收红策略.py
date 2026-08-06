@@ -255,7 +255,7 @@ def strategy(filtered_codes, target_date):
 
     # 取足够自然日，覆盖近3个月连板判断和20日均线计算。
     开始日期 = (当前日期对象 - timedelta(days=120)).strftime('%Y%m%d')
-    日线数据 = common.load_stock_daily_data(最终候选池, 开始日期, target_date)
+    日线数据 = common.load_daily_quotes_data(最终候选池, 开始日期, target_date)
 
     if 日线数据.empty:
         logger.warning(f"{target_date} 无足够日线数据")
@@ -426,8 +426,8 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
         WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
@@ -513,8 +513,8 @@ def simulated_sell(sell_out_fall_threshold=None,
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
+            FROM daily_quotes
             WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}

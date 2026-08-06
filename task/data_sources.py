@@ -134,9 +134,9 @@ def 更新指数日线(start_date, end_date):
 
 
 def 更新股票基础信息():
-    from utils.common import pro
+    from utils.common import get_tushare_pro
 
-    frame = pro.stock_basic(
+    frame = get_tushare_pro().stock_basic(
         exchange="",
         list_status="L",
         fields="ts_code,symbol,name,area,industry,market,list_date,list_status",
@@ -148,7 +148,7 @@ def 更新股票基础信息():
 
 
 def 更新股票日线(start_date, end_date):
-    from utils.common import pro
+    from utils.common import get_tushare_pro
 
     dates = [
         date for date in _read_index_dates(1000)
@@ -158,7 +158,7 @@ def 更新股票日线(start_date, end_date):
         dates = [int(end_date)]
     frames = []
     for date in dates:
-        frame = pro.daily(ts_code="", trade_date=str(date))
+        frame = get_tushare_pro().daily(ts_code="", trade_date=str(date))
         if frame is not None and not frame.empty:
             frames.append(frame)
     if not frames:

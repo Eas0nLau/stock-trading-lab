@@ -59,20 +59,20 @@ def strategy(filtered_codes, target_date):
     start_date = (datetime.strptime(str(target_date), "%Y%m%d") - timedelta(days=range_days)).strftime('%Y%m%d')
 
     # 加载日线数据
-    stock_daily = common.load_stock_daily_data(filtered_codes, start_date, target_date)
+    daily_quotes = common.load_daily_quotes_data(filtered_codes, start_date, target_date)
 
     logger.info(f"根据历史日K特征选择股票 开始")
     selected_stocks = []
 
     # 计算所有股票在target_date的成交额排名
-    target_data_all = stock_daily[stock_daily['trade_date'] == target_date]
+    target_data_all = daily_quotes[daily_quotes['trade_date'] == target_date]
     if target_data_all.empty:
         logger.warning(f"在 {target_date} 无数据")
         return pd.DataFrame()
     amount_threshold = target_data_all['amount'].quantile(0.95)  # 成交额前5%
 
     for ts_code in tqdm(filtered_codes, desc="Processing stocks"):
-        df = stock_daily[stock_daily['ts_code'] == ts_code].copy()
+        df = daily_quotes[daily_quotes['ts_code'] == ts_code].copy()
 
         # 确保数据按时间排序
         df = df.sort_values('trade_date')
@@ -265,7 +265,7 @@ def main():
     filtered_codes = common.load_stock_pool_symbol()
     results = {}
     distinct_trade_date = db.mysql_localhost(sql=f"""
-        select distinct trade_date FROM stock_daily
+        select distinct trade_date FROM daily_quotes
         where trade_date >= '20250501'
         and trade_date < '20250630'
         order by trade_date

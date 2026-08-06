@@ -38,7 +38,7 @@ def _最近交易日列表(end_date, days):
     rows = db.mysql_localhost(
         sql=f"""
             SELECT DISTINCT trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date <= {int(end_date)}
             ORDER BY trade_date DESC
             LIMIT {int(days)}
@@ -56,7 +56,7 @@ def _读取最新市值达标股票():
     result = db.mysql_localhost(
         sql="""
             SELECT MAX(trade_date) AS trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE total_mv IS NOT NULL
         """,
         fetch=True,
@@ -68,7 +68,7 @@ def _读取最新市值达标股票():
     mv_df = pd.read_sql(
         f"""
             SELECT ts_code, total_mv
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date = {mv_date}
               AND total_mv IS NOT NULL
               AND total_mv > {市值阈值_万元}
@@ -95,24 +95,24 @@ def _读取日线数据(filtered_codes, trade_dates):
             sd.ts_code,
             sd.stock_name,
             sd.trade_date,
-            sd.open,
-            sd.high,
-            sd.low,
-            sd.close,
-            sd.pre_close,
-            sd.amount,
-            sd.pct_chg,
+            sd.open_price AS open,
+            sd.high_price AS high,
+            sd.low_price AS low,
+            sd.close_price AS close,
+            sd.previous_close AS pre_close,
+            sd.turnover AS amount,
+            sd.change_pct AS pct_chg,
             sb.market,
             sb.list_status,
             sb.name AS basic_name
-        FROM stock_daily sd
-        LEFT JOIN stock_basic sb ON sd.ts_code = sb.symbol
+        FROM daily_quotes sd
+        LEFT JOIN securities sb ON sd.ts_code = sb.symbol
         WHERE sd.trade_date IN {trade_date_tuple}
           {code_filter}
           AND sb.market = '主板'
-          AND sd.amount IS NOT NULL
-          AND sd.low IS NOT NULL
-          AND sd.close IS NOT NULL
+          AND sd.turnover IS NOT NULL
+          AND sd.low_price IS NOT NULL
+          AND sd.close_price IS NOT NULL
     """
     return pd.read_sql(query, db.engine)
 
@@ -392,8 +392,8 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
         WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
@@ -479,8 +479,8 @@ def simulated_sell(sell_out_fall_threshold=None,
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
+            FROM daily_quotes
             WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}

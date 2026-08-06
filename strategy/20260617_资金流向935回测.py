@@ -50,7 +50,7 @@ def _读取股票基础信息():
         _股票基础信息缓存 = pd.read_sql(
             """
                 SELECT ts_code, symbol, name, market, list_status
-                FROM stock_basic
+                FROM securities
             """,
             db.engine,
         )
@@ -66,7 +66,7 @@ def _读取最新市值达标股票():
     result = db.mysql_localhost(
         sql="""
             SELECT MAX(trade_date) AS trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE total_mv IS NOT NULL
         """,
         fetch=True,
@@ -78,7 +78,7 @@ def _读取最新市值达标股票():
     mv_df = pd.read_sql(
         f"""
             SELECT ts_code, total_mv
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date = {mv_date}
               AND total_mv IS NOT NULL
               AND total_mv > {市值阈值_万元}
@@ -100,8 +100,8 @@ def strategy(filtered_codes, target_date):
     资金流向 9:35 回测
     - 读取 Redis fund_flow:history:{target_date} 中 9:35 的行业资金流向快照。
     - 选出资金净流入 > 50000 万的板块龙头。
-    - 使用 stock_basic 映射股票代码，只保留主板、上市状态正常的股票。
-    - 使用 stock_daily 最新 total_mv 日期过滤市值 > 300 亿的股票。
+    - 使用 securities 映射股票代码，只保留主板、上市状态正常的股票。
+    - 使用 daily_quotes 最新 total_mv 日期过滤市值 > 300 亿的股票。
     """
     target_date = int(target_date)
     logger.warning(f"【{策略名称}】开始筛选 {target_date} ...")
@@ -132,12 +132,12 @@ def strategy(filtered_codes, target_date):
         logger.warning(f"{target_date} {信号时间} 无资金净流入>{资金净流入阈值_万}万的板块龙头")
         return pd.DataFrame([])
 
-    stock_basic_df = _读取股票基础信息()
+    securities_df = _读取股票基础信息()
     selected_df = pd.DataFrame(selected_rows)
     selected_df = selected_df.sort_values('资金净流入_万', ascending=False, kind='mergesort')
     selected_df = selected_df.drop_duplicates('stock_name', keep='first')
     selected_df = selected_df.merge(
-        stock_basic_df,
+        securities_df,
         left_on='stock_name',
         right_on='name',
         how='left',
@@ -270,7 +270,7 @@ def _读取当日日线(target_date, ts_code):
     rows = db.mysql_localhost(
         sql=f"""
             SELECT ts_code, trade_date, stock_name, pre_close
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date = {int(target_date)}
               AND ts_code = {code}
             LIMIT 1

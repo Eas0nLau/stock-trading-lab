@@ -18,7 +18,7 @@ from utils import account, common, db
 # ===== 回测和选股参数 =====
 回看交易日数 = 280
 候选返回数量 = 20
-成交额下限 = 500000  # stock_daily.amount 单位通常为千元，500000 约等于 5 亿成交额
+成交额下限 = 500000  # daily_quotes.amount 单位通常为千元，500000 约等于 5 亿成交额
 最新流通市值下限 = 1000000  # circ_mv 单位万元，1000000 约等于 100 亿
 近几日不允许跌停 = 5
 近几日涨停次数上限 = 2
@@ -80,7 +80,7 @@ def _最近交易日(结束日期参数, 天数):
     查询结果 = db.mysql_localhost(
         sql=f"""
             SELECT DISTINCT trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date <= {int(结束日期参数)}
             ORDER BY trade_date DESC
             LIMIT {int(天数)}
@@ -104,27 +104,27 @@ def _加载日线数据(filtered_codes, 交易日列表):
             sd.ts_code,
             sd.stock_name,
             sd.trade_date,
-            sd.open,
-            sd.high,
-            sd.low,
-            sd.close,
-            sd.pre_close,
-            sd.change,
-            sd.pct_chg,
-            sd.vol,
-            sd.amount,
+            sd.open_price AS open,
+            sd.high_price AS high,
+            sd.low_price AS low,
+            sd.close_price AS close,
+            sd.previous_close AS pre_close,
+            sd.change_amount AS change,
+            sd.change_pct AS pct_chg,
+            sd.volume AS vol,
+            sd.turnover AS amount,
             mv.最新流通市值,
             sb.market,
             sb.list_status
-        FROM stock_daily sd
-        LEFT JOIN stock_basic sb ON sd.ts_code = sb.symbol
+        FROM daily_quotes sd
+        LEFT JOIN securities sb ON sd.ts_code = sb.symbol
         LEFT JOIN (
-            SELECT latest_sd.ts_code, latest_sd.circ_mv AS 最新流通市值
-            FROM stock_daily latest_sd
+            SELECT latest_sd.ts_code, latest_sd.circulating_market_value AS 最新流通市值
+            FROM daily_quotes latest_sd
             INNER JOIN (
                 SELECT MAX(trade_date) AS 最新市值日期
-                FROM stock_daily
-                WHERE circ_mv IS NOT NULL
+                FROM daily_quotes
+                WHERE circulating_market_value IS NOT NULL
             ) latest_date ON latest_sd.trade_date = latest_date.最新市值日期
         ) mv ON sd.ts_code = mv.ts_code
         WHERE sd.trade_date IN {_sql_in(交易日列表)}
@@ -132,13 +132,13 @@ def _加载日线数据(filtered_codes, 交易日列表):
           AND sb.market = '主板'
           AND sb.list_status = 'L'
           AND sd.stock_name NOT REGEXP 'ST|退'
-          AND sd.pre_close > 0
-          AND sd.open IS NOT NULL
-          AND sd.high IS NOT NULL
-          AND sd.low IS NOT NULL
-          AND sd.close IS NOT NULL
-          AND sd.amount IS NOT NULL
-          AND sd.pct_chg IS NOT NULL
+          AND sd.previous_close > 0
+          AND sd.open_price IS NOT NULL
+          AND sd.high_price IS NOT NULL
+          AND sd.low_price IS NOT NULL
+          AND sd.close_price IS NOT NULL
+          AND sd.turnover IS NOT NULL
+          AND sd.change_pct IS NOT NULL
         ORDER BY sd.ts_code, sd.trade_date
     """
     return pd.read_sql(查询语句, db.engine)
@@ -461,8 +461,8 @@ def simulated_buy(now_date=None, 执行时间=None, 是否清空预选池=True):
         return
 
     查询语句 = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
         WHERE ts_code IN {_sql_in(selected_stocks['ts_code'].tolist())}
           AND trade_date = {int(buy_date)}
     """

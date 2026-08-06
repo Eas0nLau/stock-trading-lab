@@ -47,7 +47,7 @@ def _最近交易日列表(end_date, days):
     rows = db.mysql_localhost(
         sql=f"""
             SELECT DISTINCT trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date <= {int(end_date)}
             ORDER BY trade_date DESC
             LIMIT {int(days)}
@@ -72,30 +72,30 @@ def _读取日线数据(trade_dates, filtered_codes=None):
             SELECT
                 sd.ts_code,
                 sd.trade_date,
-                sd.open,
-                sd.high,
-                sd.low,
-                sd.close,
-                sd.pre_close,
-                sd.amount,
-                sd.pct_chg,
+                sd.open_price AS open,
+                sd.high_price AS high,
+                sd.low_price AS low,
+                sd.close_price AS close,
+                sd.previous_close AS pre_close,
+                sd.turnover AS amount,
+                sd.change_pct AS pct_chg,
                 sd.stock_name,
                 sb.market,
                 sb.list_status
-            FROM stock_daily sd
-            LEFT JOIN stock_basic sb ON sd.ts_code = sb.symbol
+            FROM daily_quotes sd
+            LEFT JOIN securities sb ON sd.ts_code = sb.symbol
             WHERE sd.trade_date IN {trade_date_tuple}
               {code_filter}
               AND sb.market = '主板'
               AND sb.list_status = 'L'
-              AND sd.open IS NOT NULL
-              AND sd.high IS NOT NULL
-              AND sd.low IS NOT NULL
-              AND sd.close IS NOT NULL
-              AND sd.pre_close IS NOT NULL
-              AND sd.amount IS NOT NULL
-              AND sd.pct_chg IS NOT NULL
-              AND sd.pre_close > 0
+              AND sd.open_price IS NOT NULL
+              AND sd.high_price IS NOT NULL
+              AND sd.low_price IS NOT NULL
+              AND sd.close_price IS NOT NULL
+              AND sd.previous_close IS NOT NULL
+              AND sd.turnover IS NOT NULL
+              AND sd.change_pct IS NOT NULL
+              AND sd.previous_close > 0
               AND sd.stock_name NOT REGEXP 'ST|退'
             ORDER BY sd.ts_code, sd.trade_date
         """,
@@ -271,8 +271,8 @@ def simulated_buy():
         return
 
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
         WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(',)', ')')}
           AND trade_date = {int(buy_date)}
     """

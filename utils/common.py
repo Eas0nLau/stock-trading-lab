@@ -13,18 +13,26 @@ from sqlalchemy import text
 from utils import db, account
 from stock_lab.modules.market_data.helpers import normalize_symbol, stock_code_filter
 
-# 初始化 Tushare
-# ts.set_token(config.ts_token)  # 替换为你的 token
-#
-pro_list = []
-for ts_token in config.ts_token_list:
-    pro_list.append(ts.pro_api(ts_token))
-pro = pro_list[0]
-
-stock_basic_csv_path = f'{config.project_path}/data/stock_basic.csv'
+securities_csv_path = f'{config.project_path}/data/securities.csv'
+stock_basic_csv_path = securities_csv_path
 
 
-def fetch_stock_basic():
+def get_tushare_pro():
+    """Create a Tushare client only when a caller explicitly performs collection."""
+    if not config.ts_token_list:
+        raise RuntimeError("Tushare token is required for stock collection")
+    return ts.pro_api(config.ts_token_list[0])
+
+
+class _LazyTushare:
+    def __getattr__(self, name):
+        return getattr(get_tushare_pro(), name)
+
+
+pro = _LazyTushare()
+
+
+def fetch_securities():
     """
     获取沪深 A 股列表并保存到 CSV
     参数:
@@ -34,25 +42,28 @@ def fetch_stock_basic():
     """
     try:
         logger.info(f"从 API 获取 A 股列表 开始")
-        stock_basic = pro.stock_basic(
+        securities = pro.stock_basic(
             exchange='',
             list_status='L',
             fields='ts_code,symbol,name,area,industry,market,list_date,list_status'
         )
-        logger.info(f"从 API 获取 A 股列表 完成，数量：{len(stock_basic)}")
-        stock_basic.to_csv(stock_basic_csv_path, index=False, encoding='utf-8-sig')
-        return stock_basic
+        logger.info(f"从 API 获取 A 股列表 完成，数量：{len(securities)}")
+        securities.to_csv(securities_csv_path, index=False, encoding='utf-8-sig')
+        return securities
     except Exception as e:
         logger.error(f"从 API 获取 A 股列表 异常: {e}")
         logger.error(traceback.format_exc())
         return pd.DataFrame()
 
 
-def filter_stock_basic():
+fetch_stock_basic = fetch_securities
+
+
+def filter_securities():
     """
     过滤股票池，仅保留主板、非退市、非 ST 股票
     参数:
-        stock_basic: A 股基本信息 DataFrame
+        securities: A 股基本信息 DataFrame
     返回:
         DataFrame: 过滤后的股票池
     """
@@ -60,25 +71,25 @@ def filter_stock_basic():
     try:
         try:
             logger.info(f"从 API 获取 A 股列表 开始")
-            stock_basic = pro.stock_basic(
+            securities = pro.stock_basic(
                 exchange='',
                 list_status='L',
                 fields='ts_code,symbol,name,area,industry,market,list_date,list_status'
             )
-            logger.info(f"从 API 获取 A 股列表 完成，数量：{len(stock_basic)}")
-            stock_basic.to_csv(stock_basic_csv_path, index=False, encoding='utf-8-sig')
+            logger.info(f"从 API 获取 A 股列表 完成，数量：{len(securities)}")
+            securities.to_csv(securities_csv_path, index=False, encoding='utf-8-sig')
         except Exception as e:
             logger.error(f"从 API 获取 A 股列表 异常: {e}")
             logger.info(f"从 API 加载 A 股列表失败，开始 读取CSV缓存")
-            stock_basic = pd.read_csv(stock_basic_csv_path, encoding='utf-8-sig')
-            logger.info(f"从 CSV 加载 A 股列表成功，数量：{len(stock_basic)}")
+            securities = pd.read_csv(securities_csv_path, encoding='utf-8-sig')
+            logger.info(f"从 CSV 加载 A 股列表成功，数量：{len(securities)}")
         logger.info(f"开始过滤股票，排除ST")
         # 过滤条件
-        filtered_pool = stock_basic
-        # filtered_pool = stock_basic[
-        #     # (stock_basic['market'] == '主板') &  # 仅主板
-        #     # (~stock_basic['name'].str.contains(r'ST|\*ST', case=False, na=False))  # 排除 ST/*ST
-        #     ~stock_basic['name'].str.contains(r'ST|\*ST', case=False, na=False)  # 排除 ST/*ST
+        filtered_pool = securities
+        # filtered_pool = securities[
+        #     # (securities['market'] == '主板') &  # 仅主板
+        #     # (~securities['name'].str.contains(r'ST|\*ST', case=False, na=False))  # 排除 ST/*ST
+        #     ~securities['name'].str.contains(r'ST|\*ST', case=False, na=False)  # 排除 ST/*ST
         #     ]
         logger.info(f"过滤后股票池数量：{len(filtered_pool)}")
         return filtered_pool
@@ -88,11 +99,14 @@ def filter_stock_basic():
         return pd.DataFrame()
 
 
+filter_stock_basic = filter_securities
+
+
 def load_stock_pool():
     """
     从 MySQL 加载过滤后的股票池
     参数:
-        stock_basic: 股票池表名
+        securities: 股票池表名
     返回:
         DataFrame: 过滤后的股票池
     """
@@ -110,7 +124,7 @@ def load_stock_pool_symbol():
     """
     从 MySQL 加载过滤后的股票池
     参数:
-        stock_basic: 股票池表名
+        securities: 股票池表名
     返回:
         DataFrame: 过滤后的股票池
     """
@@ -539,7 +553,7 @@ def timer_statistics(func):
 
 
 @timer_statistics
-def load_stock_daily_data(filtered_codes, start_date, target_date):
+def load_daily_quotes_data(filtered_codes, start_date, target_date):
     logger.info(f"加载日线数据 开始 trade_date BETWEEN {start_date} AND {target_date}")
     code_sql, code_params = stock_code_filter(filtered_codes)
     query = f"""
@@ -551,11 +565,14 @@ def load_stock_daily_data(filtered_codes, start_date, target_date):
         AND trade_date BETWEEN %s AND %s
     """
     result = db.mysql_localhost(sql=query, params=(*code_params, start_date, target_date), fetch=True)
-    stock_daily = pd.DataFrame(result)
-    logger.info(f"加载日线数据 完成 {len(stock_daily)}")
-    return stock_daily
+    daily_quotes = pd.DataFrame(result)
+    logger.info(f"加载日线数据 完成 {len(daily_quotes)}")
+    return daily_quotes
+
+
+load_stock_daily_data = load_daily_quotes_data
 
 
 if __name__ == '__main__':
     pass
-    filter_stock_basic()
+    filter_securities()

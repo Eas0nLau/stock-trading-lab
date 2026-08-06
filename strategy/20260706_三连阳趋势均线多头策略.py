@@ -72,7 +72,7 @@ def _最近交易日(结束日期参数, 天数):
     查询结果 = db.mysql_localhost(
         sql=f"""
             SELECT DISTINCT trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date <= {int(结束日期参数)}
             ORDER BY trade_date DESC
             LIMIT {int(天数)}
@@ -97,31 +97,31 @@ def _加载日线数据(filtered_codes, 交易日列表):
             sd.ts_code,
             sd.stock_name,
             sd.trade_date,
-            sd.open,
-            sd.high,
-            sd.low,
-            sd.close,
-            sd.pre_close,
-            sd.vol,
-            sd.amount,
-            sd.pct_chg,
+            sd.open_price AS open,
+            sd.high_price AS high,
+            sd.low_price AS low,
+            sd.close_price AS close,
+            sd.previous_close AS pre_close,
+            sd.volume AS vol,
+            sd.turnover AS amount,
+            sd.change_pct AS pct_chg,
             sb.market,
             sb.list_status
-        FROM stock_daily sd
-        LEFT JOIN stock_basic sb ON sd.ts_code = sb.symbol
+        FROM daily_quotes sd
+        LEFT JOIN securities sb ON sd.ts_code = sb.symbol
         WHERE sd.trade_date IN {交易日元组}
           {代码过滤条件}
           AND sb.market = '主板'
           AND sb.list_status = 'L'
           AND sd.stock_name NOT REGEXP 'ST|退'
-          AND sd.pre_close > 0
-          AND sd.open IS NOT NULL
-          AND sd.high IS NOT NULL
-          AND sd.low IS NOT NULL
-          AND sd.close IS NOT NULL
-          AND sd.vol IS NOT NULL
-          AND sd.amount IS NOT NULL
-          AND sd.pct_chg IS NOT NULL
+          AND sd.previous_close > 0
+          AND sd.open_price IS NOT NULL
+          AND sd.high_price IS NOT NULL
+          AND sd.low_price IS NOT NULL
+          AND sd.close_price IS NOT NULL
+          AND sd.volume IS NOT NULL
+          AND sd.turnover IS NOT NULL
+          AND sd.change_pct IS NOT NULL
         ORDER BY sd.ts_code, sd.trade_date
     """
     return pd.read_sql(查询语句, db.engine)
@@ -363,8 +363,8 @@ def simulated_buy():
         return
 
     查询语句 = f"""
-        SELECT ts_code, trade_date, stock_name, open, high, low, close, pre_close
-        FROM stock_daily
+        SELECT ts_code, trade_date, stock_name, open_price AS open, high_price AS high, low_price AS low, close_price AS close, previous_close AS pre_close
+        FROM daily_quotes
         WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(',)', ')')}
           AND trade_date = {int(buy_date)}
     """
