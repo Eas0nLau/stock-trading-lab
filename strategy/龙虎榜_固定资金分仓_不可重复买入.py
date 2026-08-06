@@ -4,7 +4,7 @@ import pandas as pd
 from loguru import logger
 
 from utils import db, common, account
-from 游资溢价分析 import 溢价分析
+from stock_lab.modules.dragon_tiger import runtime as premium_analysis
 
 
 def process_stock_batch(args):
@@ -52,7 +52,7 @@ def strategy(filtered_codes, target_date):
     start_date = (datetime.strptime(str(target_date), "%Y%m%d") - timedelta(days=range_days)).strftime(
         '%Y%m%d')  # 余量确保足够数据
 
-    stock_code = 溢价分析.main(start_date=start_date, latest_date=target_date)
+    stock_code = premium_analysis.main(start_date=start_date, latest_date=target_date)
     filtered_codes = list(stock_code)
     if not filtered_codes:
         return pd.DataFrame([])

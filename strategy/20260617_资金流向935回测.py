@@ -1,4 +1,3 @@
-import json
 import sys
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -11,6 +10,10 @@ sys.path.append(str(项目根目录))
 
 from task import _2_分时数据获取_5分k
 from utils import db, common, account
+from stock_lab.modules.fund_flow.repository import FundFlowRepository
+
+
+fund_flow_repository = FundFlowRepository(db.redis_con_localhost)
 
 
 策略名称 = '20260617_资金流向935回测'
@@ -31,14 +34,9 @@ _最新市值达标股票缓存 = None
 
 
 def _读取资金流向快照(target_date, signal_time=信号时间):
-    key = f'fund_flow:history:{target_date}'
-    snapshots = db.redis_con_localhost.lrange(key, 0, -1)
-    for raw in snapshots:
-        try:
-            snapshot = json.loads(raw)
-        except Exception:
-            continue
-        if snapshot and snapshot[0].get('时间') == signal_time:
+    snapshots = fund_flow_repository.history("industry", target_date) or []
+    for snapshot in snapshots:
+        if snapshot and snapshot[0].get('time') == signal_time:
             return snapshot
     return []
 
@@ -97,7 +95,7 @@ def _读取最新市值达标股票():
 def strategy(filtered_codes, target_date):
     """
     资金流向 9:35 回测
-    - 读取 Redis fund_flow:history:{target_date} 中 9:35 的行业资金流向快照。
+    - 通过 V1 仓储读取 9:35 的行业资金流向快照。
     - 选出资金净流入 > 50000 万的板块龙头。
     - 使用 securities 映射股票代码，只保留主板、上市状态正常的股票。
     - 使用 daily_quotes 最新 total_mv 日期过滤市值 > 300 亿的股票。
@@ -112,17 +110,17 @@ def strategy(filtered_codes, target_date):
 
     selected_rows = []
     for item in snapshot:
-        flow = float(item.get('资金净流入(亿)', 0) or 0)
-        leader = str(item.get('龙头', '') or '').strip()
+        flow = float(item.get('net_inflow_100m', 0) or 0)
+        leader = str(item.get('leader', '') or '').strip()
         if flow <= 资金净流入阈值_万:
             continue
         if not leader or leader == '-':
             continue
         selected_rows.append({
             'trade_date': target_date,
-            '信号时间': item.get('时间'),
-            '板块代码': item.get('板块代码', ''),
-            '板块名称': item.get('板块名称', ''),
+            '信号时间': item.get('time'),
+            '板块代码': item.get('board_code', ''),
+            '板块名称': item.get('board_name', ''),
             'stock_name': leader,
             '资金净流入_万': flow,
         })

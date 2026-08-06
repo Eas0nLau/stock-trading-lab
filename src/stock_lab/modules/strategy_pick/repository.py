@@ -2,18 +2,14 @@ import json
 import queue
 import threading
 
-from .legacy_adapter import LegacyStrategyPickReadAdapter, LegacyStrategyPickWriteAdapter
-
 
 _subscribers = set()
 _subscriber_lock = threading.Lock()
 
 
 class StrategyPickRepository:
-    def __init__(self, redis, legacy_reader=None, legacy_writer=None):
+    def __init__(self, redis):
         self.redis = redis
-        self.legacy_reader = legacy_reader or LegacyStrategyPickReadAdapter(redis)
-        self.legacy_writer = legacy_writer or LegacyStrategyPickWriteAdapter(redis)
 
     @staticmethod
     def key(strategy_id, suffix): return f"strategy_pick:v1:{strategy_id}:{suffix}"
@@ -26,52 +22,48 @@ class StrategyPickRepository:
 
     def strategies(self):
         value = self.redis.get(self.strategies_key())
-        return _loads(value, self.legacy_reader.strategies())
+        return _loads(value, [])
 
     def save_strategies(self, strategies):
         self.redis.set(self.strategies_key(), json.dumps(strategies, ensure_ascii=False))
-        self.legacy_writer.save_strategies(strategies)
 
     def latest(self, strategy_id):
-        return _loads(self.redis.get(self.key(strategy_id, "latest")), self.legacy_reader.latest(strategy_id))
+        return _loads(self.redis.get(self.key(strategy_id, "latest")), {})
 
     def history(self, strategy_id, date):
         values = self.redis.lrange(self.key(strategy_id, f"history:{date}"), 0, -1)
-        return [_loads(value, None) for value in values if _loads(value, None) is not None] or self.legacy_reader.history(strategy_id, date)
+        return [_loads(value, None) for value in values if _loads(value, None) is not None]
 
     def events(self, strategy_id, date):
         values = self.redis.lrange(self.key(strategy_id, f"events:{date}"), 0, -1)
-        return [_loads(value, None) for value in values if _loads(value, None) is not None] or self.legacy_reader.events(strategy_id, date)
+        return [_loads(value, None) for value in values if _loads(value, None) is not None]
 
     def global_events(self, date):
         values = self.redis.lrange(f"strategy_pick:v1:events:{date}", 0, -1)
-        return [_loads(value, None) for value in values if _loads(value, None) is not None] or self.legacy_reader.global_events(date)
+        return [_loads(value, None) for value in values if _loads(value, None) is not None]
 
     def dates(self, strategy_id=None):
         current = set()
         keys = [self.dates_key(strategy_id)] if strategy_id else [self.dates_key(item["id"]) for item in self.strategies()] + [self.global_dates_key()]
         for key in keys:
             current.update(_decode(value) for value in self.redis.smembers(key))
-        return sorted(current | set(self.legacy_reader.dates(strategy_id)), reverse=True)
+        return sorted(current, reverse=True)
 
-    def save_snapshot(self, strategy_id, snapshot, update_latest=False, write_legacy=True):
+    def save_snapshot(self, strategy_id, snapshot, update_latest=False):
         date = snapshot.get("collectedDate")
         self.redis.rpush(self.key(strategy_id, f"history:{date}"), json.dumps(snapshot, ensure_ascii=False))
         self.redis.sadd(self.dates_key(strategy_id), date)
         if update_latest: self.redis.set(self.key(strategy_id, "latest"), json.dumps(snapshot, ensure_ascii=False))
-        if write_legacy: self.legacy_writer.save_snapshot(strategy_id, snapshot, update_latest)
 
-    def save_events(self, strategy_id, date, events, write_legacy=True):
+    def save_events(self, strategy_id, date, events):
         for event in events:
             self.redis.rpush(self.key(strategy_id, f"events:{date}"), json.dumps(event, ensure_ascii=False))
             self.redis.rpush(f"strategy_pick:v1:events:{date}", json.dumps(event, ensure_ascii=False))
         if events: self.redis.sadd(self.global_dates_key(), date)
-        if events and write_legacy: self.legacy_writer.save_events(strategy_id, date, events)
 
-    def save_selected_state(self, strategy_id, codes, stock_info, write_legacy=True):
+    def save_selected_state(self, strategy_id, codes, stock_info):
         payload = {"codes": sorted(codes), "stockInfo": stock_info}
         self.redis.set(self.key(strategy_id, "selected_state"), json.dumps(payload, ensure_ascii=False))
-        if write_legacy: self.legacy_writer.save_selected_state(strategy_id, codes, stock_info)
 
     def selected_state(self, strategy_id):
         return _loads(self.redis.get(self.key(strategy_id, "selected_state")), {"codes": [], "stockInfo": {}})

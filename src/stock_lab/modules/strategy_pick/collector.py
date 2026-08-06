@@ -1,36 +1,12 @@
-import datetime
-import importlib
 import threading
 
 from .contracts import translate_legacy_strategy_pick
 
 
-class LegacyStrategyPickCollectorAdapter:
-    def __init__(self, module=None):
-        self._module = module
-
-    @property
-    def module(self):
-        if self._module is None: self._module = importlib.import_module("实时监控.策略选股")
-        return self._module
-
-    def collect(self, strategy_id):
-        return getattr(self.module, "\u7b56\u7565\u9009\u80a1\u91c7\u96c6")(strategy_id)
-
-    def run(self, stop_event, collector):
-        getattr(self.module, "\u521d\u59cb\u5316\u7b56\u7565\u914d\u7f6e")()
-        slots = {}; log_slots = {}
-        while not stop_event.is_set():
-            snapshots = getattr(self.module, "\u91c7\u96c6\u5230\u671f\u7b56\u7565")(datetime.datetime.now(), slots, log_slots)
-            for snapshot in snapshots:
-                collector.persist_legacy_snapshot(snapshot)
-            stop_event.wait(1)
-
-
 class StrategyPickCollector:
     def __init__(self, repository, *, adapter=None):
         self.repository = repository
-        self.adapter = adapter or LegacyStrategyPickCollectorAdapter()
+        self.adapter = adapter or create_strategy_pick_source(repository)
 
     def refresh(self, strategy_id):
         return self.persist_legacy_snapshot(self.adapter.collect(strategy_id))
@@ -42,9 +18,9 @@ class StrategyPickCollector:
         snapshot["collectedDate"] = date
         added = snapshot.get("addedStocks") or []
         stock_info = {stock.get("code"): stock for stock in snapshot.get("stocks") or [] if stock.get("code")}
-        self.repository.save_snapshot(strategy_id, snapshot, update_latest=snapshot.get("status") == "success", write_legacy=False)
-        self.repository.save_events(strategy_id, date, added, write_legacy=False)
-        self.repository.save_selected_state(strategy_id, stock_info.keys(), stock_info, write_legacy=False)
+        self.repository.save_snapshot(strategy_id, snapshot, update_latest=snapshot.get("status") == "success")
+        self.repository.save_events(strategy_id, date, added)
+        self.repository.save_selected_state(strategy_id, stock_info.keys(), stock_info)
         self.repository.publish_snapshot(snapshot)
         return snapshot
 
@@ -64,6 +40,14 @@ def create_strategy_pick_collector(redis, *, adapter=None):
     repository = StrategyPickRepository(redis)
     StrategyPickService(repository, default_strategies=DEFAULT_STRATEGY_PICK_STRATEGIES).strategies()
     return StrategyPickCollector(repository, adapter=adapter)
+
+
+def create_strategy_pick_source(repository):
+    from stock_lab.infrastructure.browser.client import create_page
+
+    from .source import StrategyPickSource
+
+    return StrategyPickSource(create_page, repository)
 
 
 def run_strategy_pick_monitor(stop_event=None, *, collector=None, adapter=None):

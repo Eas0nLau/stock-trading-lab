@@ -21,7 +21,8 @@ uv run python app.py
 
 ```powershell
 uv run pytest -q
-uv run python -m compileall -q src app.py config.py front_run.py
+uv run python -m compileall -q src task 实时监控 游资溢价分析 utils strategy tests
+npm --prefix front test
 npm --prefix front run build
 ```
 
@@ -36,6 +37,8 @@ monitor logic belongs in `src/stock_lab/modules/tdx/`. Keep TDX client loading
 lazy so unit tests and imports do not require a local TDX installation.
 
 每项行为变更先写失败测试。领域算法优先使用纯数据输入输出；数据库、缓存和第三方接口通过构造参数或协议注入。
+
+`tests/test_cutover_contracts.py` 是迁移边界测试。新增正式代码不得导入兼容目录、定义中文标识符或恢复旧表/旧 Redis 键；兼容文件不得重新承载路由、网络、浏览器、算法和持久化实现。
 
 ## 提交边界
 

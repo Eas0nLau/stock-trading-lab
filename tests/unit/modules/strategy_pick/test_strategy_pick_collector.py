@@ -1,8 +1,9 @@
 import json
 import threading
 
-from stock_lab.modules.strategy_pick.collector import LegacyStrategyPickCollectorAdapter, StrategyPickCollector, create_strategy_pick_collector, run_strategy_pick_monitor
+from stock_lab.modules.strategy_pick.collector import StrategyPickCollector, create_strategy_pick_collector, run_strategy_pick_monitor
 from stock_lab.modules.strategy_pick.repository import StrategyPickRepository
+from stock_lab.modules.strategy_pick.source import parse_strategy_response
 
 
 class Redis:
@@ -25,6 +26,44 @@ class Adapter:
         self.calls.append("run")
         collector.refresh("eastmoney_1")
         stop_event.set()
+
+
+def test_eastmoney_response_normalizes_stock_code_market_and_fields():
+    payload = {
+        "data": {
+            "result": {
+                "columns": [{"key": "NEW_PRICE", "title": "最新价"}],
+                "dataList": [{
+                    "SECURITY_CODE": "1.600000",
+                    "SECURITY_SHORT_NAME": "浦发银行",
+                    "MARKET_SHORT_NAME": "上交所",
+                    "NEW_PRICE": 12.3,
+                }],
+            }
+        }
+    }
+
+    assert parse_strategy_response(payload) == [{
+        "code": "600000",
+        "name": "浦发银行",
+        "market": "SH",
+        "fields": {"最新价": 12.3},
+    }]
+
+
+def test_eastmoney_response_filters_configured_concept_labels():
+    payload = {"data": {"result": {
+        "columns": [{"key": "CONCEPT", "title": "所属概念"}],
+        "dataList": [{
+            "SECURITY_CODE": "000001",
+            "SECURITY_SHORT_NAME": "平安银行",
+            "CONCEPT": "【融资融券】【机器人】【2026年报预增】",
+        }],
+    }}}
+
+    stocks = parse_strategy_response(payload, excluded_concepts=("融资融券",))
+
+    assert stocks[0]["fields"] == {"所属概念": "机器人"}
 
 
 def test_collector_normalizes_and_persists_legacy_collection_result():
@@ -51,34 +90,17 @@ def test_official_worker_delegates_loop_to_injected_adapter():
     assert stop_event.is_set()
 
 
-def test_legacy_worker_adapter_persists_due_results_through_official_collector():
-    class Module:
-        def 初始化策略配置(self): pass
-        def 采集到期策略(self, now, slots, log_slots):
-            stop_event.set()
-            return [{"策略ID": "eastmoney_1", "采集日期": "20260806", "状态": "success", "股票列表": [], "新增股票": [], "移除股票": []}]
-
-    stop_event = threading.Event()
-    repository = StrategyPickRepository(Redis())
-    adapter = LegacyStrategyPickCollectorAdapter(Module())
-    collector = StrategyPickCollector(repository, adapter=adapter)
-
-    adapter.run(stop_event, collector)
-
-    assert repository.latest("eastmoney_1")["status"] == "success"
-
-
-def test_fresh_official_collector_projects_default_config_for_legacy_collector():
+def test_fresh_official_collector_persists_default_config_to_v1():
     redis = Redis()
 
     create_strategy_pick_collector(redis, adapter=Adapter())
 
-    strategies = json.loads(redis.values["策略选股:strategies"])
+    strategies = json.loads(redis.values["strategy_pick:v1:strategies"])
     first = strategies[0]
     assert first["id"] == "eastmoney_1"
-    assert first["名称"] == "新高监控"
-    assert first["页面URL"]
-    assert first["监听目标"] == ["/api/smart-tag/stock/v3/pw/search-code"]
-    assert first["监控时间段"] == [["09:20", "11:31"], ["13:00", "15:01"]]
-    assert first["监控频率秒"] == 30
-    assert first["启用"] is True
+    assert first["name"] == "新高监控"
+    assert first["pageUrl"]
+    assert first["listenTargets"] == ["/api/smart-tag/stock/v3/pw/search-code"]
+    assert first["monitorPeriods"] == [["09:20", "11:31"], ["13:00", "15:01"]]
+    assert first["monitorIntervalSeconds"] == 30
+    assert first["enabled"] is True

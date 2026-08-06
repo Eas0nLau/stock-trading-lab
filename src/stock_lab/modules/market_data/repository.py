@@ -159,6 +159,9 @@ class MarketDataRepository:
     def upsert_kdj_indicators(self, rows):
         return self._write("kdj_indicators", rows, ("data_id",))
 
+    def upsert_jiuyan_actions(self, rows):
+        return self._write("jiuyan_actions", rows, ("data_id",))
+
     def _write(self, table, rows, keys):
         rows = list(rows)
         if not rows:

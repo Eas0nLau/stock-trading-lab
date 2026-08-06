@@ -1,0 +1,73 @@
+from threading import RLock
+
+from loguru import logger
+
+
+_browser = None
+_lock = RLock()
+_pages = {}
+
+
+def _is_browser_available(browser):
+    if browser is None:
+        return False
+    try:
+        browser.tab_ids
+        return True
+    except Exception:
+        return False
+
+
+def _is_page_available(page):
+    if page is None:
+        return False
+    try:
+        tab_ids = getattr(page, "tab_ids", None)
+        return bool(page.tab_id) and (tab_ids is None or page.tab_id in tab_ids)
+    except Exception:
+        return False
+
+
+def _new_browser(close_old_tabs=None):
+    from DrissionPage import ChromiumOptions, WebPage
+
+    from stock_lab.config import get_settings
+
+    settings = get_settings()
+    options = ChromiumOptions()
+    options.set_timeouts(1, 2, 5)
+    options.set_user_data_path(str(settings.project_root / "data" / "chrome_profile"))
+    browser = WebPage(chromium_options=options)
+    should_close = settings.browser_close_old_tabs if close_old_tabs is None else close_old_tabs
+    if should_close:
+        try:
+            tab_ids = list(browser.tab_ids)
+            if len(tab_ids) > 1:
+                keep_tab_id = browser.tab_id or tab_ids[0]
+                browser.close_tabs(keep_tab_id, others=True)
+                logger.info("Closed {} old browser tabs", len(tab_ids) - 1)
+        except Exception as error:
+            logger.warning("Could not close old browser tabs: {}", error)
+    browser.set.window.max()
+    return browser
+
+
+def create_browser(close_old_tabs=None):
+    global _browser
+    with _lock:
+        if not _is_browser_available(_browser):
+            _browser = _new_browser(close_old_tabs)
+            _pages.clear()
+        return _browser
+
+
+def create_page(name, url=None, background=False, use_main_tab=False, close_old_tabs=None):
+    with _lock:
+        browser = create_browser(close_old_tabs)
+        page = _pages.get(name)
+        if not _is_page_available(page):
+            page = browser if use_main_tab else browser.new_tab(background=background)
+            _pages[name] = page
+    if url:
+        page.get(url, timeout=0)
+    return page

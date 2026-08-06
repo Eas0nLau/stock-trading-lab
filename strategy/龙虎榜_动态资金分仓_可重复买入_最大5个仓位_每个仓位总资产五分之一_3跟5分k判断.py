@@ -5,7 +5,7 @@ from loguru import logger
 
 from task import _2_分时数据获取_5分k
 from utils import db, common, account
-from 游资溢价分析 import 溢价分析
+from stock_lab.modules.dragon_tiger import runtime as premium_analysis
 
 symbol_ts_code_dict = common.load_stock_symbol_ts_code_dict()
 
@@ -55,7 +55,7 @@ def strategy(filtered_codes, target_date):
     start_date = (datetime.strptime(str(target_date), "%Y%m%d") - timedelta(days=range_days)).strftime(
         '%Y%m%d')  # 余量确保足够数据
 
-    stock_code = 溢价分析.main(start_date=start_date, latest_date=target_date)
+    stock_code = premium_analysis.main(start_date=start_date, latest_date=target_date)
     filtered_codes = list(stock_code)
     if not filtered_codes:
         return pd.DataFrame([])

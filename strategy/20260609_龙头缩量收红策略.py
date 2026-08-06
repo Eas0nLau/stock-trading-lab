@@ -58,7 +58,7 @@ def _生成每日入选股票ini(选中_df, target_date):
 
     output_dir = Path(__file__).resolve().parents[1] / 'output' / '20260609_龙头缩量收红策略' / str(target_date)
     stock_items = [(row['ts_code'], row['stock_name']) for _, row in 选中_df.iterrows()]
-    ini_path = ini_util.写入列表ini(stock_items, output_dir, f"{len(stock_items)}_全部.ini")
+    ini_path = ini_util.write_ini_list(stock_items, output_dir, f"{len(stock_items)}_全部.ini")
 
     logger.warning(f"{target_date} 入选股票ini文件生成完成：{ini_path}")
     return ini_path

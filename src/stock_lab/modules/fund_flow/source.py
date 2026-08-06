@@ -1,0 +1,139 @@
+import datetime
+import json
+import re
+import time
+
+from loguru import logger
+
+from stock_lab.config import get_settings
+
+from .collector import save_snapshot
+
+
+COLLECTION_WINDOWS = (
+    (datetime.time(9, 27), datetime.time(11, 31)),
+    (datetime.time(12, 58), datetime.time(15, 1)),
+)
+FLOW_CONFIG = {
+    "industry": ("Industry fund flow", "https://data.eastmoney.com/bkzj/hy.html"),
+    "concept": ("Concept fund flow", "https://data.eastmoney.com/bkzj/gn.html"),
+}
+
+
+def normalize_concept_name(value):
+    return str(value or "").strip().strip("【】[]")
+
+
+def normalize_concept_match(value):
+    return re.sub(r"[\s_＿\-]+", "", normalize_concept_name(value)).upper()
+
+
+def is_excluded_concept(value, excluded_names):
+    name = normalize_concept_match(value)
+    if not name:
+        return False
+    excluded = {normalize_concept_match(item) for item in excluded_names}
+    return name in excluded or bool(
+        re.match(r"^20\d{2}(年报|一季报|半年报|三季报)(预增|扭亏|预亏|预减|高增长)$", name)
+    )
+
+
+def parse_fund_flow_packets(packets, collected_at, flow_type, excluded_names=()):
+    flow_response = None
+    leader_response = None
+    for packet in packets:
+        body = packet.response.body
+        target = str(packet.target)
+        if "/api/qt/clist/get" in target:
+            if isinstance(body, dict):
+                leader_response = body
+            else:
+                text = str(body)
+                start, end = text.find("("), text.rfind(")")
+                leader_response = json.loads(text[start + 1:end] if start >= 0 and end > start else text)
+        elif isinstance(body, dict) and "/dataapi/bkzj/getbkzj" in target:
+            flow_response = body
+        if flow_response and leader_response:
+            break
+    if not flow_response or not leader_response:
+        raise TimeoutError("EastMoney fund-flow responses were incomplete")
+    leaders = {
+        row.get("f12"): row.get("f204", "")
+        for row in (leader_response.get("data") or {}).get("diff") or []
+    }
+    records = []
+    for item in (flow_response.get("data") or {}).get("diff") or []:
+        record = {
+            "time": collected_at,
+            "board_code": item.get("f12", ""),
+            "board_name": str(item.get("f14", "")),
+            "leader": str(leaders.get(item.get("f12"), "")),
+            "net_inflow_100m": round((item.get("f62") or 0) / 10000.0, 2),
+        }
+        if flow_type != "concept" or not is_excluded_concept(record["board_name"], excluded_names):
+            records.append(record)
+    if not records:
+        raise RuntimeError("EastMoney returned no usable fund-flow records")
+    return records
+
+
+class FundFlowSource:
+    def __init__(self, page_factory, repository, *, settings=None, sleeper=time.sleep, clock=datetime.datetime.now):
+        self.page_factory = page_factory
+        self.repository = repository
+        self.settings = settings or get_settings()
+        self.sleeper = sleeper
+        self.clock = clock
+        self.page = None
+
+    def collection_interval_seconds(self):
+        return self.settings.fund_flow_interval_seconds
+
+    def initialize(self):
+        self.page = self.page_factory(
+            "fund-flow",
+            "https://data.eastmoney.com/bkzj/hy.html",
+            use_main_tab=True,
+        )
+        return self.page
+
+    def warm_history(self):
+        return None
+
+    def wait_until_next_run(self, interval_seconds=None):
+        interval = interval_seconds or self.collection_interval_seconds()
+        now = self.clock()
+        elapsed = now.hour * 3600 + now.minute * 60 + now.second + now.microsecond / 1_000_000
+        wait_seconds = (interval - elapsed % interval) % interval
+        if wait_seconds:
+            self.sleeper(wait_seconds)
+
+    @staticmethod
+    def is_collection_time(now):
+        return now.weekday() < 5 and any(start <= now.time() <= end for start, end in COLLECTION_WINDOWS)
+
+    def collect(self, flow_type):
+        if self.page is None:
+            self.initialize()
+        name, url = FLOW_CONFIG[flow_type]
+        now = self.clock()
+        self.page.listen.start(["/dataapi/bkzj/getbkzj", "/api/qt/clist/get"])
+        self.page.get(url, timeout=0)
+        records = parse_fund_flow_packets(
+            self.page.listen.steps(timeout=5),
+            now.strftime("%H:%M:%S"),
+            flow_type,
+            self.settings.concept_exclusions,
+        )
+        save_snapshot(
+            self.repository,
+            flow_type,
+            now.strftime("%Y%m%d"),
+            now.strftime("%H:%M:%S"),
+            records,
+        )
+        logger.info("Collected {} {} rows", name, len(records))
+        return records
+
+    def collect_all(self):
+        return {flow_type: self.collect(flow_type) for flow_type in FLOW_CONFIG}

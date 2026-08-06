@@ -116,36 +116,36 @@ def backfill_daily_updates(
     return {"status": status, "results": results}
 
 
-class LegacyDailyUpdateCollector:
+class DailyUpdateCollector:
     def trading_dates(self, limit):
-        from task.data_sources import 交易日期列表
+        from stock_lab.modules.market_data.collectors import trading_dates
 
-        return 交易日期列表(limit)
+        return trading_dates(limit)
 
     def update_securities(self):
-        from task.data_sources import 更新股票基础信息
+        from stock_lab.modules.market_data.collectors import update_securities
 
-        return 更新股票基础信息()
+        return update_securities()
 
     def update_daily_quotes(self, start_date, end_date):
-        from task.data_sources import 更新股票日线
+        from stock_lab.modules.market_data.collectors import update_daily_quotes
 
-        return 更新股票日线(start_date, end_date)
+        return update_daily_quotes(start_date, end_date)
 
     def update_index_daily(self, start_date, end_date):
-        from task.data_sources import 更新指数日线
+        from stock_lab.modules.market_data.collectors import update_index_daily
 
-        return 更新指数日线(start_date, end_date)
+        return update_index_daily(start_date, end_date)
 
     def collect_board_actions(self, trade_date):
-        from task._5_韭研公社异动 import 韭研公社异动采集
+        from stock_lab.modules.market_data.jiuyan import collect_jiuyan_actions
 
-        return 韭研公社异动采集(trade_date)
+        return collect_jiuyan_actions(trade_date)
 
 
 def _dependencies(collector, state, run_hot_board, run_index):
     if collector is None:
-        collector = LegacyDailyUpdateCollector()
+        collector = DailyUpdateCollector()
     if state is None:
         from utils import db
 

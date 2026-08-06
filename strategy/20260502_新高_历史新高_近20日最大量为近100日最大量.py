@@ -4,7 +4,7 @@ import pandas as pd
 from loguru import logger
 
 from utils import db, common, account
-from 游资溢价分析 import 溢价分析
+from stock_lab.modules.dragon_tiger import runtime as premium_analysis
 from multiprocessing import Pool
 import math
 

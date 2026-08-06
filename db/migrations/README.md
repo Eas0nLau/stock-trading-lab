@@ -10,6 +10,13 @@ Run these scripts manually in numeric order against a stopped application:
 
 The third script is destructive and is intentionally not referenced by project initialization. Before its first drop it requires migration versions `001` and `002` plus `migration_validations.validation_version = '002_parity_v1'` with `status = 'succeeded'`. The database guard is necessary but does not replace backup and application-cutover approval.
 
+The repository application cutover is complete and enforced by
+`tests/test_cutover_contracts.py`: active Python has no legacy table/Redis literals,
+official modules do not import compatibility implementations, and documented old
+paths are thin wrappers. This is readiness evidence only. Migration `003` was not
+executed as part of the cutover and still requires a stopped application, a fresh
+full backup, successful parity state, sampling, and separate destructive approval.
+
 Each `002` gate compares source/target rows and distinct mapped keys. Date-bearing mappings also compare date ranges; fact mappings compare selected amount, volume, count, or indicator aggregates; JSON mappings verify target validity. A mismatch raises SQLSTATE `45000`. The success validation and `002` version are written only after all gates return, and reruns clear stale success first.
 
 `ths_boards`, `ths_board_constituents`, and `ths_stock_relations` are archived,

@@ -107,15 +107,16 @@ def test_jiuyan_family_selects_non_empty_fixture():
 
 def test_fund_flow_family_selects_non_empty_fixture():
     snapshot = [{
-        "时间": "09:35", "板块代码": "BK001", "板块名称": "Banks",
-        "龙头": "Fixture", "资金净流入(亿)": 60000,
+        "time": "09:35", "board_code": "BK001", "board_name": "Banks",
+        "leader": "Fixture", "net_inflow_100m": 60000,
     }]
     fixture = {
         "securities": [_qualified_security()],
         "daily_quotes": [{
             **_trend_quotes()[-1], "total_market_value": 6000000,
         }],
-        "redis_lists": {"fund_flow:history:20260110": [json.dumps(snapshot)]},
+        "redis_values": {"fund_flow:v1:industry:history:20260110": json.dumps([snapshot])},
+        "redis_sets": {"fund_flow:v1:industry:dates": ["20260110"]},
     }
 
     result = get_strategy(FAMILY_REPRESENTATIVES["fund_flow"]).run(

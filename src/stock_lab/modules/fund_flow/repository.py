@@ -2,8 +2,6 @@ import json
 import queue
 import threading
 
-from .legacy_adapter import LegacyFundFlowReadAdapter
-
 
 # The API and collector run as threads in one application process, so one broker owns all subscribers.
 _subscribers = set()
@@ -11,9 +9,8 @@ _subscriber_lock = threading.Lock()
 
 
 class FundFlowRepository:
-    def __init__(self, redis, legacy_reader=None):
+    def __init__(self, redis):
         self.redis = redis
-        self.legacy_reader = legacy_reader if legacy_reader is not None else LegacyFundFlowReadAdapter(redis)
 
     @staticmethod
     def history_key(flow_type, trade_date):
@@ -42,14 +39,14 @@ class FundFlowRepository:
         value = self.redis.get(self.history_key(flow_type, trade_date))
         if value:
             return json.loads(value)
-        return self.legacy_reader.history(flow_type, trade_date)
+        return None
 
     def dates(self, flow_type):
         current = {
             value.decode() if isinstance(value, bytes) else value
             for value in self.redis.smembers(self.dates_key(flow_type))
         }
-        return sorted(current | set(self.legacy_reader.dates(flow_type)))
+        return sorted(current)
 
     def publish_snapshot(self, flow_type, trade_date, collected_at, record_count):
         event = {

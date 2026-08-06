@@ -36,7 +36,11 @@ class OfflineQueryProvider:
     is_offline = True
 
     def __init__(self, tables):
-        self.cache = FixtureRedis(tables.get("redis_lists", {}))
+        self.cache = FixtureRedis(
+            tables.get("redis_values", {}),
+            tables.get("redis_lists", {}),
+            tables.get("redis_sets", {}),
+        )
         self.engine = sqlite3.connect(":memory:")
         self.engine.row_factory = sqlite3.Row
         self.engine.create_function("SUBSTRING_INDEX", 3, self._substring_index)
@@ -73,16 +77,21 @@ class OfflineQueryProvider:
 
 
 class FixtureRedis:
-    def __init__(self, lists):
+    def __init__(self, values, lists, sets):
+        self._values = {str(key): value for key, value in values.items()}
         self._lists = {str(key): list(values) for key, values in lists.items()}
+        self._sets = {str(key): set(values) for key, values in sets.items()}
 
     def get(self, key):
-        return None
+        return self._values.get(str(key))
 
     def lrange(self, key, start, end):
         values = self._lists.get(str(key), [])
         stop = None if int(end) == -1 else int(end) + 1
         return values[int(start):stop]
+
+    def smembers(self, key):
+        return self._sets.get(str(key), set())
 
 
 class FixtureMarketDataRepository:
@@ -252,8 +261,13 @@ def configured_local_context(target_date):
 
 def _normalize_fixture(fixture):
     result = {
-        name: ({str(key): list(values) for key, values in rows.items()}
-               if name == "redis_lists" else [dict(row) for row in rows])
+        name: (
+            {str(key): list(values) for key, values in rows.items()}
+            if name in {"redis_lists", "redis_sets"}
+            else {str(key): value for key, value in rows.items()}
+            if name == "redis_values"
+            else [dict(row) for row in rows]
+        )
         for name, rows in fixture.items()
     }
     securities = []

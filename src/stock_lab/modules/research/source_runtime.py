@@ -9,6 +9,7 @@ import pandas as pd
 from loguru import logger
 
 from stock_lab.modules.dragon_tiger.analytics import analyze_broker_premium
+from stock_lab.modules.fund_flow.repository import FundFlowRepository
 from stock_lab.modules.market_data.helpers import normalize_symbol, normalize_ts_code, stock_code_filter
 
 from .context import ResearchConfigurationError, ResearchExecutionError
@@ -110,7 +111,7 @@ class OfflineRedisProxy:
 
 class IniOutputProxy:
     @staticmethod
-    def 写入列表ini(*args, **kwargs):
+    def write_ini_list(*args, **kwargs):
         return None
 
 
@@ -176,7 +177,8 @@ def _load_selector_namespace(path, context):
         "timer_statistics": common.timer_statistics,
         "db": DbProxy(context.query_provider), "account": account,
         "ini_util": IniOutputProxy(),
-        "溢价分析": PremiumAnalysisProxy(context),
+        "premium_analysis": PremiumAnalysisProxy(context),
+        "fund_flow_repository": FundFlowRepository(getattr(context.query_provider, "cache", OfflineRedisProxy())),
         "normalize_symbol": normalize_symbol, "normalize_ts_code": normalize_ts_code,
     }
     _inject_safe_imports(tree, namespace)

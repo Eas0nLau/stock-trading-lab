@@ -4,15 +4,12 @@ from sqlalchemy import text
 
 from stock_lab.shared.errors import DataValidationError
 
-from .contracts import translate_legacy_payload
-
-
 def run_index_emotion_job(trade_date, repository=None, calculator=None, writer=None):
     repository, writer = _dependencies(repository, writer)
     if calculator is None:
-        from 实时监控 import 情绪周期
+        from .index_cycle import calculate_index_cycle
 
-        calculator = 情绪周期.计算指数周期结果
+        calculator = calculate_index_cycle
 
     trade_date = int(trade_date)
     index_rows = [row for row in repository.index_daily_rows(160) if int(row["trade_date"]) <= trade_date]
@@ -25,20 +22,7 @@ def run_index_emotion_job(trade_date, repository=None, calculator=None, writer=N
     ):
         raise DataValidationError(f"Missing index or market-breadth data for {trade_date}")
 
-    legacy_index_rows = [
-        {
-            "日期": row.get("trade_date"),
-            "开盘": row.get("open_price"),
-            "收盘": row.get("close_price"),
-            "最高": row.get("high_price"),
-            "最低": row.get("low_price"),
-            "成交额": row.get("turnover"),
-            "涨跌幅": row.get("change_pct"),
-        }
-        for row in index_rows
-    ]
-    legacy_result = calculator(legacy_index_rows, market_rows)
-    result = translate_legacy_payload(legacy_result)
+    result = calculator(index_rows, market_rows)
     result.pop("status", None)
     latest_market = market_rows[-1]
 
@@ -65,9 +49,9 @@ def run_index_emotion_job(trade_date, repository=None, calculator=None, writer=N
 def run_hot_board_emotion_job(trade_date, sample_trade_date, repository=None, analyzer=None, writer=None):
     repository, writer = _dependencies(repository, writer)
     if analyzer is None:
-        from utils import 热门板块情绪算法
+        from .hot_board import analyze_hot_board_day
 
-        analyzer = 热门板块情绪算法.生成每日分析
+        analyzer = analyze_hot_board_day
 
     trade_date = int(trade_date)
     sample_trade_date = int(sample_trade_date)
@@ -78,35 +62,23 @@ def run_hot_board_emotion_job(trade_date, sample_trade_date, repository=None, an
     if not current or not previous:
         raise DataValidationError(f"Missing board actions for {sample_trade_date} or {trade_date}")
 
-    stock_codes = {item["股票代码"] for rows in previous.values() for item in rows}
+    stock_codes = {item["stock_code"] for rows in previous.values() for item in rows}
     raw_quotes = repository.daily_quote_rows(trade_date, stock_codes)
-    legacy_quotes = {
-        int(code): {
-            "ts_code": int(code),
-            "pre_close": row.get("previous_close"),
-            "high": row.get("high_price"),
-            "low": row.get("low_price"),
-            "pct_chg": row.get("change_pct"),
-        }
-        for code, row in raw_quotes.items()
-        if str(code).isdigit()
-    }
 
     rows = []
     for board_name in sorted(set(current) | set(previous)):
-        legacy_result = analyzer(
-            日期=trade_date,
-            板块=board_name,
-            样本来源日期=sample_trade_date,
-            前日股票=previous.get(board_name, []),
-            当日股票=current.get(board_name, []),
-            当日行情=legacy_quotes,
-            前日板块数量=_board_count(previous_rows, board_name),
-            当日板块数量=_board_count(current_rows, board_name),
-            前日榜单数据完整=True,
-            当日榜单数据完整=True,
+        row = analyzer(
+            trade_date=trade_date,
+            board_name=board_name,
+            sample_trade_date=sample_trade_date,
+            previous_stocks=previous.get(board_name, []),
+            current_stocks=current.get(board_name, []),
+            current_quotes=raw_quotes,
+            previous_board_count=_board_count(previous_rows, board_name),
+            current_board_count=_board_count(current_rows, board_name),
+            previous_list_complete=True,
+            current_list_complete=True,
         )
-        row = translate_legacy_payload(legacy_result)
         row["decision_reasons_json"] = json.dumps(row.pop("decision_reasons", {}), ensure_ascii=False)
         rows.append(row)
 
@@ -192,8 +164,8 @@ def _group_board_actions(rows):
         stock_code = str(row.get("stock_code") or "").zfill(6)
         if board_name and stock_code.isdigit():
             grouped.setdefault(board_name, {})[stock_code] = {
-                "股票代码": int(stock_code),
-                "股票名称": row.get("stock_name"),
+                "stock_code": stock_code,
+                "stock_name": row.get("stock_name"),
             }
     return {name: list(items.values()) for name, items in grouped.items()}
 

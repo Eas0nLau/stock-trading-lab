@@ -46,20 +46,19 @@ def test_index_job_writes_english_tables_and_json():
     writes = []
 
     def calculator(index_rows, market_rows):
-        assert index_rows[0]["日期"] == 20260806
+        assert index_rows[0]["trade_date"] == 20260806
         return {
-            "状态": "success",
-            "交易日期": 20260806,
-            "周期状态": "发酵",
-            "周期分数": 70,
-            "指数": {"收盘": 3560},
-            "市场宽度": {"上涨家数": 3000},
-            "分项得分": {},
-            "均线": {},
-            "均线斜率": {},
-            "信号": [],
-            "最近走势": [],
-            "波动图": [],
+            "trade_date": 20260806,
+            "cycle_state": "发酵",
+            "cycle_score": 70,
+            "index_quote": {"close_price": 3560},
+            "market_breadth": {"advancing_count": 3000},
+            "score_components": {},
+            "moving_averages": {},
+            "moving_average_slopes": {},
+            "signals": [],
+            "recent_trend": [],
+            "volatility_chart": [],
         }
 
     run_index_emotion_job(20260806, FakeRepository(), calculator, lambda tables: writes.extend(tables))
@@ -75,13 +74,13 @@ def test_hot_board_job_writes_english_rows():
 
     def analyzer(**values):
         return {
-            "日期": values["日期"],
-            "板块": values["板块"],
-            "样本来源日期": values["样本来源日期"],
-            "当日板块数量": 20,
-            "综合状态": "强势延续",
-            "情绪分": 80,
-            "判定依据": {"reason": "test"},
+            "trade_date": values["trade_date"],
+            "board_name": values["board_name"],
+            "sample_trade_date": values["sample_trade_date"],
+            "current_board_count": 20,
+            "overall_status": "强势延续",
+            "emotion_score": 80,
+            "decision_reasons": {"reason": "test"},
         }
 
     run_hot_board_emotion_job(20260806, 20260805, FakeRepository(), analyzer, lambda tables: writes.extend(tables))

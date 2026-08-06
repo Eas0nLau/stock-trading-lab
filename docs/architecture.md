@@ -18,9 +18,9 @@ src/stock_lab/
 `stock_lab.modules.market_data` owns the shared repository boundary for
 `securities`, `daily_quotes`, and `index_daily`. It returns canonical English rows
 and preserves string identifiers, including leading zeroes and exchange suffixes.
-Legacy aliases are limited to `utils/common.py` and `utils/account.py` adapters for
-the strategy files that have not migrated yet. Strategy and TDX monitor rewrites are
-explicitly deferred.
+Legacy-shaped DataFrame aliases are limited to compatibility adapters. Active
+research strategies execute through `stock_lab.modules.research` against canonical
+market-data, fund-flow, and dragon-tiger repositories.
 
 ## 依赖规则
 
@@ -33,7 +33,12 @@ infrastructure -> shared
 
 `shared` 不依赖业务模块。领域算法不直接导入 FastAPI、Redis、浏览器或数据库连接。外部数据在 adapter 边界转换成英文领域模型。
 
-策略选股的浏览器采集仍由 `实时监控/策略选股.py` 提供兼容 adapter；策略配置、快照、事件、当前入选状态和 SSE broker 由 `stock_lab.modules.strategy_pick` 正式模块拥有。
+资金流向和策略选股的浏览器采集、解析、调度、快照、事件和 SSE broker 均由
+`stock_lab.modules.fund_flow`、`stock_lab.modules.strategy_pick` 与
+`stock_lab.infrastructure.browser` 拥有。兼容脚本只转发，不注册旧 REST 路由，也不访问旧 Redis 键。
+
+`stock_lab.modules.emotion.index_cycle` 和 `stock_lab.modules.emotion.hot_board`
+拥有指数及热门板块算法。正式 job 只传递英文规范字段；中文模块仅为直接脚本路径提供薄转发。
 
 ## 应用启动
 

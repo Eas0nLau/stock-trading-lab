@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from stock_lab.modules.fund_flow.contracts import translate_legacy_fund_flow
@@ -51,36 +49,24 @@ def test_repository_replaces_same_time_snapshot_without_duplicate():
     ]
 
 
-def test_repository_reads_and_translates_legacy_industry_history():
+def test_repository_does_not_fall_back_to_legacy_industry_history():
     redis = FakeRedis()
-    redis.lists["fund_flow:history:20260805"] = [
-        json.dumps([{"时间": "10:00:00", "板块名称": "机器人", "资金净流入(亿)": 3}])
-    ]
+    redis.lists["old-industry-history"] = ["retired"]
 
     repository = FundFlowRepository(redis)
 
-    assert repository.history("industry", "20260805") == [[{
-        "time": "10:00:00",
-        "board_name": "机器人",
-        "net_inflow_100m": 3,
-    }]]
-    assert repository.dates("industry") == ["20260805"]
+    assert repository.history("industry", "20260805") is None
+    assert repository.dates("industry") == []
 
 
-def test_repository_reads_and_translates_legacy_concept_history():
+def test_repository_does_not_scan_keys_for_missing_concept_history():
     redis = FakeRedis()
-    redis.lists["fund_flow_概念:history:20260804"] = [
-        json.dumps([{"时间": "10:01:00", "板块名称": "算力", "龙头": "甲"}])
-    ]
+    redis.keys = lambda _pattern: (_ for _ in ()).throw(AssertionError("key scan is forbidden"))
 
     repository = FundFlowRepository(redis)
 
-    assert repository.history("concept", "20260804") == [[{
-        "time": "10:01:00",
-        "board_name": "算力",
-        "leader": "甲",
-    }]]
-    assert repository.dates("concept") == ["20260804"]
+    assert repository.history("concept", "20260804") is None
+    assert repository.dates("concept") == []
 
 
 def test_stream_generator_removes_subscriber_when_closed():
