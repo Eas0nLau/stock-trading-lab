@@ -53,8 +53,9 @@ def _页面可用(page):
     if page is None:
         return False
     try:
-        _ = page.tab_id
-        return True
+        tab_id = page.tab_id
+        tab_ids = getattr(page, "tab_ids", None)
+        return bool(tab_id) and (tab_ids is None or tab_id in tab_ids)
     except Exception:
         return False
 
