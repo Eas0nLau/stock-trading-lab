@@ -13,14 +13,14 @@ def create_default_worker_manager() -> WorkerManager:
         lambda: run_fund_flow_monitor(fund_flow_stop),
         stop=fund_flow_stop.set,
     )
-    manager.register("strategy-pick-monitor", run_strategy_pick_monitor)
+    strategy_pick_stop = threading.Event()
+    manager.register("strategy-pick-monitor", lambda: run_strategy_pick_monitor(strategy_pick_stop), stop=strategy_pick_stop.set)
     return manager
 
 
-def run_strategy_pick_monitor() -> None:
-    from 实时监控 import 策略选股
-
-    策略选股.start_monitor()
+def run_strategy_pick_monitor(stop_event=None, *, collector=None, adapter=None) -> None:
+    from stock_lab.modules.strategy_pick.collector import run_strategy_pick_monitor as run_collector
+    run_collector(stop_event, collector=collector, adapter=adapter)
 
 
 def run_fund_flow_monitor(stop_event: threading.Event) -> None:

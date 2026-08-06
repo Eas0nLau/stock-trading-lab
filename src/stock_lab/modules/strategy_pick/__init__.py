@@ -1,1 +1,3 @@
-"""Strategy-pick monitoring module."""
+from .repository import StrategyPickRepository
+
+__all__ = ["StrategyPickRepository"]

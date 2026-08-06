@@ -8,6 +8,22 @@ DEFAULT_FUND_FLOW_INTERVAL_SECONDS = 60
 DEFAULT_FUND_FLOW_HISTORY_TOP_N = 10
 DEFAULT_STRATEGY_PICK_TIMEOUT_SECONDS = 30
 DEFAULT_STRATEGY_PICK_MAX_RETRIES = 3
+DEFAULT_STRATEGY_PICK_STRATEGIES = (
+    {
+        "id": "eastmoney_1", "name": "新高监控",
+        "pageUrl": "https://xuangu.eastmoney.com/Result?id=xc1253a53b79c1004575&a=edit_way",
+        "listenTargets": ["/api/smart-tag/stock/v3/pw/search-code"],
+        "monitorPeriods": [["09:20", "11:31"], ["13:00", "15:01"]],
+        "monitorIntervalSeconds": 30, "enabled": True, "createdAt": "", "updatedAt": "",
+    },
+    {
+        "id": "eastmoney_2", "name": "跳空高开",
+        "pageUrl": "https://xuangu.eastmoney.com/Result?id=xc130976a8770800ef4c&a=edit_way",
+        "listenTargets": ["/api/smart-tag/stock/v3/pw/search-code"],
+        "monitorPeriods": [["09:20", "11:31"], ["13:00", "15:01"]],
+        "monitorIntervalSeconds": 30, "enabled": True, "createdAt": "", "updatedAt": "",
+    },
+)
 DEFAULT_HOT_BOARD_EMOTION_SELECTION_THRESHOLD = 8
 DEFAULT_HOT_BOARD_EMOTION_CLIMAX_THRESHOLD = 20
 DEFAULT_HOT_BOARD_EMOTION_STRONG_CONTINUATION_RATIO = 0.5

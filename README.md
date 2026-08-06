@@ -242,7 +242,7 @@ MySQL 负责保存需要长期查询和回测的结构化数据，主要包括�
 Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 
 - 行业/概念资金流向快照，使用 `fund_flow:v1:{flow_type}:history:{date}`、`fund_flow:v1:{flow_type}:dates` 和 `fund_flow:v1:stream`。
-- 策略配置、当前选股名单、历史快照和入选事件。
+- 策略配置、当前选股名单、历史快照和入选事件；策略选股 V1 使用 `strategy_pick:v1:*` ASCII 键，旧 `策略选股:*` 键只由迁移 adapter 兼容读写。
 - 每日更新、盘前纪要等任务的执行锁和完成标记。
 
 ## 7. Web 页面与接口
@@ -251,11 +251,11 @@ Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 | --- | --- | --- |
 | 板块资金流向 V1 | `/api/v1/fund-flow/industry/dates`、`/history/{date}`、`/api/v1/fund-flow/stream` | 英文字段，前端已切换 |
 | 概念资金流向 V1 | `/api/v1/fund-flow/concept/dates`、`/history/{date}`、`/api/v1/fund-flow/stream` | 英文字段，前端已切换 |
-| 策略选股监控 | `/api/strategy-pick/*` | 已实现 |
+| 策略选股监控 V1 | `/api/v1/strategy-pick/strategies`、`/latest`、`/history/{date}`、`/events/{date}`、`/dates`、`/refresh`、`/stream` | 英文字段，前端和 worker 已切换 |
 | 指数情绪 V1 | `/api/v1/emotion/current` | 英文字段，前端已切换 |
 | 热门板块情绪 V1 | `/api/v1/emotion/hot-boards` | 英文字段，前端已切换 |
 
-旧 `/api/zijin/*`、`/api/emotion/*` 和 `/api/hot-board-emotion/*` 不再注册。资金流向浏览器采集逻辑暂留在兼容文件中，通过官方 adapter 写入 V1 Redis，并在迁移期同步旧 `fund_flow*` 原始历史键供直接消费者使用。资金流向 SSE 使用应用进程内 broker，由同一进程中的采集线程向 API 订阅者投递；策略选股仍依赖旧监控模块。
+旧 `/api/zijin/*`、`/api/emotion/*`、`/api/hot-board-emotion/*` 和 `/api/strategy-pick/*` 不再注册。资金流向和策略选股浏览器采集逻辑暂留在兼容文件中，通过官方 adapter 写入 V1 Redis，并在迁移期同步旧键供直接消费者使用。两类 SSE 都使用应用进程内 broker，由同一进程中的采集线程向 API 订阅者投递，并在连接关闭时清理订阅。
 
 ## 8. 运行条件与启动方式
 

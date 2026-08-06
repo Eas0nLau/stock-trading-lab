@@ -26,6 +26,8 @@ infrastructure -> shared
 
 `shared` 不依赖业务模块。领域算法不直接导入 FastAPI、Redis、浏览器或数据库连接。外部数据在 adapter 边界转换成英文领域模型。
 
+策略选股的浏览器采集仍由 `实时监控/策略选股.py` 提供兼容 adapter；策略配置、快照、事件、当前入选状态和 SSE broker 由 `stock_lab.modules.strategy_pick` 正式模块拥有。
+
 ## 应用启动
 
 `stock_lab.bootstrap.application.create_app()` 创建 FastAPI 应用。路由只注册一次，worker 只在 lifespan 启动。根目录 `app.py` 保留 `app` 对象和直接启动能力，但不再包含路由或调度实现。

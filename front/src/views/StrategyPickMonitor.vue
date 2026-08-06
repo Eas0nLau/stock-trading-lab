@@ -4,7 +4,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
           <h1 class="text-xl font-semibold text-white">策略选股监控</h1>
-          <div class="mt-1 text-xs text-slate-400">{{ activeStrategy?.名称 || '未选择策略' }}</div>
+          <div class="mt-1 text-xs text-slate-400">{{ activeStrategy?.name || '未选择策略' }}</div>
         </div>
 
         <div class="flex flex-wrap items-center gap-3 text-sm">
@@ -70,17 +70,17 @@
                 >
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                      <div class="truncate text-sm font-semibold text-white">{{ strategy.名称 }}</div>
+                   <div class="truncate text-sm font-semibold text-white">{{ strategy.name }}</div>
                       <div class="mt-1 truncate text-xs text-slate-500">{{ strategy.id }}</div>
                     </div>
-                    <span class="shrink-0 rounded px-2 py-1 text-[11px]" :class="strategy.启用 ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-700 text-slate-300'">
-                      {{ strategy.启用 ? '启用' : '停用' }}
+                     <span class="shrink-0 rounded px-2 py-1 text-[11px]" :class="strategy.enabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-700 text-slate-300'">
+                       {{ strategy.enabled ? '启用' : '停用' }}
                     </span>
                   </div>
-                  <div class="mt-2 line-clamp-2 text-xs text-slate-400">{{ strategy.页面URL }}</div>
+                   <div class="mt-2 line-clamp-2 text-xs text-slate-400">{{ strategy.pageUrl }}</div>
                   <div class="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-300">
-                    <span class="rounded border border-slate-700 px-2 py-1">{{ formatMonitorPeriods(strategy.监控时间段) }}</span>
-                    <span class="rounded border border-slate-700 px-2 py-1">{{ formatInterval(strategy.监控频率秒) }}</span>
+                     <span class="rounded border border-slate-700 px-2 py-1">{{ formatMonitorPeriods(strategy.monitorPeriods) }}</span>
+                     <span class="rounded border border-slate-700 px-2 py-1">{{ formatInterval(strategy.monitorIntervalSeconds) }}</span>
                   </div>
                   <div class="mt-3 flex gap-2">
                     <button
@@ -93,10 +93,10 @@
                     <button
                       type="button"
                       class="rounded-md border px-2.5 py-1.5 text-[11px] font-semibold shadow-sm transition"
-                      :class="strategy.启用 ? 'border-red-400/50 bg-red-500/15 text-red-100 shadow-red-950/40 hover:bg-red-500/25' : 'border-emerald-400/50 bg-emerald-500/15 text-emerald-100 shadow-emerald-950/40 hover:bg-emerald-500/25'"
+                       :class="strategy.enabled ? 'border-red-400/50 bg-red-500/15 text-red-100 shadow-red-950/40 hover:bg-red-500/25' : 'border-emerald-400/50 bg-emerald-500/15 text-emerald-100 shadow-emerald-950/40 hover:bg-emerald-500/25'"
                       @click.stop="toggleStrategy(strategy)"
                     >
-                      {{ strategy.启用 ? '停用' : '启用' }}
+                       {{ strategy.enabled ? '停用' : '启用' }}
                     </button>
                   </div>
                 </div>
@@ -106,26 +106,26 @@
                   <div class="space-y-3 text-sm">
                     <label class="block">
                       <span class="mb-1 block text-xs text-slate-400">名称</span>
-                      <input v-model="strategyForm.名称" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                       <input v-model="strategyForm.name" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
                     </label>
                     <label class="block">
                       <span class="mb-1 block text-xs text-slate-400">页面 URL</span>
-                      <input v-model="strategyForm.页面URL" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                       <input v-model="strategyForm.pageUrl" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
                     </label>
                     <label class="block">
                       <span class="mb-1 block text-xs text-slate-400">监听接口</span>
-                      <textarea v-model="strategyForm.监听目标Text" rows="3" class="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                       <textarea v-model="strategyForm.listenTargetsText" rows="3" class="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
                     </label>
                     <label class="block">
                       <span class="mb-1 block text-xs text-slate-400">监控时间段</span>
-                      <input v-model="strategyForm.监控时间段Text" placeholder="09:28~11:31, 13:00~15:01" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                       <input v-model="strategyForm.monitorPeriodsText" placeholder="09:28~11:31, 13:00~15:01" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
                     </label>
                     <label class="block">
                       <span class="mb-1 block text-xs text-slate-400">监控频率（秒）</span>
-                      <input v-model.number="strategyForm.监控频率秒" type="number" min="1" step="1" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                       <input v-model.number="strategyForm.monitorIntervalSeconds" type="number" min="1" step="1" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
                     </label>
                     <label class="flex items-center gap-2 text-xs text-slate-300">
-                      <input v-model="strategyForm.启用" type="checkbox" class="h-4 w-4 accent-cyan-400" />
+                       <input v-model="strategyForm.enabled" type="checkbox" class="h-4 w-4 accent-cyan-400" />
                       启用监听
                     </label>
                     <div class="flex gap-2">
@@ -150,26 +150,26 @@
             <div class="space-y-3 text-sm">
               <label class="block">
                 <span class="mb-1 block text-xs text-slate-400">名称</span>
-                <input v-model="strategyForm.名称" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                 <input v-model="strategyForm.name" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
               </label>
               <label class="block">
                 <span class="mb-1 block text-xs text-slate-400">页面 URL</span>
-                <input v-model="strategyForm.页面URL" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                 <input v-model="strategyForm.pageUrl" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
               </label>
               <label class="block">
                 <span class="mb-1 block text-xs text-slate-400">监听接口</span>
-                <textarea v-model="strategyForm.监听目标Text" rows="3" class="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                 <textarea v-model="strategyForm.listenTargetsText" rows="3" class="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
               </label>
               <label class="block">
                 <span class="mb-1 block text-xs text-slate-400">监控时间段</span>
-                <input v-model="strategyForm.监控时间段Text" placeholder="09:28~11:31, 13:00~15:01" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                 <input v-model="strategyForm.monitorPeriodsText" placeholder="09:28~11:31, 13:00~15:01" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
               </label>
               <label class="block">
                 <span class="mb-1 block text-xs text-slate-400">监控频率（秒）</span>
-                <input v-model.number="strategyForm.监控频率秒" type="number" min="1" step="1" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
+                 <input v-model.number="strategyForm.monitorIntervalSeconds" type="number" min="1" step="1" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-cyan-400" />
               </label>
               <label class="flex items-center gap-2 text-xs text-slate-300">
-                <input v-model="strategyForm.启用" type="checkbox" class="h-4 w-4 accent-cyan-400" />
+                 <input v-model="strategyForm.enabled" type="checkbox" class="h-4 w-4 accent-cyan-400" />
                 启用监听
               </label>
               <div class="flex gap-2">
@@ -215,26 +215,24 @@
                   暂无入选事件
                 </div>
                 <div v-else class="space-y-2">
-                  <div v-for="event in sortedEvents" :key="event.event_id" class="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3">
+                  <div v-for="event in sortedEvents" :key="event.eventId" class="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3">
                     <div class="flex items-start justify-between gap-3">
                       <div class="min-w-0 flex flex-wrap items-center gap-2">
-                        <button class="max-w-[170px] truncate text-left text-base font-semibold text-cyan-200 hover:text-cyan-100" :title="`点击复制 ${event.名称}`" @click="copyStockName(event.名称, event.event_id)">
-                          {{ event.名称 || '-' }}
+                        <button class="max-w-[170px] truncate text-left text-base font-semibold text-cyan-200 hover:text-cyan-100" :title="`点击复制 ${event.name}`" @click="copyStockName(event.name, event.eventId)">
+                          {{ event.name || '-' }}
                         </button>
-                        <span v-if="getShenwanIndustryValue(event.字段)" class="max-w-[190px] truncate rounded border border-red-400/40 bg-red-500/15 px-2 py-1 text-[11px] font-semibold text-red-200" :title="getShenwanIndustryValue(event.字段)">
-                          {{ getShenwanIndustryValue(event.字段) }}
+                        <span v-if="getShenwanIndustryValue(event.fields)" class="max-w-[190px] truncate rounded border border-red-400/40 bg-red-500/15 px-2 py-1 text-[11px] font-semibold text-red-200" :title="getShenwanIndustryValue(event.fields)">
+                          {{ getShenwanIndustryValue(event.fields) }}
                         </span>
                       </div>
                       <span class="shrink-0 rounded border border-red-400/40 bg-red-500/15 px-2 py-1 text-xs font-semibold text-red-200">{{ formatEventClock(event) }}</span>
                     </div>
                     <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                      <span>{{ event.代码 }}</span>
-                      <span>{{ event.市场 }}</span>
-                      <span>{{ event.策略名称 }}</span>
-                      <span v-if="copiedId === event.event_id" class="text-emerald-300">已复制</span>
+                      <span>{{ event.code }}</span><span>{{ event.market }}</span><span>{{ event.strategyName }}</span>
+                      <span v-if="copiedId === event.eventId" class="text-emerald-300">已复制</span>
                     </div>
-                    <div v-if="formatEventFieldPairs(event.字段).length" class="mt-2 flex flex-wrap gap-1.5">
-                      <span v-for="pair in formatEventFieldPairs(event.字段)" :key="pair.key" class="rounded border px-2 py-1 text-[11px]" :class="fieldPairClass(pair)" :title="formatFieldValue(pair)">
+                    <div v-if="formatEventFieldPairs(event.fields).length" class="mt-2 flex flex-wrap gap-1.5">
+                      <span v-for="pair in formatEventFieldPairs(event.fields)" :key="pair.key" class="rounded border px-2 py-1 text-[11px]" :class="fieldPairClass(pair)" :title="formatFieldValue(pair)">
                         {{ pair.label }} {{ formatFieldValue(pair) }}
                       </span>
                     </div>
@@ -266,20 +264,20 @@
                     <tr v-if="currentStocks.length === 0">
                       <td colspan="8" class="px-4 py-12 text-center text-slate-500">暂无当前入选股票</td>
                     </tr>
-                    <tr v-for="stock in currentStocks" :key="stock.代码" class="border-b border-slate-800/70 hover:bg-slate-800/40">
+                    <tr v-for="stock in currentStocks" :key="stock.code" class="border-b border-slate-800/70 hover:bg-slate-800/40">
                       <td class="px-4 py-3">
-                        <button class="max-w-[220px] truncate text-left text-base font-semibold text-white hover:text-cyan-200" :title="`点击复制 ${stock.名称}`" @click="copyStockName(stock.名称, stock.代码)">
-                          {{ stock.名称 || '-' }}
+                        <button class="max-w-[220px] truncate text-left text-base font-semibold text-white hover:text-cyan-200" :title="`点击复制 ${stock.name}`" @click="copyStockName(stock.name, stock.code)">
+                          {{ stock.name || '-' }}
                         </button>
                       </td>
-                      <td class="px-4 py-3 font-mono text-slate-300">{{ stock.代码 }}</td>
-                      <td class="px-4 py-3 font-semibold text-red-300">{{ getChangePercentValue(stock.字段) }}</td>
-                      <td class="px-4 py-3 font-semibold text-red-300">{{ getMainNetAmountValue(stock.字段) }}</td>
-                      <td class="px-4 py-3 font-semibold text-red-300">{{ getFreeMarketValue(stock.字段) }}</td>
+                      <td class="px-4 py-3 font-mono text-slate-300">{{ stock.code }}</td>
+                      <td class="px-4 py-3 font-semibold text-red-300">{{ getChangePercentValue(stock.fields) }}</td>
+                      <td class="px-4 py-3 font-semibold text-red-300">{{ getMainNetAmountValue(stock.fields) }}</td>
+                      <td class="px-4 py-3 font-semibold text-red-300">{{ getFreeMarketValue(stock.fields) }}</td>
                       <td class="px-4 py-3 font-semibold text-red-300">{{ formatStockSelectClock(stock) }}</td>
-                      <td class="px-4 py-3 text-slate-300">{{ formatCollectClock(stock.最新采集时间 || latestCollectTime) }}</td>
+                      <td class="px-4 py-3 text-slate-300">{{ formatCollectClock(stock.lastCollectedAt || latestCollectTime) }}</td>
                       <td class="px-4 py-3 text-slate-300">
-                        <span class="block max-w-[320px] truncate" :title="getConceptValue(stock.字段)">{{ getConceptValue(stock.字段) }}</span>
+                        <span class="block max-w-[320px] truncate" :title="getConceptValue(stock.fields)">{{ getConceptValue(stock.fields) }}</span>
                       </td>
                     </tr>
                   </tbody>
@@ -309,13 +307,13 @@
                   <tr v-if="sortedHistory.length === 0">
                     <td colspan="6" class="px-4 py-8 text-center text-slate-500">暂无历史快照</td>
                   </tr>
-                  <tr v-for="snapshot in sortedHistory" :key="`${snapshot.策略ID}-${snapshot.采集日期}-${snapshot.采集时间}-${snapshot.状态}`" class="border-b border-slate-800/70">
-                    <td class="px-4 py-3 text-slate-300">{{ snapshot.采集时间 || '-' }}</td>
-                    <td class="px-4 py-3 text-slate-300">{{ snapshot.股票列表?.length || 0 }}</td>
-                    <td class="px-4 py-3 text-emerald-300">{{ snapshot.新增股票?.length || 0 }}</td>
-                    <td class="px-4 py-3 text-amber-300">{{ snapshot.移除股票?.length || 0 }}</td>
-                    <td class="px-4 py-3" :class="snapshot.状态 === 'success' ? 'text-emerald-300' : 'text-red-300'">{{ snapshot.状态 || '-' }}</td>
-                    <td class="px-4 py-3 text-slate-400">{{ snapshot.错误信息 || '-' }}</td>
+                  <tr v-for="snapshot in sortedHistory" :key="`${snapshot.strategyId}-${snapshot.collectedDate}-${snapshot.collectedTime}-${snapshot.status}`" class="border-b border-slate-800/70">
+                    <td class="px-4 py-3 text-slate-300">{{ snapshot.collectedTime || '-' }}</td>
+                    <td class="px-4 py-3 text-slate-300">{{ snapshot.stocks?.length || 0 }}</td>
+                    <td class="px-4 py-3 text-emerald-300">{{ snapshot.addedStocks?.length || 0 }}</td>
+                    <td class="px-4 py-3 text-amber-300">{{ snapshot.removedStocks?.length || 0 }}</td>
+                    <td class="px-4 py-3" :class="snapshot.status === 'success' ? 'text-emerald-300' : 'text-red-300'">{{ snapshot.status || '-' }}</td>
+                    <td class="px-4 py-3 text-slate-400">{{ snapshot.errorMessage || '-' }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -329,6 +327,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { createStrategyPick, deleteStrategyPick, fetchStrategyPickDateData, fetchStrategyPickDates, fetchStrategyPickLatest, fetchStrategyPickStrategies, openStrategyPickStream, refreshStrategyPick, updateStrategyPick } from '../modules/strategy-pick/api.js'
 
 const props = defineProps({
   active: {
@@ -337,7 +336,6 @@ const props = defineProps({
   },
 })
 
-const API_BASE = '/api/strategy-pick'
 const selectedDate = ref(getTodayKey())
 const selectedStrategyId = ref('')
 const strategies = ref([])
@@ -364,12 +362,12 @@ const availableDates = computed(() => {
   return [...set].filter(Boolean).sort((a, b) => b.localeCompare(a))
 })
 
-const currentStocks = computed(() => latestSnapshot.value?.股票列表 || [])
+const currentStocks = computed(() => latestSnapshot.value?.stocks || [])
 const currentStockCount = computed(() => currentStocks.value.length)
 const eventCount = computed(() => events.value.length)
 
-const sortedEvents = computed(() => [...events.value].sort((a, b) => compareDateTimeDesc(a.入选日期, a.入选时间, b.入选日期, b.入选时间)))
-const sortedHistory = computed(() => [...historySnapshots.value].sort((a, b) => compareDateTimeDesc(a.采集日期, a.采集时间, b.采集日期, b.采集时间)))
+const sortedEvents = computed(() => [...events.value].sort((a, b) => compareDateTimeDesc(a.selectedDate, a.selectedAt, b.selectedDate, b.selectedAt)))
+const sortedHistory = computed(() => [...historySnapshots.value].sort((a, b) => compareDateTimeDesc(a.collectedDate, a.collectedTime, b.collectedDate, b.collectedTime)))
 
 const latestEventTime = computed(() => {
   const event = sortedEvents.value[0]
@@ -377,12 +375,12 @@ const latestEventTime = computed(() => {
 })
 
 const latestCollectTime = computed(() => {
-  if (!latestSnapshot.value?.采集日期 || !latestSnapshot.value?.采集时间) return '-'
-  return `${formatDate(latestSnapshot.value.采集日期)} ${latestSnapshot.value.采集时间}`
+  if (!latestSnapshot.value?.collectedDate || !latestSnapshot.value?.collectedTime) return '-'
+  return `${formatDate(latestSnapshot.value.collectedDate)} ${latestSnapshot.value.collectedTime}`
 })
 
-const latestStatusText = computed(() => latestSnapshot.value?.状态 || '-')
-const latestStatusClass = computed(() => latestSnapshot.value?.状态 === 'success' ? 'text-emerald-300' : 'text-red-300')
+const latestStatusText = computed(() => latestSnapshot.value?.status || '-')
+const latestStatusClass = computed(() => latestSnapshot.value?.status === 'success' ? 'text-emerald-300' : 'text-red-300')
 
 onMounted(async () => {
   await fetchStrategies()
@@ -412,8 +410,7 @@ async function fetchAll() {
 
 async function fetchStrategies() {
   try {
-    const data = await requestJson(`${API_BASE}/strategies`)
-    strategies.value = Array.isArray(data) ? data : []
+    strategies.value = await fetchStrategyPickStrategies()
     if (!selectedStrategyId.value && strategies.value.length) selectedStrategyId.value = strategies.value[0].id
     if (selectedStrategyId.value && !strategies.value.some((item) => item.id === selectedStrategyId.value)) {
       selectedStrategyId.value = strategies.value[0]?.id || ''
@@ -426,8 +423,7 @@ async function fetchStrategies() {
 
 async function fetchDates() {
   try {
-    const data = await requestJson(`${API_BASE}/strategies/${selectedStrategyId.value}/dates`)
-    dates.value = Array.isArray(data) ? data : []
+    dates.value = await fetchStrategyPickDates(selectedStrategyId.value)
   } catch (error) {
     errorMessage.value = error.message
   }
@@ -435,7 +431,7 @@ async function fetchDates() {
 
 async function fetchLatest() {
   try {
-    latestSnapshot.value = await requestJson(`${API_BASE}/strategies/${selectedStrategyId.value}/latest`)
+    latestSnapshot.value = await fetchStrategyPickLatest(selectedStrategyId.value)
   } catch (error) {
     errorMessage.value = error.message
   }
@@ -444,12 +440,9 @@ async function fetchLatest() {
 async function fetchDateData() {
   if (!selectedDate.value) selectedDate.value = getTodayKey()
   try {
-    const [eventData, historyData] = await Promise.all([
-      requestJson(`${API_BASE}/strategies/${selectedStrategyId.value}/events/${selectedDate.value}`),
-      requestJson(`${API_BASE}/strategies/${selectedStrategyId.value}/history/${selectedDate.value}`),
-    ])
-    events.value = Array.isArray(eventData) ? eventData : []
-    historySnapshots.value = Array.isArray(historyData) ? historyData : []
+    const data = await fetchStrategyPickDateData(selectedStrategyId.value, selectedDate.value)
+    events.value = data.events
+    historySnapshots.value = data.history
     errorMessage.value = ''
   } catch (error) {
     errorMessage.value = error.message
@@ -460,8 +453,8 @@ async function refreshNow() {
   loading.value = true
   errorMessage.value = ''
   try {
-    latestSnapshot.value = await requestJson(`${API_BASE}/strategies/${selectedStrategyId.value}/refresh`, { method: 'POST' })
-    selectedDate.value = latestSnapshot.value?.采集日期 || selectedDate.value || getTodayKey()
+    latestSnapshot.value = await refreshStrategyPick(selectedStrategyId.value)
+    selectedDate.value = latestSnapshot.value?.collectedDate || selectedDate.value || getTodayKey()
     await fetchAll()
   } catch (error) {
     errorMessage.value = error.message
@@ -473,15 +466,7 @@ async function refreshNow() {
 
 function startStrategyUpdateStream() {
   if (strategyStream || typeof EventSource === 'undefined') return
-  strategyStream = new EventSource(`${API_BASE}/stream`)
-  strategyStream.onmessage = (event) => {
-    try {
-      const payload = JSON.parse(event.data)
-      handleStrategyUpdateEvent(payload)
-    } catch (error) {
-      console.warn('策略选股更新事件解析失败', error)
-    }
-  }
+  strategyStream = openStrategyPickStream(handleStrategyUpdateEvent)
   strategyStream.onerror = () => {
     // EventSource 会自动重连，这里不主动关闭。
   }
@@ -493,15 +478,15 @@ function stopStrategyUpdateStream() {
 }
 
 function handleStrategyUpdateEvent(payload) {
-  if (!payload || payload.类型 !== 'snapshot') return
-  if (payload.策略ID && selectedStrategyId.value && payload.策略ID !== selectedStrategyId.value) return
+  if (!payload || payload.type !== 'snapshot') return
+  if (payload.strategyId && selectedStrategyId.value && payload.strategyId !== selectedStrategyId.value) return
 
   clearTimeout(streamRefreshTimer)
   streamRefreshTimer = setTimeout(async () => {
     if (!selectedStrategyId.value) return
     await Promise.all([fetchDates(), fetchLatest()])
-    if (!selectedDate.value || selectedDate.value === payload.采集日期) {
-      selectedDate.value = payload.采集日期 || selectedDate.value || getTodayKey()
+    if (!selectedDate.value || selectedDate.value === payload.collectedDate) {
+      selectedDate.value = payload.collectedDate || selectedDate.value || getTodayKey()
       await fetchDateData()
     }
   }, 80)
@@ -523,12 +508,10 @@ function editStrategy(strategy) {
   editingMode.value = 'edit'
   editingStrategyId.value = strategy.id
   strategyForm.value = {
-    名称: strategy.名称 || '',
-    页面URL: strategy.页面URL || '',
-    监听目标Text: Array.isArray(strategy.监听目标) ? strategy.监听目标.join('\n') : String(strategy.监听目标 || ''),
-    监控时间段Text: formatMonitorPeriods(strategy.监控时间段),
-    监控频率秒: strategy.监控频率秒 || 60,
-    启用: strategy.启用 !== false,
+    name: strategy.name || '', pageUrl: strategy.pageUrl || '',
+    listenTargetsText: Array.isArray(strategy.listenTargets) ? strategy.listenTargets.join('\n') : String(strategy.listenTargets || ''),
+    monitorPeriodsText: formatMonitorPeriods(strategy.monitorPeriods), monitorIntervalSeconds: strategy.monitorIntervalSeconds || 60,
+    enabled: strategy.enabled !== false,
   }
 }
 
@@ -543,17 +526,9 @@ async function saveStrategy() {
   try {
     let saved
     if (editingMode.value === 'edit') {
-      saved = await requestJson(`${API_BASE}/strategies/${editingStrategyId.value}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      saved = await updateStrategyPick(editingStrategyId.value, payload)
     } else {
-      saved = await requestJson(`${API_BASE}/strategies`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      saved = await createStrategyPick(payload)
     }
     cancelEdit()
     await fetchStrategies()
@@ -566,7 +541,7 @@ async function saveStrategy() {
 async function deleteStrategy() {
   if (!editingStrategyId.value) return
   try {
-    await requestJson(`${API_BASE}/strategies/${editingStrategyId.value}`, { method: 'DELETE' })
+    await deleteStrategyPick(editingStrategyId.value)
     cancelEdit()
     await fetchStrategies()
   } catch (error) {
@@ -576,11 +551,7 @@ async function deleteStrategy() {
 
 async function toggleStrategy(strategy) {
   try {
-    await requestJson(`${API_BASE}/strategies/${strategy.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...strategy, 启用: !strategy.启用 }),
-    })
+    await updateStrategyPick(strategy.id, { ...strategy, enabled: !strategy.enabled })
     await fetchStrategies()
   } catch (error) {
     errorMessage.value = error.message
@@ -589,23 +560,17 @@ async function toggleStrategy(strategy) {
 
 function buildStrategyPayload() {
   return {
-    名称: strategyForm.value.名称.trim(),
-    页面URL: strategyForm.value.页面URL.trim(),
-    监听目标: strategyForm.value.监听目标Text.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean),
-    监控时间段: parseMonitorPeriods(strategyForm.value.监控时间段Text),
-    监控频率秒: Number(strategyForm.value.监控频率秒) || 60,
-    启用: strategyForm.value.启用,
+    name: strategyForm.value.name.trim(), pageUrl: strategyForm.value.pageUrl.trim(),
+    listenTargets: strategyForm.value.listenTargetsText.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean),
+    monitorPeriods: parseMonitorPeriods(strategyForm.value.monitorPeriodsText),
+    monitorIntervalSeconds: Number(strategyForm.value.monitorIntervalSeconds) || 60, enabled: strategyForm.value.enabled,
   }
 }
 
 function createEmptyStrategyForm() {
   return {
-    名称: '',
-    页面URL: '',
-    监听目标Text: '/api/smart-tag/stock/v3/pw/search-code',
-    监控时间段Text: '09:28~11:31, 13:00~15:01',
-    监控频率秒: 60,
-    启用: true,
+    name: '', pageUrl: '', listenTargetsText: '/api/smart-tag/stock/v3/pw/search-code',
+    monitorPeriodsText: '09:28~11:31, 13:00~15:01', monitorIntervalSeconds: 60, enabled: true,
   }
 }
 
@@ -657,7 +622,7 @@ function formatInterval(seconds) {
 
 function formatEventTime(event) {
   if (!event) return '-'
-  return formatFullDateTime(event.入选日期, event.入选时间, event.入选时分秒)
+  return formatFullDateTime(event.selectedDate, event.selectedAt, event.selectedClock)
 }
 
 function formatEventClock(event) {
@@ -666,7 +631,7 @@ function formatEventClock(event) {
 
 function formatStockSelectTime(stock) {
   if (!stock) return '-'
-  return formatFullDateTime(stock.入选日期, stock.入选时间, stock.入选时分秒)
+  return formatFullDateTime(stock.selectedDate, stock.selectedAt, stock.selectedClock)
 }
 
 function formatStockSelectClock(stock) {
@@ -696,19 +661,6 @@ function formatFullDateTime(date, time, timeOfDay = '') {
     return dateText && dateText !== '-' ? `${dateText} ${value}` : value
   }
   return value
-}
-
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, options)
-  if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`
-    try {
-      const body = await response.json()
-      message = body?.detail || message
-    } catch (_) {}
-    throw new Error(message)
-  }
-  return response.json()
 }
 
 function getTodayKey() {
