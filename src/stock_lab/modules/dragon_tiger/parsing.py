@@ -41,14 +41,19 @@ def _seat_values(table, side, trade_date, source_id):
                 f"expected 4 cells, got {len(cells)}"
             )
         anchor = cells[0].find("a")
-        if anchor is None:
+        broker_name = (
+            (anchor.get("title") or anchor.get_text(strip=True))
+            if anchor is not None
+            else cells[0].get_text(strip=True)
+        )
+        if not broker_name:
             raise ValueError(
-                f"{side} seat row {rank} malformed for {trade_date} source {source_id}: broker link missing"
+                f"{side} seat row {rank} malformed for {trade_date} source {source_id}: broker name missing"
             )
         prefix = f"{side}_{rank}"
         try:
             values[f"{prefix}_broker_id"] = _broker_id(anchor)
-            values[f"{prefix}_broker_name"] = anchor.get("title") or cells[0].get_text(strip=True) or None
+            values[f"{prefix}_broker_name"] = broker_name
             values[f"{prefix}_buy_amount"] = parse_amount(cells[1].get_text(strip=True))
             values[f"{prefix}_sell_amount"] = parse_amount(cells[2].get_text(strip=True))
             values[f"{prefix}_net_amount"] = parse_amount(cells[3].get_text(strip=True))

@@ -111,6 +111,21 @@ def test_parse_listing_page_rejects_malformed_seat_row_with_listing_context():
         parse_listing_page(malformed, 20260806)
 
 
+def test_parse_listing_page_preserves_text_only_broker_seat_without_id():
+    text_only = LISTING_HTML.replace(
+        '<td><a href="/market/lhbyyb/orgcode/B1/" title="机构专用">机构专用</a></td><td>22000</td><td>50</td><td>21950</td>',
+        "<td>机构专用</td><td>22000</td><td>50</td><td>21950</td>",
+    )
+
+    listing = parse_listing_page(text_only, 20260806)[0]
+
+    assert listing.buy_1_broker_id is None
+    assert listing.buy_1_broker_name == "机构专用"
+    assert listing.buy_1_buy_amount == 22000.0
+    assert listing.buy_1_sell_amount == 50.0
+    assert listing.buy_1_net_amount == 21950.0
+
+
 def test_parse_broker_directory_page_deduplicates_brokers_from_both_columns():
     html = """
     <table class="m-table">
