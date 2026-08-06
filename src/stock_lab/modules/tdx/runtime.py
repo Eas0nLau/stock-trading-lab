@@ -43,5 +43,28 @@ def run_global_monitor(max_loops=0, codes=None):
 
 
 def run_auction_monitor(max_loops=0, codes=None):
-    from .auction_monitor import build_monitor_row
+    from .universe import load_mainboard_non_st_codes
+
+    if codes is None:
+        repository = _market_data_repository()
+        codes = load_mainboard_non_st_codes(repository)
     return run_global_monitor(max_loops=max_loops, codes=codes)
+
+
+def _market_data_repository():
+    from stock_lab.infrastructure.database import MysqlResources
+    from stock_lab.modules.market_data import MarketDataRepository
+
+    settings = get_settings()
+    resources = MysqlResources.from_settings(settings)
+
+    def query(sql, params=None, fetch=False):
+        connection = resources.get_pool().get_connection()
+        try:
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(sql, params or ())
+            return cursor.fetchall() if fetch else cursor.rowcount
+        finally:
+            connection.close()
+
+    return MarketDataRepository(query)

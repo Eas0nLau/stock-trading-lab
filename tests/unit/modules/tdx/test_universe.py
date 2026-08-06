@@ -1,4 +1,4 @@
-from stock_lab.modules.tdx.universe import mainboard_non_st_codes
+from stock_lab.modules.tdx.universe import load_mainboard_non_st_codes, mainboard_non_st_codes
 
 
 def test_mainboard_universe_filters_status_name_exchange_and_limit():
@@ -10,3 +10,18 @@ def test_mainboard_universe_filters_status_name_exchange_and_limit():
     ]
 
     assert mainboard_non_st_codes(rows, limit=1) == ["600000.SH"]
+
+
+def test_repository_adapter_queries_canonical_securities_once():
+    class Repository:
+        def __init__(self):
+            self.calls = []
+
+        def securities(self, market=None):
+            self.calls.append(market)
+            return [{"ts_code": "600000.SH", "symbol": "600000", "name": "Good", "market": market, "list_status": "L"}]
+
+    repository = Repository()
+
+    assert load_mainboard_non_st_codes(repository) == ["600000.SH"]
+    assert repository.calls == ["主板"]
