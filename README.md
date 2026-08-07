@@ -33,6 +33,14 @@
 - 后端通过 SSE 推送新快照，前端收到事件后自动刷新。
 - 概念资金流向支持配置排除名单，并自动过滤部分财报类临时概念。
 
+最近一年的收盘资金流向可使用已安装的 AkShare 数据源回补：
+
+```text
+uv run --frozen python -m task.fund_flow_backfill --days 365
+```
+
+当前 `akshare==1.17.54` 提供 `stock_sector_fund_flow_rank` 的行业、概念板块枚举，以及 `stock_sector_fund_flow_hist` 的板块日度历史。回补按本地上证指数交易日历限定最近 365 个自然日，并按最新交易日到最早交易日写入现有 Redis 历史键。历史接口未提供的板块代码或龙头保持为空；AkShare 或东方财富上游不可用时，命令返回失败日期和非零退出码，不生成或补零伪造记录。请求间隔和重试等待可分别用 `--rate-delay`、`--retry-delay` 调整。
+
 作用：板块对流观察、板块走势观察、板块内的资金进攻龙头（按净额去盘中筛选，有时会有半路机会）
 
 ![img.png](init/img/img.png)
