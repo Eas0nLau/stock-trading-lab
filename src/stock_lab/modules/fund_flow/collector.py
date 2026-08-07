@@ -16,8 +16,12 @@ def save_snapshot(
     trade_date,
     collected_at,
     records,
+    mysql_repository=None,
 ) -> None:
-    repository.save_history(flow_type, trade_date, translate_legacy_fund_flow(records))
+    records = translate_legacy_fund_flow(records)
+    if mysql_repository is not None:
+        mysql_repository.save_snapshot(flow_type, trade_date, collected_at, records)
+    repository.save_history(flow_type, trade_date, records)
     repository.publish_snapshot(flow_type, trade_date, collected_at, len(records))
 
 
@@ -62,12 +66,16 @@ def create_fund_flow_source(*, settings=None):
     from stock_lab.config import get_settings
 
     from .repository import FundFlowRepository
+    from .mysql_repository import FundFlowMySQLRepository
+    from stock_lab.infrastructure.database import create_database_client
     from .source import FundFlowSource
 
     settings = get_settings() if settings is None else settings
+    database = create_database_client(settings) if hasattr(settings, "mysql") else None
     return FundFlowSource(
         partial(create_page, settings=settings),
         FundFlowRepository(create_redis_client(settings)),
+        mysql_repository=(FundFlowMySQLRepository(lambda: database.resources.get_pool().get_connection()) if database else None),
         settings=settings,
     )
 

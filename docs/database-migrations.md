@@ -15,7 +15,8 @@
 5. 检查 16 组 gate 输出。脚本自动比较行数、映射后去重键，以及适用的日期范围、关键金额/数量/成交量聚合和 JSON 有效性；任一差异会 `SIGNAL` 并停止。
 6. 切换对应模块 repository、API 和前端。
 7. 运行完整测试和人工数据抽样。
-8. 所有模块完成后，单独审批并执行 `003_drop_legacy_schema.sql`。该脚本在首个 `DROP` 前强制要求 `001`、`002` 版本和 `002_parity_v1/succeeded` 状态。
+8. 资金流向完成 MySQL 回补后，校验 `fund_flow_snapshots`、`fund_flow_records` 的日期覆盖、行数、唯一键和金额样本；使用 `stock_lab.jobs.fund_flow_backfill.migrate_legacy_redis` 将旧 V1 Redis 快照按 万元到亿元校正一次并从 canonical 数据重建缓存。
+9. 所有模块完成后，另行审批并执行 `003_drop_legacy_schema.sql`。本次资金流向切换明确不执行该脚本；旧表和旧 Redis key 在人工抽样确认前保留。
 
 ## 回滚
 
@@ -28,6 +29,7 @@
 - 关键金额、成交量、数量、指标或样本数聚合值一致（存在可比事实列时）。
 - legacy JSON 在复制前通过 `JSON_VALID`；canonical JSON 在复制后再次通过 `JSON_VALID`。
 - 新 schema 中不存在非 ASCII 标识符。
+- `fund_flow_records.net_inflow_100m` 必须为 `DECIMAL(20,6)`，单位为亿元；EastMoney `f62` 只在 canonical 边界除以 `10000` 一次。
 
 `002` 开始时先提交 `migration_validations(validation_version='002_parity_v1', status='running')`，再开启数据复制事务并在事务内移除陈旧的 `002` 版本/validation。SQL 异常 handler 会回滚复制 DML、写入 `failed` 及 MySQL 错误信息并重新抛出；全部 gate 成功后才在同一事务中写入 `succeeded` 和 `schema_migrations`。因此中断、失败和成功都可跨进程观察，应用 lifespan 会拒绝 `running`/`failed` 状态。仅看脚本输出或仅看迁移版本不构成删除授权，`003` 同时检查两类状态。
 

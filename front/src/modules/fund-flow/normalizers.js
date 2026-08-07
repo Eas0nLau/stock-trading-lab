@@ -1,3 +1,8 @@
+export function formatFundFlowAmount(value) {
+  const amount = Number(value ?? 0)
+  return Number.isFinite(amount) ? amount.toFixed(2) : '0.00'
+}
+
 export function normalizeFundFlowRows(rows) {
   if (!Array.isArray(rows)) return []
   return rows.flatMap(snapshot => {

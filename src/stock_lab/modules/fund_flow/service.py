@@ -8,15 +8,22 @@ _chart_cache_lock = threading.Lock()
 
 
 class FundFlowService:
-    def __init__(self, repository, *, default_top_n=0):
+    def __init__(self, repository, mysql_repository=None, *, default_top_n=0):
         self.repository = repository
+        self.mysql_repository = mysql_repository
         self.default_top_n = max(int(default_top_n or 0), 0)
 
     def dates(self, flow_type):
-        return {"status": "success", "flow_type": flow_type, "dates": self.repository.dates(flow_type)}
+        dates = self.mysql_repository.dates(flow_type) if self.mysql_repository is not None else self.repository.dates(flow_type)
+        return {"status": "success", "flow_type": flow_type, "dates": dates}
 
     def history(self, flow_type, trade_date, top_n=None):
         payload = self.repository.history(flow_type, trade_date)
+        if payload is None and self.mysql_repository is not None:
+            payload = self.mysql_repository.history(flow_type, trade_date)
+            if payload is not None:
+                for snapshot in payload:
+                    self.repository.save_history(flow_type, trade_date, snapshot)
         if payload is None:
             return {"status": "empty", "error_message": "No fund-flow history is available"}
         payload = translate_legacy_fund_flow(payload)

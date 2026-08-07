@@ -21,6 +21,23 @@ class Repository:
         self.published = (flow_type, trade_date, collected_at, record_count)
 
 
+def test_collector_commits_mysql_before_redis_success_state():
+    calls = []
+
+    class MySQL:
+        def save_snapshot(self, *args):
+            calls.append("mysql")
+
+    class Redis(Repository):
+        def save_history(self, *args):
+            calls.append("redis")
+            super().save_history(*args)
+
+    save_snapshot(Redis(), "industry", "20260807", "10:00:00", [{"board_code": "A", "net_inflow_100m": 1}], MySQL())
+
+    assert calls == ["mysql", "redis"]
+
+
 def test_collector_writes_and_publishes_english_v1_snapshot():
     repository = Repository()
     records = [{"时间": "10:00:00", "板块名称": "机器人", "资金净流入(亿)": 3}]

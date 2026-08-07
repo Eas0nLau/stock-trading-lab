@@ -8,6 +8,7 @@ from loguru import logger
 from stock_lab.config import get_settings
 
 from .collector import save_snapshot
+from .contracts import normalize_net_inflow_100m
 
 
 COLLECTION_WINDOWS = (
@@ -72,7 +73,7 @@ def parse_fund_flow_packets(packets, collected_at, flow_type, excluded_names=(),
             "board_code": item.get("f12", ""),
             "board_name": str(item.get("f14", "")),
             "leader": str(leaders.get(item.get("f12"), "")),
-            "net_inflow_100m": round((item.get("f62") or 0) / 10000.0, 2),
+            "net_inflow_100m": float(normalize_net_inflow_100m(item.get("f62") or 0, "wan")),
         }
         if flow_type != "concept" or not is_excluded_concept(record["board_name"], excluded_names):
             records.append(record)
@@ -82,15 +83,17 @@ def parse_fund_flow_packets(packets, collected_at, flow_type, excluded_names=(),
 
 
 class FundFlowSource:
-    def __init__(self, page_factory, repository, *, settings=None, history_service=None, sleeper=time.sleep, clock=datetime.datetime.now):
+    def __init__(self, page_factory, repository, *, mysql_repository=None, settings=None, history_service=None, sleeper=time.sleep, clock=datetime.datetime.now):
         self.page_factory = page_factory
         self.repository = repository
+        self.mysql_repository = mysql_repository
         self.settings = get_settings() if settings is None else settings
         if history_service is None:
             from .service import FundFlowService
 
             history_service = FundFlowService(
                 repository,
+                mysql_repository,
                 default_top_n=self.settings.fund_flow_history_top_n,
             )
         self.history_service = history_service
@@ -223,6 +226,7 @@ class FundFlowSource:
             now.strftime("%Y%m%d"),
             now.strftime("%H:%M:%S"),
             records,
+            mysql_repository=self.mysql_repository,
         )
         logger.info("Collected {} {} rows", name, len(records))
         return records

@@ -44,6 +44,11 @@ class FundFlowRepository:
         self.redis.sadd(self.dates_key(flow_type), trade_date)
         self.clear_chart_cache(flow_type, trade_date)
 
+    def replace_history(self, flow_type, trade_date, snapshots):
+        self.redis.set(self.history_key(flow_type, trade_date), json.dumps(snapshots, ensure_ascii=False))
+        self.redis.sadd(self.dates_key(flow_type), trade_date)
+        self.clear_chart_cache(flow_type, trade_date)
+
     def history(self, flow_type, trade_date):
         value = self.redis.get(self.history_key(flow_type, trade_date))
         if value:

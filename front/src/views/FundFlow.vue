@@ -60,7 +60,7 @@
               class="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-slate-100">
             <div class="mb-2 flex items-start justify-between gap-2">
               <span class="min-w-0 flex-1 truncate text-sm font-semibold text-white">{{ item.boardName }}</span>
-              <span class="font-mono text-sm font-semibold text-red-300">{{ item.netInflow100m.toFixed(2) }}亿</span>
+              <span class="font-mono text-sm font-semibold text-red-300">{{ formatFundFlowAmount(item.netInflow100m) }}亿</span>
             </div>
             <div class="flex items-center gap-2">
               <button
@@ -110,7 +110,7 @@
           </button>
         </div>
         <div class="mt-4 text-center text-xs text-gray-500">
-          请确保后端服务已启动（端口 8051）
+          请确保后端服务已启动（端口 8527）
         </div>
       </div>
     </div>
@@ -121,6 +121,7 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { fetchFundFlowDates, fetchFundFlowHistory, openFundFlowStream } from '../modules/fund-flow/api.js'
+import { formatFundFlowAmount } from '../modules/fund-flow/normalizers.js'
 
 const chartRef = ref(null)
 let chartInstance = null
@@ -324,7 +325,7 @@ const notifyFilterResults = (results, force = false) => {
   lastNotificationKey.value = notificationKey
 
   new Notification(`${props.title}最新入选：${latestStock}`, {
-    body: `${latestTime} ${latestResult.boardName} ${latestStock} ${latestResult.netInflow100m.toFixed(2)}亿`,
+    body: `${latestTime} ${latestResult.boardName} ${latestStock} ${formatFundFlowAmount(latestResult.netInflow100m)}亿`,
     tag: notificationKey,
     renotify: true,
   })
@@ -436,7 +437,7 @@ const renderChart = (historyData) => {
         show: true,
         formatter: params => {
           const data = params.data || {}
-          return `${data.boardName}: ${Number(data.netInflow100m || 0).toFixed(2)}亿 ${data.leader || ''}`
+          return `${data.boardName}: ${formatFundFlowAmount(data.netInflow100m)}亿 ${data.leader || ''}`
         },
         color,
         fontSize: 11,
@@ -467,7 +468,7 @@ const renderChart = (historyData) => {
         sortedParams.forEach(item => {
           const data = item.data || {}
           const amount = Number(data.netInflow100m ?? item.value ?? 0)
-          result += `<span style="color:${item.color}">${item.seriesName}: ${amount.toFixed(2)}亿  ${data.leader || ''}</span><br/>`
+          result += `<span style="color:${item.color}">${item.seriesName}: ${formatFundFlowAmount(amount)}亿  ${data.leader || ''}</span><br/>`
         })
         return result
       }
@@ -486,7 +487,7 @@ const renderChart = (historyData) => {
       min: dataMin - axisPadding,
       max: dataMax + axisPadding,
       axisLine: { lineStyle: { color: '#334155' } },
-      axisLabel: { color: '#94a3b8', formatter: '{value}亿' },
+      axisLabel: { color: '#94a3b8', formatter: value => `${formatFundFlowAmount(value)}亿` },
       splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }
     },
     series

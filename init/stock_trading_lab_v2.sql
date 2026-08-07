@@ -169,6 +169,30 @@ CREATE TABLE IF NOT EXISTS `daily_quotes` (
   KEY `idx_daily_quotes_date` (`trade_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `fund_flow_snapshots` (
+  `snapshot_id` bigint NOT NULL AUTO_INCREMENT,
+  `flow_type` varchar(16) NOT NULL,
+  `trade_date` int NOT NULL,
+  `collected_at` varchar(32) NOT NULL,
+  `record_count` int NOT NULL DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`snapshot_id`),
+  UNIQUE KEY `uk_fund_flow_snapshot_batch` (`flow_type`, `trade_date`, `collected_at`),
+  KEY `idx_fund_flow_snapshot_date` (`flow_type`, `trade_date`),
+  KEY `idx_fund_flow_snapshot_time` (`flow_type`, `trade_date`, `collected_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `fund_flow_records` (
+  `snapshot_id` bigint NOT NULL,
+  `board_code` varchar(32) NOT NULL,
+  `board_name` varchar(128) NOT NULL,
+  `leader` varchar(128) DEFAULT NULL,
+  `net_inflow_100m` decimal(20,6) NOT NULL,
+  PRIMARY KEY (`snapshot_id`, `board_code`),
+  KEY `idx_fund_flow_record_board` (`board_code`),
+  CONSTRAINT `fk_fund_flow_record_snapshot` FOREIGN KEY (`snapshot_id`) REFERENCES `fund_flow_snapshots` (`snapshot_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `kdj_indicators` (
   `data_id` varchar(64) NOT NULL,
   `ts_code` varchar(16) NOT NULL,

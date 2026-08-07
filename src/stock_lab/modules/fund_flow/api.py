@@ -13,7 +13,17 @@ def register_fund_flow_routes(app: FastAPI, *, settings=None, repository=None):
         from .repository import FundFlowRepository
 
         repository = FundFlowRepository(create_redis_client(settings))
-    service = FundFlowService(repository, default_top_n=settings.fund_flow_history_top_n)
+    if getattr(repository, "mysql_repository", None) is not None:
+        mysql_repository = repository.mysql_repository
+    elif hasattr(settings, "mysql"):
+        from stock_lab.infrastructure.database import create_database_client
+        from .mysql_repository import FundFlowMySQLRepository
+
+        database = create_database_client(settings)
+        mysql_repository = FundFlowMySQLRepository(lambda: database.resources.get_pool().get_connection())
+    else:
+        mysql_repository = None
+    service = FundFlowService(repository, mysql_repository, default_top_n=settings.fund_flow_history_top_n)
 
     @app.get("/api/v1/fund-flow/{flow_type}/dates")
     def get_dates(flow_type: str):

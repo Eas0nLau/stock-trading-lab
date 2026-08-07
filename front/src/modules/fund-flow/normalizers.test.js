@@ -1,6 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeFundFlowRows, matrixToFundFlowRows, normalizeFundFlowEvent } from './normalizers.js'
+import { normalizeFundFlowRows, matrixToFundFlowRows, normalizeFundFlowEvent, formatFundFlowAmount } from './normalizers.js'
+
+test('formats fund-flow amounts to two decimals without changing raw values', () => {
+  assert.equal(formatFundFlowAmount(4.111302), '4.11')
+  assert.equal(formatFundFlowAmount(-4.105), '-4.11')
+  assert.equal(formatFundFlowAmount(0), '0.00')
+  assert.equal(formatFundFlowAmount(123456.789), '123456.79')
+})
 
 test('normalizes snapshot rows to camelCase and converts null amounts', () => {
   assert.deepEqual(normalizeFundFlowRows([{ board_name: '机器人', time: '10:00:00', net_inflow_100m: null, leader: '甲' }]), [

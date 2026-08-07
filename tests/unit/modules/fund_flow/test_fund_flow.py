@@ -138,6 +138,20 @@ def test_repository_does_not_fall_back_to_legacy_industry_history():
     assert repository.dates("industry") == []
 
 
+def test_service_falls_back_to_mysql_and_repopulates_redis():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+
+    class MySQL:
+        def history(self, flow_type, trade_date):
+            return [[{"time": "10:00", "board_name": "A", "net_inflow_100m": 1}]]
+
+    result = FundFlowService(repository, MySQL()).history("industry", "20260806", top_n=0)
+
+    assert result["times"] == ["10:00"]
+    assert repository.history("industry", "20260806") is not None
+
+
 def test_repository_does_not_scan_keys_for_missing_concept_history():
     redis = FakeRedis()
     redis.keys = lambda _pattern: (_ for _ in ()).throw(AssertionError("key scan is forbidden"))
