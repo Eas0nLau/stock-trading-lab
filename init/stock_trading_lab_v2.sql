@@ -193,6 +193,56 @@ CREATE TABLE IF NOT EXISTS `fund_flow_records` (
   CONSTRAINT `fk_fund_flow_record_snapshot` FOREIGN KEY (`snapshot_id`) REFERENCES `fund_flow_snapshots` (`snapshot_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `strategy_definitions` (
+  `strategy_id` varchar(64) NOT NULL,
+  `name` varchar(128) NOT NULL,
+  `page_url` varchar(2048) NOT NULL,
+  `enabled` tinyint NOT NULL DEFAULT 1,
+  `definition_json` json NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`strategy_id`),
+  KEY `idx_strategy_definitions_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `strategy_pick_snapshots` (
+  `snapshot_id` bigint NOT NULL AUTO_INCREMENT,
+  `strategy_id` varchar(64) NOT NULL,
+  `collected_date` int NOT NULL,
+  `collected_time` varchar(16) NOT NULL,
+  `status` varchar(32) NOT NULL,
+  `snapshot_json` json NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`snapshot_id`),
+  UNIQUE KEY `uk_strategy_pick_snapshot` (`strategy_id`, `collected_date`, `collected_time`),
+  KEY `idx_strategy_pick_snapshot_latest` (`strategy_id`, `collected_date`, `collected_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `strategy_pick_stocks` (
+  `snapshot_id` bigint NOT NULL,
+  `stock_code` varchar(16) NOT NULL,
+  `stock_json` json NOT NULL,
+  PRIMARY KEY (`snapshot_id`, `stock_code`),
+  KEY `idx_strategy_pick_stock_code` (`stock_code`),
+  CONSTRAINT `fk_strategy_pick_stock_snapshot` FOREIGN KEY (`snapshot_id`) REFERENCES `strategy_pick_snapshots` (`snapshot_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `strategy_pick_events` (
+  `event_id` varchar(128) NOT NULL,
+  `strategy_id` varchar(64) NOT NULL,
+  `event_date` int NOT NULL,
+  `event_time` varchar(16) NOT NULL,
+  `stock_code` varchar(16) NOT NULL,
+  `snapshot_id` bigint DEFAULT NULL,
+  `event_json` json NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`event_id`),
+  KEY `idx_strategy_pick_event_date` (`strategy_id`, `event_date`, `event_time`),
+  KEY `idx_strategy_pick_event_global_date` (`event_date`, `event_time`),
+  CONSTRAINT `fk_strategy_pick_event_snapshot` FOREIGN KEY (`snapshot_id`) REFERENCES `strategy_pick_snapshots` (`snapshot_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `kdj_indicators` (
   `data_id` varchar(64) NOT NULL,
   `ts_code` varchar(16) NOT NULL,

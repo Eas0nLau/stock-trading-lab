@@ -174,7 +174,16 @@ def test_001_is_resumable_but_validates_compatibility_before_recording():
     mapped_tables = set(MIGRATIONS)
 
     created_tables = re.findall(r"CREATE TABLE IF NOT EXISTS `([^`]+)`", sql)
-    assert set(created_tables) == mapped_tables | {"schema_migrations", "migration_validations", "fund_flow_snapshots", "fund_flow_records"}
+    assert set(created_tables) == mapped_tables | {
+        "schema_migrations",
+        "migration_validations",
+        "fund_flow_snapshots",
+        "fund_flow_records",
+        "strategy_definitions",
+        "strategy_pick_snapshots",
+        "strategy_pick_stocks",
+        "strategy_pick_events",
+    }
     compatibility_calls = re.findall(
         r"CALL assert_table_compatible\(\s*'([^']+)',\s*'([^']*)',\s*'([^']*)'\s*\)",
         sql,
@@ -355,7 +364,16 @@ def test_clean_initializer_is_self_contained_and_matches_001_ddl():
     assert set(re.findall(r"CREATE TABLE IF NOT EXISTS `([^`]+)`", init_sql)) == set(
         re.findall(r"CREATE TABLE IF NOT EXISTS `([^`]+)`", create_sql)
     )
-    for table in set(MIGRATIONS) | {"schema_migrations", "migration_validations"}:
+    for table in set(MIGRATIONS) | {
+        "schema_migrations",
+        "migration_validations",
+        "fund_flow_snapshots",
+        "fund_flow_records",
+        "strategy_definitions",
+        "strategy_pick_snapshots",
+        "strategy_pick_stocks",
+        "strategy_pick_events",
+    }:
         init_ddl = re.search(
             rf"CREATE TABLE IF NOT EXISTS `{table}` \((.*?)\) ENGINE=InnoDB",
             init_sql,
