@@ -40,12 +40,23 @@ def test_request_rate_limiter_waits_between_page_requests(monkeypatch):
     sleeps = []
     monkeypatch.setattr(jiuyan.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(jiuyan.time, "sleep", sleeps.append)
+    monkeypatch.setattr(jiuyan.random, "uniform", lambda low, high: 60.0)
     monkeypatch.setattr(jiuyan, "最小请求间隔秒", 60)
     jiuyan._上次请求时间 = 70.0
 
     jiuyan.等待请求频率()
 
     assert sleeps == [30.0]
+
+
+def test_request_interval_is_randomized_above_minimum(monkeypatch):
+    monkeypatch.setattr(jiuyan.random, "uniform", lambda low, high: 90.0)
+
+    assert jiuyan.随机请求间隔秒() == 90.0
+
+
+def test_manual_verification_response_stops_collection_retry():
+    assert issubclass(jiuyan.需要人工验证, jiuyan.IncompleteJiuyanResponse)
 
 
 def test_parse_grouped_action_fields_and_scaled_range():

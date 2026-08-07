@@ -1,6 +1,7 @@
 import datetime as dt
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -14,23 +15,32 @@ class IncompleteJiuyanResponse(RuntimeError):
     """The Jiuyan response did not contain a usable action board."""
 
 
+class 需要人工验证(IncompleteJiuyanResponse):
+    """The page is blocked by a manual slider verification."""
+
+
 页面模板 = os.getenv(
     "JIUYAN_ACTION_URL_TEMPLATE",
     "https://www.jiuyangongshe.com/action/{date_text}",
 )
 监听路径 = "/jystock-app/api/v1/action/field"
 最小请求间隔秒 = max(int(os.getenv("JIUYAN_MIN_REQUEST_INTERVAL_SECONDS", "60")), 1)
+最大随机请求间隔秒 = max(int(os.getenv("JIUYAN_MAX_REQUEST_INTERVAL_SECONDS", "105")), 最小请求间隔秒)
 最大尝试次数 = max(int(os.getenv("JIUYAN_MAX_ATTEMPTS", "2")), 1)
 Redis请求锁 = "jiuyan:action:request_slot"
 _频率锁 = threading.Lock()
 _上次请求时间 = 0.0
 
 
+def 随机请求间隔秒():
+    return random.uniform(最小请求间隔秒, 最大随机请求间隔秒)
+
+
 def 等待请求频率():
     global _上次请求时间
     with _频率锁:
         now = time.monotonic()
-        wait_seconds = max(0.0, 最小请求间隔秒 - (now - _上次请求时间))
+        wait_seconds = max(0.0, 随机请求间隔秒() - (now - _上次请求时间))
         if wait_seconds:
             time.sleep(wait_seconds)
         _上次请求时间 = time.monotonic()
@@ -190,6 +200,8 @@ def _采集响应(date):
     )
     page.listen.start([监听路径])
     page.get(url, timeout=0)
+    if 页面需要人工验证(page):
+        raise 需要人工验证("韭研公社页面需要人工完成滑块验证")
     tab = page.ele("text=全部异动解析")
     if tab:
         tab.click()
@@ -213,7 +225,24 @@ def 韭研公社异动采集(date):
                 "涨停时间", "几天几板", "涨幅", "涨停解析",
             ]
             return _upsert_rows("t_韭研公社异动解析", columns, rows, ["data_id"])
+        except 需要人工验证:
+            raise
         except Exception as error:
             last_error = error
             logger.warning(f"韭研公社异动采集失败，第 {attempt}/{最大尝试次数} 次：{error}")
     raise IncompleteJiuyanResponse(f"{date} 韭研公社异动采集失败：{last_error}") from last_error
+
+
+def 页面需要人工验证(page):
+    验证提示 = ("拖动下方滑块完成拼图", "拖动左边滑块完成上方拼图")
+    for text in 验证提示:
+        try:
+            if page.ele(f"text={text}", timeout=0.1):
+                return True
+        except Exception:
+            continue
+    try:
+        html = str(page.html or "")
+        return any(text in html for text in 验证提示)
+    except Exception:
+        return False
