@@ -33,6 +33,10 @@ from utils import db, driver_chrome
 默认策略名称 = "东方财富策略选股"
 策略ID自动调整提示 = set()
 
+class 需要人工验证(RuntimeError):
+    pass
+
+
 默认策略监控时间段 = (
     (datetime.time(9, 0), datetime.time(15, 0)),
 )
@@ -279,6 +283,10 @@ def 策略选股采集(strategy_id=None, 最大重试次数=None):
         for 当前次数 in range(1, 最大重试次数 + 1):
             try:
                 return _单次策略选股采集(strategy)
+            except 需要人工验证 as e:
+                最后错误 = str(e)
+                logger.error(f"{strategy.get('名称')} 需要人工完成验证，已停止本轮重试: {e}")
+                return 写入失败快照(strategy, 最后错误)
             except Exception as e:
                 最后错误 = str(e)
                 if "浏览器未开启或已关闭" in 最后错误 or "与页面的连接已断开" in 最后错误:
@@ -304,6 +312,8 @@ def _单次策略选股采集(strategy):
     logger.info(f"[{current_time_str}] 开始抓取策略选股：{strategy.get('名称')}...")
 
     page = 初始化策略页面(strategy)
+    if 页面需要人工验证(page):
+        raise 需要人工验证("东方财富页面需要人工拖动滑块，完成后监控将自动恢复")
     page.listen.start(strategy.get("监听目标") or ["/api/smart-tag/stock/v3/pw/search-code"])
     page.get(strategy["页面URL"], timeout=0)
 
@@ -325,6 +335,8 @@ def _单次策略选股采集(strategy):
             break
 
     if 股票列表 is None:
+        if 页面需要人工验证(page):
+            raise 需要人工验证("东方财富页面需要人工拖动滑块，完成后监控将自动恢复")
         raise TimeoutError(f"{timeout_seconds}秒内未获取到完整股票列表")
 
     return 写入成功快照(strategy, 股票列表)
@@ -333,9 +345,23 @@ def _单次策略选股采集(strategy):
 def 初始化策略页面(strategy):
     return driver_chrome.初始化页面(
         f"策略选股:{strategy['id']}",
-        strategy["页面URL"],
         background=True,
     )
+
+
+def 页面需要人工验证(page):
+    验证提示 = ("拖动下方滑块完成拼图", "拖动左边滑块完成上方拼图")
+    for text in 验证提示:
+        try:
+            if page.ele(f"text={text}", timeout=0.1):
+                return True
+        except Exception:
+            continue
+    try:
+        html = str(page.html or "")
+        return any(text in html for text in 验证提示)
+    except Exception:
+        return False
 
 
 def 写入成功快照(strategy, 股票列表):
@@ -929,7 +955,10 @@ def 解析策略选股接口响应(data):
     if not isinstance(data, dict):
         return None
 
-    result = data.get("data", {}).get("result", {})
+    payload = data.get("data")
+    if not isinstance(payload, dict):
+        return None
+    result = payload.get("result", {})
     if not isinstance(result, dict) or "dataList" not in result:
         return None
 
