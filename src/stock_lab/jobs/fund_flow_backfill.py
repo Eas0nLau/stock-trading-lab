@@ -3,6 +3,8 @@ from typing import Protocol
 
 from stock_lab.modules.fund_flow.contracts import normalize_net_inflow_100m, translate_legacy_fund_flow
 
+LEGACY_REDIS_MIGRATION_KEY = "fund_flow:v1:legacy-normalized"
+
 
 class FundFlowDailySource(Protocol):
     def fetch(self, flow_type: str, trade_date: int) -> list[dict]:
@@ -52,6 +54,8 @@ def backfill_fund_flow(start_date, end_date, source, mysql_repository, redis_rep
 
 def migrate_legacy_redis(redis_repository, mysql_repository, flow_types=("industry", "concept")):
     """Normalize existing V1 Redis snapshots into MySQL and rebuild their cache."""
+    if redis_repository.redis.get(LEGACY_REDIS_MIGRATION_KEY):
+        return {"saved": [], "failed": [], "skipped": True}
     result = {"saved": [], "failed": []}
     for flow_type in flow_types:
         for trade_date in redis_repository.dates(flow_type):
@@ -73,4 +77,6 @@ def migrate_legacy_redis(redis_repository, mysql_repository, flow_types=("indust
                 result["saved"].append({"flow_type": flow_type, "trade_date": trade_date})
             except Exception as error:
                 result["failed"].append({"flow_type": flow_type, "trade_date": trade_date, "error": str(error)})
+    if not result["failed"]:
+        redis_repository.redis.set(LEGACY_REDIS_MIGRATION_KEY, "1")
     return result

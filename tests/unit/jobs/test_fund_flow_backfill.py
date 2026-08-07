@@ -1,4 +1,4 @@
-from stock_lab.jobs.fund_flow_backfill import backfill_fund_flow
+from stock_lab.jobs.fund_flow_backfill import backfill_fund_flow, migrate_legacy_redis
 
 
 class Source:
@@ -32,6 +32,20 @@ class Redis:
 
     def save_history(self, flow_type, trade_date, records):
         self.saved.append((flow_type, trade_date, records))
+
+
+def test_legacy_redis_migration_is_guarded_after_success():
+    class RedisMigration:
+        def __init__(self):
+            self.marker = "1"
+            self.redis = self
+
+        def get(self, key):
+            return self.marker
+
+    result = migrate_legacy_redis(RedisMigration(), object())
+
+    assert result == {"saved": [], "failed": [], "skipped": True}
 
 
 def test_backfill_iterates_newest_to_oldest_and_reports_failed_dates():
