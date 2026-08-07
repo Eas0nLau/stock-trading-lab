@@ -5,10 +5,17 @@ import json
 import math
 import time
 
+from stock_lab.config import Settings
+from stock_lab.infrastructure.cache import create_redis_client
+from stock_lab.infrastructure.database import create_database_client
+from stock_lab.modules.fund_flow.contracts import normalize_net_inflow_100m
+from stock_lab.modules.fund_flow.mysql_repository import FundFlowMySQLRepository
+from stock_lab.modules.fund_flow.repository import FundFlowRepository
+
 
 FLOW_TYPES = {
-    "industry": {"sector_type": "行业资金流", "redis_prefix": "fund_flow"},
-    "concept": {"sector_type": "概念资金流", "redis_prefix": "fund_flow_概念"},
+    "industry": {"sector_type": "行业资金流"},
+    "concept": {"sector_type": "概念资金流"},
 }
 
 
@@ -180,23 +187,32 @@ def _default_trading_dates():
     return 交易日期列表(400)
 
 
-def _default_writer():
-    from 实时监控.资金流向 import _写入资金流向redis
+def _default_writer(settings=None, connection_factory=None, redis_factory=None):
+    settings = settings or Settings.from_env()
+    if connection_factory is None:
+        database = create_database_client(settings)
+        connection_factory = lambda: database.resources.get_pool().get_connection()
+    redis_client = (redis_factory or create_redis_client)(settings)
+    mysql_repository = FundFlowMySQLRepository(connection_factory)
+    redis_repository = FundFlowRepository(redis_client)
 
-    return _写入资金流向redis
+    def write(flow_type, trade_date, snapshot_time, rows):
+        records = [
+            {
+                "board_code": str(row.get("board_code", "")),
+                "board_name": str(row.get("board_name", "")),
+                "leader": str(row.get("leader", "")),
+                "net_inflow_100m": float(normalize_net_inflow_100m(
+                    row.get("net_inflow_100m"), row.get("source_unit", "100m")
+                )),
+                "time": snapshot_time,
+            }
+            for row in sorted(rows, key=lambda item: (item.get("board_name", ""), item.get("board_code", "")))
+        ]
+        mysql_repository.save_snapshot(flow_type, trade_date, snapshot_time, records)
+        redis_repository.save_history(flow_type, trade_date, records)
 
-
-def _redis_records(rows):
-    return [
-        {
-            "时间": "15:00:00",
-            "板块代码": row["board_code"],
-            "板块名称": row["board_name"],
-            "龙头": row["leader"],
-            "资金净流入(亿)": row["net_inflow_100m"],
-        }
-        for row in sorted(rows, key=lambda item: (item["board_name"], item["board_code"]))
-    ]
+    return write
 
 
 def backfill_fund_flow(
@@ -253,12 +269,12 @@ def backfill_fund_flow(
             })
             continue
         try:
-            for flow_type, settings in FLOW_TYPES.items():
+            for flow_type in FLOW_TYPES:
                 writer(
-                    settings["redis_prefix"],
+                    flow_type,
                     str(trade_date),
                     "15:00:00",
-                    _redis_records(records_by_type[flow_type][trade_date]),
+                    records_by_type[flow_type][trade_date],
                 )
         except Exception as error:
             errors.append({"trade_date": trade_date, "error": str(error)})

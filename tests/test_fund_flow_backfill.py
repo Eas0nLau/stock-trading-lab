@@ -1,6 +1,9 @@
 import datetime as dt
+import json
+from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from task import fund_flow_backfill
 
@@ -46,6 +49,71 @@ class FakeSource:
         ])
 
 
+class FakeCursor:
+    def __init__(self, events):
+        self.events = events
+        self.lastrowid = 17
+
+    def execute(self, sql, params):
+        self.events.append(("mysql_execute", sql, params))
+
+    def fetchone(self):
+        return None
+
+    def executemany(self, sql, values):
+        self.events.append(("mysql_executemany", sql, values))
+
+    def close(self):
+        self.events.append(("mysql_cursor_close",))
+
+
+class FakeConnection:
+    def __init__(self, events, fail_commit=False):
+        self.events = events
+        self.fail_commit = fail_commit
+
+    def cursor(self, dictionary=False):
+        assert dictionary is True
+        return FakeCursor(self.events)
+
+    def commit(self):
+        self.events.append(("mysql_commit",))
+        if self.fail_commit:
+            raise RuntimeError("mysql commit failed")
+
+    def rollback(self):
+        self.events.append(("mysql_rollback",))
+
+    def close(self):
+        self.events.append(("mysql_close",))
+
+
+class FakeRedis:
+    def __init__(self, events):
+        self.events = events
+        self.values = {}
+        self.sets = {}
+
+    def get(self, key):
+        self.events.append(("redis_get", key))
+        return self.values.get(key)
+
+    def set(self, key, value):
+        self.events.append(("redis_set", key, value))
+        self.values[key] = value
+
+    def sadd(self, key, value):
+        self.events.append(("redis_sadd", key, value))
+        self.sets.setdefault(key, set()).add(value)
+
+    def smembers(self, key):
+        self.events.append(("redis_smembers", key))
+        return self.sets.get(key, set())
+
+    def delete(self, *keys):
+        self.events.append(("redis_delete", *keys))
+
+
 def test_adapter_uses_injected_akshare_and_maps_board_metadata():
     fake_akshare = FakeAkShare()
     source = fund_flow_backfill.AkShareFundFlowSource(fake_akshare)
@@ -88,6 +156,61 @@ def test_normalize_history_rows_converts_f62_like_yuan_to_100m():
     ]
 
 
+def test_default_writer_composes_repositories_and_commits_mysql_before_redis():
+    events = []
+    connection = FakeConnection(events)
+    redis = FakeRedis(events)
+    settings = SimpleNamespace()
+    received_settings = []
+    writer = fund_flow_backfill._default_writer(
+        settings=settings,
+        connection_factory=lambda: connection,
+        redis_factory=lambda received: (received_settings.append(received), redis)[1],
+    )
+
+    writer("industry", "20260807", "15:00:00", [{
+        "board_code": "BK0420",
+        "board_name": "robotics",
+        "leader": "example",
+        "net_inflow_100m": "3.25",
+        "flow_type": "industry",
+        "trade_date": 20260807,
+    }])
+
+    assert received_settings == [settings]
+    assert next(index for index, event in enumerate(events) if event[0] == "mysql_commit") < next(
+        index for index, event in enumerate(events) if event[0] == "redis_set"
+    )
+    redis_payload = json.loads(redis.values["fund_flow:v1:industry:history:20260807"])
+    assert redis_payload == [[{
+        "board_code": "BK0420",
+        "board_name": "robotics",
+        "leader": "example",
+        "net_inflow_100m": 3.25,
+        "time": "15:00:00",
+    }]]
+
+
+def test_default_writer_does_not_touch_redis_when_mysql_commit_fails():
+    events = []
+    writer = fund_flow_backfill._default_writer(
+        settings=SimpleNamespace(),
+        connection_factory=lambda: FakeConnection(events, fail_commit=True),
+        redis_factory=lambda _settings: FakeRedis(events),
+    )
+
+    with pytest.raises(RuntimeError, match="mysql commit failed"):
+        writer("concept", "20260807", "15:00:00", [{
+            "board_code": "BK0420",
+            "board_name": "robotics",
+            "leader": "example",
+            "net_inflow_100m": 3.25,
+        }])
+
+    assert ("mysql_rollback",) in events
+    assert not any(event[0].startswith("redis_") for event in events)
+
+
 def test_backfill_uses_calendar_year_bounds_and_writes_newest_first():
     writes = []
     sleeps = []
@@ -107,21 +230,22 @@ def test_backfill_uses_calendar_year_bounds_and_writes_newest_first():
     assert result["status"] == "success"
     assert result["processed_dates"] == [20260807, 20260806, 20250807]
     assert result["failed_dates"] == []
-    assert [(prefix, date) for prefix, date, _, _ in writes] == [
-        ("fund_flow", "20260807"),
-        ("fund_flow_概念", "20260807"),
-        ("fund_flow", "20260806"),
-        ("fund_flow_概念", "20260806"),
-        ("fund_flow", "20250807"),
-        ("fund_flow_概念", "20250807"),
+    assert [(flow_type, date) for flow_type, date, _, _ in writes] == [
+        ("industry", "20260807"),
+        ("concept", "20260807"),
+        ("industry", "20260806"),
+        ("concept", "20260806"),
+        ("industry", "20250807"),
+        ("concept", "20250807"),
     ]
     assert all(snapshot_time == "15:00:00" for _, _, snapshot_time, _ in writes)
     assert writes[0][3][0] == {
-        "时间": "15:00:00",
-        "板块代码": "industry-1",
-        "板块名称": "industry-board",
-        "龙头": "leader",
-        "资金净流入(亿)": 3.0,
+        "trade_date": 20260807,
+        "board_code": "industry-1",
+        "board_name": "industry-board",
+        "leader": "leader",
+        "net_inflow_100m": 3.0,
+        "flow_type": "industry",
     }
     assert sleeps == [0.25, 0.25, 0.25]
 
@@ -191,6 +315,6 @@ def test_write_network_failure_is_reported_and_older_dates_continue():
         {"trade_date": 20260807, "error": "redis unavailable"}
     ]
     assert writes == [
-        ("fund_flow", "20260806"),
-        ("fund_flow_概念", "20260806"),
+        ("industry", "20260806"),
+        ("concept", "20260806"),
     ]
