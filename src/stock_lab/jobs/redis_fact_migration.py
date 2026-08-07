@@ -65,7 +65,7 @@ def migrate_strategy_pick(redis, mysql_repository):
             for item in payload if isinstance(payload, list) else []:
                 item = translate_legacy_strategy_pick(item) if text.startswith(LEGACY_STRATEGY_PREFIX) else item
                 if isinstance(item, dict) and item.get("id"):
-                    strategies[str(item["id"])] = item
+                    _choose(strategies, str(item["id"]), item, text.startswith(V1_STRATEGY_PREFIX))
             continue
         history = _HISTORY_RE.match(text)
         latest = _LATEST_RE.match(text)
@@ -77,12 +77,12 @@ def migrate_strategy_pick(redis, mysql_repository):
                 for snapshot in _flatten(_json(value, None)):
                     snapshot = _normalize(snapshot, history.group("strategy"), history.group("date"), legacy=not text.startswith(V1_STRATEGY_PREFIX))
                     if snapshot:
-                        snapshots[_snapshot_key(snapshot)] = snapshot
+                        _choose(snapshots, _snapshot_key(snapshot), snapshot, text.startswith(V1_STRATEGY_PREFIX))
         elif latest:
             snapshot = _json(redis.get(key), None)
             snapshot = _normalize(snapshot, "eastmoney_default" if text == "策略选股:latest" else latest.group("strategy"), None, legacy=text.startswith(LEGACY_STRATEGY_PREFIX))
             if snapshot:
-                snapshots[_snapshot_key(snapshot)] = snapshot
+                _choose(snapshots, _snapshot_key(snapshot), snapshot, text.startswith(V1_STRATEGY_PREFIX))
         elif event_list:
             for value in redis.lrange(key, 0, -1):
                 event = _json(value, None)
@@ -90,7 +90,7 @@ def migrate_strategy_pick(redis, mysql_repository):
                 if isinstance(event, dict):
                     strategy_id = str(event.get("strategyId") or event.get("strategy_id") or event_list.group("strategy"))
                     event_date = str(event.get("collectedDate") or event_list.group("date"))
-                    events[_event_key(event, strategy_id, event_date)] = (strategy_id, event_date, event)
+                    _choose(events, _event_key(event, strategy_id, event_date), (strategy_id, event_date, event), text.startswith(V1_STRATEGY_PREFIX), payload=event)
         elif global_events:
             for value in redis.lrange(key, 0, -1):
                 event = _json(value, None)
@@ -98,8 +98,11 @@ def migrate_strategy_pick(redis, mysql_repository):
                 if isinstance(event, dict) and event.get("strategyId"):
                     strategy_id = str(event["strategyId"])
                     event_date = str(event.get("collectedDate") or global_events.group("date"))
-                    events[_event_key(event, strategy_id, event_date)] = (strategy_id, event_date, event)
+                    _choose(events, _event_key(event, strategy_id, event_date), (strategy_id, event_date, event), text.startswith(V1_STRATEGY_PREFIX), payload=event)
 
+    strategies = {key: value for key, (_rank, value) in strategies.items()}
+    snapshots = {key: value for key, (_rank, value) in snapshots.items()}
+    events = {key: value for key, (_rank, value) in events.items()}
     for strategy_id, snapshot in snapshots.items():
         strategy = snapshot.get("strategyId")
         strategies.setdefault(strategy, {"id": strategy, "name": snapshot.get("strategyName") or strategy, "pageUrl": "", "enabled": True})
@@ -240,6 +243,14 @@ def _event_key(event, strategy_id, event_date):
         return explicit
     payload = json.dumps(event, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return "fallback:" + hashlib.sha256(f"{strategy_id}|{event_date}|{payload}".encode()).hexdigest()
+
+
+def _choose(mapping, key, value, is_v1, *, payload=None):
+    payload = value if payload is None else payload
+    canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    rank = (1 if is_v1 else 0, len(canonical), canonical)
+    if key not in mapping or rank > mapping[key][0]:
+        mapping[key] = (rank, value)
 
 
 def _canonical(value):

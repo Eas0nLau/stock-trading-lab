@@ -68,6 +68,19 @@ def test_migration_merges_legacy_and_v1_snapshots_and_preserves_latest():
     assert result["latest"]["s1"]["collectedTime"] == "11:00:00"
 
 
+def test_migration_deduplication_prefers_v1_independent_of_scan_order():
+    redis = Redis(lists={
+        "strategy_pick:v1:s1:history:20260807": [encoded({"strategyId": "s1", "collectedDate": "20260807", "collectedTime": "10:00:00", "status": "v1", "stocks": []})],
+        "策略选股:s1:history:20260807": [encoded({"策略ID": "s1", "采集日期": "20260807", "采集时间": "10:00:00", "状态": "legacy", "股票列表": []})],
+    })
+    mysql = MySQL()
+
+    migrate_strategy_pick(redis, mysql)
+
+    assert len(mysql.collections) == 1
+    assert mysql.collections[0][0]["status"] == "v1"
+
+
 def test_cleanup_refuses_to_delete_any_key_when_fund_flow_parity_fails():
     redis = Redis(values={"fund_flow:history:20240101": "old"})
     mysql = MySQL()
