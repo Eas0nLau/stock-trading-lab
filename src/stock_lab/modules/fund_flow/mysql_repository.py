@@ -63,6 +63,32 @@ class FundFlowMySQLRepository:
             cursor.close()
             connection.close()
 
+    def board_catalog(self, flow_type):
+        connection = self._connection()
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT DISTINCT r.board_code, r.board_name, r.leader "
+                "FROM fund_flow_snapshots s "
+                "JOIN fund_flow_records r ON r.snapshot_id=s.snapshot_id "
+                "WHERE s.flow_type=%s "
+                "ORDER BY r.board_code",
+                (flow_type,),
+            )
+            boards = {}
+            for row in cursor.fetchall():
+                if row.get("board_code"):
+                    board = {
+                        "board_code": str(row.get("board_code") or ""),
+                        "board_name": str(row.get("board_name") or ""),
+                        "leader": str(row.get("leader") or ""),
+                    }
+                    boards[board["board_code"]] = board
+            return list(boards.values())
+        finally:
+            cursor.close()
+            connection.close()
+
     def history(self, flow_type, trade_date):
         connection = self._connection()
         cursor = connection.cursor(dictionary=True)
@@ -76,6 +102,8 @@ class FundFlowMySQLRepository:
                 collected_at = row.pop("collected_at")
                 time = collected_at.strftime("%H:%M:%S") if isinstance(collected_at, (datetime, date)) else str(collected_at)
                 row["time"] = time
+                if row.get("net_inflow_100m") is not None:
+                    row["net_inflow_100m"] = float(row["net_inflow_100m"])
                 grouped[time].append(row)
             return list(grouped.values()) or None
         finally:

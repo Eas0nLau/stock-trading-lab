@@ -1,4 +1,99 @@
-from stock_lab.jobs.fund_flow_backfill import backfill_fund_flow, migrate_legacy_redis
+import datetime as dt
+
+import pytest
+
+from stock_lab.jobs.fund_flow_backfill import (
+    EastMoneyFundFlowSource,
+    backfill_fund_flow,
+    migrate_legacy_redis,
+    parse_daykline_response,
+    run_backfill,
+)
+
+
+class Catalog:
+    def board_catalog(self, flow_type):
+        return [{"board_code": "BK0732", "board_name": "机器人", "leader": "甲"}]
+
+
+class Response:
+    status_code = 200
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"data": {"klines": ["2026-08-07,325000000,0,0,0,0"]}}
+
+
+class Session:
+    def __init__(self, response=None):
+        self.response = response or Response()
+        self.calls = []
+
+    def get(self, url, params, headers, timeout):
+        self.calls.append((url, params, headers, timeout))
+        return self.response
+
+
+def test_direct_source_uses_mysql_catalog_and_browser_headers():
+    session = Session()
+    source = EastMoneyFundFlowSource(Catalog(), session=session)
+
+    assert source.list_boards("industry") == [
+        {"board_code": "BK0732", "board_name": "机器人", "leader": "甲"}
+    ]
+    assert source.board_history({"board_code": "BK0732", "board_name": "机器人", "leader": "甲"}) == [{
+        "trade_date": 20260807,
+        "board_code": "BK0732",
+        "board_name": "机器人",
+        "leader": "甲",
+        "net_inflow_100m": 3.25,
+        "flow_type": "industry",
+    }]
+    url, params, headers, timeout = session.calls[0]
+    assert url.endswith("/api/qt/stock/fflow/daykline/get")
+    assert params["secid"] == "90.BK0732"
+    assert headers["User-Agent"].startswith("Mozilla/")
+    assert headers["Referer"]
+    assert timeout > 0
+
+
+def test_direct_parser_rejects_malformed_response():
+    with pytest.raises(ValueError, match="klines"):
+        parse_daykline_response({"data": {}}, {"board_code": "BK0732"}, "industry")
+
+
+def test_run_backfill_checks_mysql_before_writing_and_skips_duplicates():
+    class Source:
+        def list_boards(self, flow_type):
+            return [{"board_code": flow_type, "board_name": flow_type, "leader": "甲"}]
+
+        def board_history(self, board_name):
+            return [{
+                "trade_date": 20260807,
+                "board_code": board_name,
+                "board_name": board_name,
+                "leader": "甲",
+                "net_inflow_100m": 1,
+                "flow_type": "industry",
+            }]
+
+    mysql = MySQL(existing={("concept", 20260807)})
+    writes = []
+    result = run_backfill(
+        trading_dates=[20260807],
+        source=Source(),
+        mysql_repository=mysql,
+        redis_repository=Redis(),
+        writer=lambda flow_type, trade_date, snapshot_time, rows: writes.append(flow_type),
+        now=dt.date(2026, 8, 7),
+        retries=0,
+        rate_delay=0,
+    )
+
+    assert result["status"] == "success"
+    assert writes == ["industry"]
 
 
 class Source:

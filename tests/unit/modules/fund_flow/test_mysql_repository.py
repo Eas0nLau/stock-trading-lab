@@ -67,3 +67,37 @@ def test_save_snapshot_reuses_existing_snapshot_id():
 
     assert repository.save_snapshot("industry", 20260807, "10:00:00", []) == 9
     assert len(connection.cursor_instance.calls) == 1
+
+
+def test_history_converts_decimal_amount_for_json_boundary():
+    connection = Connection()
+    connection.cursor_instance.rows = [{
+        "collected_at": "09:31:00",
+        "board_code": "A",
+        "board_name": "机器人",
+        "leader": "甲",
+        "net_inflow_100m": Decimal("4.111302"),
+    }]
+    repository = FundFlowMySQLRepository(lambda: connection)
+
+    result = repository.history("industry", 20260807)
+
+    assert result[0][0]["net_inflow_100m"] == 4.111302
+
+
+def test_board_catalog_selects_distinct_metadata_for_flow_type():
+    connection = Connection()
+    connection.cursor_instance.rows = [
+        {"board_code": "BK0732", "board_name": "机器人", "leader": "甲"},
+        {"board_code": "BK0732", "board_name": "机器人", "leader": "甲"},
+    ]
+    repository = FundFlowMySQLRepository(lambda: connection)
+
+    result = repository.board_catalog("industry")
+
+    assert result == [{"board_code": "BK0732", "board_name": "机器人", "leader": "甲"}]
+    statement, params = connection.cursor_instance.calls[0]
+    assert "DISTINCT" in statement
+    assert "fund_flow_snapshots" in statement
+    assert "fund_flow_records" in statement
+    assert params == ("industry",)
