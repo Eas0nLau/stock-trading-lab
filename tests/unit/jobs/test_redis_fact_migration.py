@@ -19,6 +19,7 @@ class Redis:
     def get(self, key): return self.values.get(key)
     def lrange(self, key, start, end): return self.lists.get(key, [])
     def ttl(self, key): return self.ttls.get(key, 3600)
+    def expire(self, key, seconds): self.ttls[key] = seconds
     def delete(self, *keys):
         self.deleted.extend(keys)
         for key in keys:
@@ -81,9 +82,11 @@ def test_cleanup_removes_history_but_retains_current_cache_and_ttl_state():
     redis = Redis(
         values={
             "策略选股:old": "legacy",
+            "策略选股:s1:history:20260807": "legacy-today",
             "strategy_pick:v1:s1:history:20260806": "old",
             "strategy_pick:v1:s1:chart:20260806": "old",
             "strategy_pick:v1:s1:history:20260807": "today",
+            "strategy_pick:v1:s1:latest": encoded({"collectedDate": "20260807"}),
             "job:strategy_pick:lock": "locked",
             "job:strategy_pick:completion": "done",
         },
@@ -92,8 +95,12 @@ def test_cleanup_removes_history_but_retains_current_cache_and_ttl_state():
 
     result = cleanup_redis(redis, MySQL(), today="20260807", parity=lambda: True)
 
-    assert result["deleted"] == 3
+    assert result["deleted"] == 4
+    assert "策略选股:s1:history:20260807" in redis.deleted
     assert "strategy_pick:v1:s1:history:20260807" not in redis.deleted
+    assert "strategy_pick:v1:s1:latest" not in redis.deleted
+    assert redis.ttls["strategy_pick:v1:s1:history:20260807"] == 86400
+    assert redis.ttls["strategy_pick:v1:s1:latest"] == 86400
     assert "job:strategy_pick:lock" not in redis.deleted
     assert "job:strategy_pick:completion" not in redis.deleted
 
@@ -112,3 +119,23 @@ def test_live_cleanup_requires_confirmation_and_existing_backups(tmp_path):
 
     with pytest.raises(RuntimeError, match="backup"):
         run_migration(redis, MySQL(), cleanup=True, backup_paths=[tmp_path / "missing.sql"], confirmation="REDIS_CACHE_ONLY")
+
+
+def test_live_cleanup_uses_the_fund_flow_repository_for_parity(tmp_path):
+    first = tmp_path / "mysql.sql"
+    second = tmp_path / "redis.rdb"
+    first.write_text("backup", encoding="utf-8")
+    second.write_bytes(b"backup")
+    redis = Redis(values={"fund_flow:v1:industry:history:20260807": encoded([[{"board_code": "A", "net_inflow_100m": 1.25, "time": "15:00:00"}]])})
+
+    result = run_migration(
+        redis,
+        MySQL(),
+        fund_flow_mysql_repository=MySQL(),
+        cleanup=True,
+        backup_paths=[first, second],
+        confirmation="REDIS_CACHE_ONLY",
+        today="20260807",
+    )
+
+    assert result["cleanup"]["deleted"] == 0

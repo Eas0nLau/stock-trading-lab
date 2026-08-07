@@ -235,6 +235,7 @@ CREATE TABLE IF NOT EXISTS `strategy_pick_events` (
   PRIMARY KEY (`event_id`),
   KEY `idx_strategy_pick_event_date` (`strategy_id`, `event_date`, `event_time`),
   KEY `idx_strategy_pick_event_global_date` (`event_date`, `event_time`),
+  KEY `idx_strategy_pick_event_snapshot` (`snapshot_id`),
   CONSTRAINT `fk_strategy_pick_event_snapshot` FOREIGN KEY (`snapshot_id`) REFERENCES `strategy_pick_snapshots` (`snapshot_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -546,7 +547,7 @@ BEGIN
   CALL assert_table_compatible(
     'strategy_pick_events',
     'event_id:varchar(128):NO|strategy_id:varchar(64):NO|event_date:int:NO|event_time:varchar(16):NO|stock_code:varchar(16):NO|snapshot_id:bigint:YES|event_json:json:NO|created_at:datetime:NO',
-    'idx_strategy_pick_event_date:1(strategy_id,event_date,event_time)|idx_strategy_pick_event_global_date:1(event_date,event_time)|PRIMARY:0(event_id)'
+    'idx_strategy_pick_event_date:1(strategy_id,event_date,event_time)|idx_strategy_pick_event_global_date:1(event_date,event_time)|idx_strategy_pick_event_snapshot:1(snapshot_id)|PRIMARY:0(event_id)'
   );
   CALL assert_table_compatible(
     'kdj_indicators',

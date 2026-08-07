@@ -245,6 +245,18 @@ def test_001_compatibility_signatures_match_the_declared_ddl():
         assert index_signature == "|".join(sorted(indexes, key=str.lower)), table
 
 
+def test_001_declares_stable_indexes_for_all_foreign_key_columns():
+    sql = CREATE_PATH.read_text(encoding="utf-8")
+
+    for table_body in re.findall(r"CREATE TABLE IF NOT EXISTS `[^`]+` \((.*?)\) ENGINE=InnoDB", sql, re.DOTALL):
+        indexed_columns = {
+            sql_identifiers(columns)[0]
+            for columns in re.findall(r"(?:PRIMARY KEY|(?:UNIQUE )?KEY `[^`]+`) \(([^)]+)\)", table_body)
+        }
+        for foreign_columns in re.findall(r"FOREIGN KEY \(([^)]+)\)", table_body):
+            assert sql_identifiers(foreign_columns)[0] in indexed_columns
+
+
 def test_new_schema_contains_only_ascii_identifiers():
     sql = CREATE_PATH.read_text(encoding="utf-8")
 

@@ -15,12 +15,23 @@ _LATEST_RE = re.compile(r"^(策略选股|strategy_pick:v1):(?P<strategy>[^:]+):l
 _GLOBAL_EVENTS_RE = re.compile(r"^(策略选股|strategy_pick:v1):events:(?P<date>\d{8})$")
 
 
-def run_migration(redis, mysql_repository, *, cleanup=False, backup_paths=(), confirmation="", today=None):
+def run_migration(
+    redis,
+    mysql_repository,
+    *,
+    fund_flow_mysql_repository=None,
+    cleanup=False,
+    backup_paths=(),
+    confirmation="",
+    today=None,
+):
     if cleanup and confirmation != "REDIS_CACHE_ONLY":
         raise RuntimeError("live cleanup confirmation must be REDIS_CACHE_ONLY")
     missing_backups = [str(path) for path in backup_paths if not Path(path).is_file()]
     if cleanup and (len(backup_paths) < 2 or missing_backups):
         raise RuntimeError(f"live cleanup requires existing MySQL and Redis backup files: {missing_backups}")
+    if cleanup and fund_flow_mysql_repository is None:
+        raise RuntimeError("live cleanup requires a fund-flow MySQL repository")
     before = inventory(redis)
     migrated = migrate_strategy_pick(redis, mysql_repository)
     mysql_inventory = mysql_repository.inventory()
@@ -33,7 +44,7 @@ def run_migration(redis, mysql_repository, *, cleanup=False, backup_paths=(), co
         raise RuntimeError(f"strategy MySQL parity validation failed: {shortfalls}")
     cleanup_result = None
     if cleanup:
-        cleanup_result = cleanup_redis(redis, mysql_repository, today=today)
+        cleanup_result = cleanup_redis(redis, fund_flow_mysql_repository, today=today)
     return {
         "before": before,
         "migrated": migrated,
@@ -140,7 +151,7 @@ def verify_fund_flow_parity(redis, mysql_repository, *, today=None, flow_types=(
     return True
 
 
-def cleanup_redis(redis, mysql_repository, *, today=None, parity=None):
+def cleanup_redis(redis, mysql_repository, *, today=None, parity=None, cache_ttl_seconds=86400):
     if parity is None:
         parity = lambda: verify_fund_flow_parity(redis, mysql_repository, today=today)
     if not parity():
@@ -149,6 +160,9 @@ def cleanup_redis(redis, mysql_repository, *, today=None, parity=None):
     deleted = []
     for key in _keys(redis):
         text = _text(key)
+        if _current_cache(redis, key, text, today):
+            redis.expire(key, cache_ttl_seconds)
+            continue
         if _retain(text, today, redis):
             continue
         if text.startswith(LEGACY_STRATEGY_PREFIX) or text.startswith("fund_flow:") and not text.startswith("fund_flow:v1:") or text.startswith("fund_flow_概念"):
@@ -233,7 +247,18 @@ def _canonical(value):
 
 
 def _is_current_cache(key, today):
-    return today in key and (":history:" in key or ":events:" in key or ":chart:" in key or key.endswith(":latest"))
+    return today in key and (":history:" in key or ":events:" in key or ":chart:" in key)
+
+
+def _current_cache(redis, key, text, today):
+    if not (text.startswith(V1_STRATEGY_PREFIX) or text.startswith("fund_flow:v1:")):
+        return False
+    if _is_current_cache(text, today):
+        return True
+    if not text.endswith(":latest"):
+        return False
+    payload = _json(redis.get(key), {})
+    return isinstance(payload, dict) and str(payload.get("collectedDate") or payload.get("trade_date") or "") == today
 
 
 def _retain(key, today, redis):

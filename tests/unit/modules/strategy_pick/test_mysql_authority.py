@@ -17,6 +17,7 @@ class Redis:
     def lrange(self, key, start, end): return self.lists.get(key, [])[start:(None if end == -1 else end + 1)]
     def sadd(self, key, *values): self.sets.setdefault(key, set()).update(values)
     def smembers(self, key): return self.sets.get(key, set())
+    def expire(self, key, seconds): self.expirations[key] = seconds
 
 
 class MySQL:
@@ -48,6 +49,8 @@ def test_mysql_is_authoritative_and_cache_miss_is_backfilled_with_same_day_ttl()
     assert result["strategyId"] == "eastmoney_1"
     assert redis.values["strategy_pick:v1:eastmoney_1:latest"]
     assert redis.expirations["strategy_pick:v1:eastmoney_1:latest"] == 3600
+    assert redis.expirations["strategy_pick:v1:eastmoney_1:dates"] == 3600
+    assert redis.expirations["strategy_pick:v1:dates"] == 3600
 
 
 def test_mysql_reads_ignore_stale_redis_values():

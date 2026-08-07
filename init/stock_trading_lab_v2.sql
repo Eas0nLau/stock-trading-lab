@@ -240,6 +240,7 @@ CREATE TABLE IF NOT EXISTS `strategy_pick_events` (
   PRIMARY KEY (`event_id`),
   KEY `idx_strategy_pick_event_date` (`strategy_id`, `event_date`, `event_time`),
   KEY `idx_strategy_pick_event_global_date` (`event_date`, `event_time`),
+  KEY `idx_strategy_pick_event_snapshot` (`snapshot_id`),
   CONSTRAINT `fk_strategy_pick_event_snapshot` FOREIGN KEY (`snapshot_id`) REFERENCES `strategy_pick_snapshots` (`snapshot_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

@@ -142,6 +142,8 @@ class StrategyPickRepository:
         self._set_cache(self.key(strategy_id, f"history:{date_value}"), [snapshot])
         self.redis.sadd(self.dates_key(strategy_id), date_value)
         self.redis.sadd(self.global_dates_key(), date_value)
+        self._expire(self.dates_key(strategy_id))
+        self._expire(self.global_dates_key())
 
     def _cache_events(self, strategy_id, date_value, events):
         if not _is_today(date_value):
@@ -149,9 +151,13 @@ class StrategyPickRepository:
         self._set_cache(self.key(strategy_id, f"events:{date_value}"), events)
         self._set_cache(f"strategy_pick:v1:events:{date_value}", events)
         self.redis.sadd(self.global_dates_key(), date_value)
+        self._expire(self.global_dates_key())
 
     def _set_cache(self, key, value):
         self.redis.set(key, json.dumps(value, ensure_ascii=False), ex=self.cache_ttl_seconds)
+
+    def _expire(self, key):
+        self.redis.expire(key, self.cache_ttl_seconds)
 
     def publish_snapshot(self, snapshot):
         event = {"type": "snapshot", "strategyId": snapshot.get("strategyId", ""), "strategyName": snapshot.get("strategyName", ""), "collectedDate": snapshot.get("collectedDate", ""), "collectedTime": snapshot.get("collectedTime", ""), "status": snapshot.get("status", ""), "stockCount": len(snapshot.get("stocks") or []), "addedCount": len(snapshot.get("addedStocks") or []), "addedStocks": snapshot.get("addedStocks") or [], "removedCount": len(snapshot.get("removedStocks") or []), "removedStocks": snapshot.get("removedStocks") or []}
