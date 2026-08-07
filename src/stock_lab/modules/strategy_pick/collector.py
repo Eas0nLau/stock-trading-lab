@@ -36,13 +36,13 @@ class StrategyPickCollector:
         return results
 
 
-def create_strategy_pick_collector(redis, *, adapter=None, settings=None):
+def create_strategy_pick_collector(redis, *, adapter=None, settings=None, mysql_repository=None):
     from stock_lab.config.defaults import DEFAULT_STRATEGY_PICK_STRATEGIES
 
     from .repository import StrategyPickRepository
     from .service import StrategyPickService
 
-    repository = StrategyPickRepository(redis)
+    repository = StrategyPickRepository(redis, mysql_repository)
     StrategyPickService(repository, default_strategies=DEFAULT_STRATEGY_PICK_STRATEGIES).strategies()
     return StrategyPickCollector(repository, adapter=adapter, settings=settings)
 
@@ -64,9 +64,15 @@ def run_strategy_pick_monitor(stop_event=None, *, settings=None, collector=None,
     if collector is None:
         from stock_lab.config import get_settings
         from stock_lab.infrastructure.cache.redis_client import create_redis_client
+        from stock_lab.infrastructure.database import create_database_client
+        from .mysql_repository import StrategyPickMySQLRepository
         settings = settings or get_settings()
+        database = create_database_client(settings)
         collector = create_strategy_pick_collector(
-            create_redis_client(settings), adapter=adapter, settings=settings
+            create_redis_client(settings),
+            adapter=adapter,
+            settings=settings,
+            mysql_repository=StrategyPickMySQLRepository(lambda: database.resources.get_pool().get_connection()),
         )
     adapter = adapter or collector.adapter
     return adapter.run(stop_event, collector)
@@ -77,8 +83,16 @@ def get_strategy_pick_collector():
     if _default_collector is None:
         from stock_lab.config import get_settings
         from stock_lab.infrastructure.cache.redis_client import create_redis_client
+        from stock_lab.infrastructure.database import create_database_client
+        from .mysql_repository import StrategyPickMySQLRepository
+        settings = get_settings()
+        database = create_database_client(settings)
 
-        _default_collector = create_strategy_pick_collector(create_redis_client(get_settings()))
+        _default_collector = create_strategy_pick_collector(
+            create_redis_client(settings),
+            settings=settings,
+            mysql_repository=StrategyPickMySQLRepository(lambda: database.resources.get_pool().get_connection()),
+        )
     return _default_collector
 
 

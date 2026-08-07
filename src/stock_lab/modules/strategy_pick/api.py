@@ -9,7 +9,14 @@ def register_strategy_pick_routes(app: FastAPI, *, settings=None, repository=Non
     if repository is None:
         from stock_lab.config import get_settings
         from stock_lab.infrastructure.cache.redis_client import create_redis_client
-        repository = StrategyPickRepository(create_redis_client(settings or get_settings()))
+        from stock_lab.infrastructure.database import create_database_client
+        from .mysql_repository import StrategyPickMySQLRepository
+        settings = settings or get_settings()
+        database = create_database_client(settings)
+        repository = StrategyPickRepository(
+            create_redis_client(settings),
+            StrategyPickMySQLRepository(lambda: database.resources.get_pool().get_connection()),
+        )
     if default_strategies is None:
         from stock_lab.config.defaults import DEFAULT_STRATEGY_PICK_STRATEGIES
         default_strategies = DEFAULT_STRATEGY_PICK_STRATEGIES
