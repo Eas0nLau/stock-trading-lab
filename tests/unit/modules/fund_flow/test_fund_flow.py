@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 import pytest
 
@@ -42,6 +43,32 @@ def test_repository_uses_v1_keys_and_round_trips_history():
     assert repository.history("industry", "20260806")["format"] == "matrix-v2"
     assert repository.dates("industry") == ["20260806"]
     assert all(key.isascii() for key in [*redis.values, *redis.sets])
+
+
+def test_current_day_history_chart_and_date_cache_have_ttl():
+    class TtlRedis(FakeRedis):
+        def __init__(self):
+            super().__init__()
+            self.expirations = {}
+
+        def set(self, key, value, ex=None):
+            self.values[key] = value
+            self.expirations[key] = ex
+
+        def expire(self, key, seconds):
+            self.expirations[key] = seconds
+
+    today = date.today().strftime("%Y%m%d")
+    redis = TtlRedis()
+    repository = FundFlowRepository(redis, cache_ttl_seconds=1800)
+
+    repository.save_history("industry", today, [{"time": "10:00:00", "board_name": "A"}])
+    repository.save_chart("industry", today, 5, {"boards": []})
+
+    assert redis.expirations[repository.history_key("industry", today)] == 1800
+    assert redis.expirations[repository.dates_key("industry")] == 1800
+    assert redis.expirations[repository.chart_cache_key("industry", today, 5)] == 1800
+    assert redis.expirations[repository.chart_cache_index_key("industry", today)] == 1800
 
 
 def test_repository_replaces_same_time_snapshot_without_duplicate():
@@ -138,7 +165,7 @@ def test_repository_does_not_fall_back_to_legacy_industry_history():
     assert repository.dates("industry") == []
 
 
-def test_service_falls_back_to_mysql_and_repopulates_redis():
+def test_service_reads_historical_mysql_without_repopulating_redis():
     redis = FakeRedis()
     repository = FundFlowRepository(redis)
 
@@ -149,10 +176,10 @@ def test_service_falls_back_to_mysql_and_repopulates_redis():
     result = FundFlowService(repository, MySQL()).history("industry", "20260806", top_n=0)
 
     assert result["times"] == ["10:00"]
-    assert repository.history("industry", "20260806") is not None
+    assert repository.history("industry", "20260806") is None
 
 
-def test_service_uses_mysql_history_when_redis_is_empty():
+def test_service_uses_mysql_history_without_caching_old_dates():
     redis = FakeRedis()
     repository = FundFlowRepository(redis)
 
@@ -167,7 +194,7 @@ def test_service_uses_mysql_history_when_redis_is_empty():
 
     assert service.dates("industry")["dates"] == ["20260806"]
     assert service.history("industry", "20260806")["times"] == ["10:00"]
-    assert repository.history("industry", "20260806") is not None
+    assert repository.history("industry", "20260806") is None
 
 
 def test_repository_does_not_scan_keys_for_missing_concept_history():

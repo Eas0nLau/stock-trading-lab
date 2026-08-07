@@ -1,6 +1,7 @@
 import json
 import queue
 import threading
+from datetime import date
 
 
 # The API and collector run as threads in one application process, so one broker owns all subscribers.
@@ -9,8 +10,9 @@ _subscriber_lock = threading.Lock()
 
 
 class FundFlowRepository:
-    def __init__(self, redis):
+    def __init__(self, redis, *, cache_ttl_seconds=86400):
         self.redis = redis
+        self.cache_ttl_seconds = int(cache_ttl_seconds)
 
     @staticmethod
     def history_key(flow_type, trade_date):
@@ -32,7 +34,9 @@ class FundFlowRepository:
     def canonical_history_key(flow_type, trade_date):
         return f"fund_flow:v1:{flow_type}:canonical:{trade_date}"
 
-    def save_history(self, flow_type, trade_date, payload):
+    def save_history(self, flow_type, trade_date, payload, *, cache=True):
+        if not cache:
+            return
         key = self.history_key(flow_type, trade_date)
         existing = self.history(flow_type, trade_date)
         if isinstance(payload, list):
@@ -44,15 +48,21 @@ class FundFlowRepository:
             else:
                 snapshots.append(payload)
             payload = snapshots
-        self.redis.set(key, json.dumps(payload, ensure_ascii=False))
+        self._set(key, payload)
         self.redis.sadd(self.dates_key(flow_type), trade_date)
-        self.redis.set(self.canonical_history_key(flow_type, trade_date), "1")
+        if _is_today(trade_date):
+            self._set(self.canonical_history_key(flow_type, trade_date), "1")
+            self._expire(self.dates_key(flow_type))
         self.clear_chart_cache(flow_type, trade_date)
 
-    def replace_history(self, flow_type, trade_date, snapshots):
-        self.redis.set(self.history_key(flow_type, trade_date), json.dumps(snapshots, ensure_ascii=False))
+    def replace_history(self, flow_type, trade_date, snapshots, *, cache=True):
+        if not cache:
+            return
+        self._set(self.history_key(flow_type, trade_date), snapshots)
         self.redis.sadd(self.dates_key(flow_type), trade_date)
-        self.redis.set(self.canonical_history_key(flow_type, trade_date), "1")
+        if _is_today(trade_date):
+            self._set(self.canonical_history_key(flow_type, trade_date), "1")
+            self._expire(self.dates_key(flow_type))
         self.clear_chart_cache(flow_type, trade_date)
 
     def is_canonical_history(self, flow_type, trade_date):
@@ -84,8 +94,10 @@ class FundFlowRepository:
 
     def save_chart(self, flow_type, trade_date, top_n, payload):
         key = self.chart_cache_key(flow_type, trade_date, top_n)
-        self.redis.set(key, json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        self._set(key, payload, compact=True)
         self.redis.sadd(self.chart_cache_index_key(flow_type, trade_date), key)
+        if _is_today(trade_date):
+            self._expire(self.chart_cache_index_key(flow_type, trade_date))
 
     def clear_chart_cache(self, flow_type, trade_date):
         index_key = self.chart_cache_index_key(flow_type, trade_date)
@@ -135,3 +147,23 @@ class FundFlowRepository:
     def stream_subscriber_count():
         with _subscriber_lock:
             return len(_subscribers)
+
+    def _set(self, key, payload, *, compact=False):
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":") if compact else None)
+        try:
+            self.redis.set(key, encoded, ex=self.cache_ttl_seconds if _is_current_cache_key(key) else None)
+        except TypeError:
+            self.redis.set(key, encoded)
+
+    def _expire(self, key):
+        expire = getattr(self.redis, "expire", None)
+        if callable(expire):
+            expire(key, self.cache_ttl_seconds)
+
+
+def _is_today(value):
+    return str(value or "") == date.today().strftime("%Y%m%d")
+
+
+def _is_current_cache_key(key):
+    return date.today().strftime("%Y%m%d") in str(key)

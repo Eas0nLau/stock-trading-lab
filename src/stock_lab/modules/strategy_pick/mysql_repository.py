@@ -18,7 +18,7 @@ class StrategyPickMySQLRepository:
             "definition_json",
         )
 
-    def save_strategies(self, strategies):
+    def save_strategies(self, strategies, *, replace=True):
         strategies = list(strategies)
         connection = self._connection()
         cursor = connection.cursor(dictionary=True)
@@ -39,13 +39,13 @@ class StrategyPickMySQLRepository:
                     ),
                 )
             ids = [str(strategy.get("id") or "") for strategy in strategies]
-            if ids:
+            if replace and ids:
                 placeholders = ", ".join(["%s"] * len(ids))
                 cursor.execute(
                     f"DELETE FROM strategy_definitions WHERE strategy_id NOT IN ({placeholders})",
                     tuple(ids),
                 )
-            else:
+            elif replace:
                 cursor.execute("DELETE FROM strategy_definitions", ())
             connection.commit()
         except Exception:
@@ -169,6 +169,23 @@ class StrategyPickMySQLRepository:
             (int(date),),
             "event_json",
         )
+
+    def inventory(self):
+        connection = self._connection()
+        cursor = connection.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT "
+                "(SELECT COUNT(*) FROM strategy_definitions) AS strategies, "
+                "(SELECT COUNT(*) FROM strategy_pick_snapshots) AS snapshots, "
+                "(SELECT COUNT(*) FROM strategy_pick_stocks) AS stocks, "
+                "(SELECT COUNT(*) FROM strategy_pick_events) AS events"
+            )
+            row = cursor.fetchone() or {}
+            return {name: int(row.get(name) or 0) for name in ("strategies", "snapshots", "stocks", "events")}
+        finally:
+            cursor.close()
+            connection.close()
 
     def _json_rows(self, statement, params, column):
         return [_load_json(row[column], column) for row in self._rows(statement, params)]

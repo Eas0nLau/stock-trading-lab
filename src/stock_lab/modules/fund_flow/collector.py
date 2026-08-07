@@ -21,7 +21,8 @@ def save_snapshot(
     records = translate_legacy_fund_flow(records)
     if mysql_repository is not None:
         mysql_repository.save_snapshot(flow_type, trade_date, collected_at, records)
-    repository.save_history(flow_type, trade_date, records)
+    if mysql_repository is None or str(trade_date) == datetime.date.today().strftime("%Y%m%d"):
+        repository.save_history(flow_type, trade_date, records)
     repository.publish_snapshot(flow_type, trade_date, collected_at, len(records))
 
 

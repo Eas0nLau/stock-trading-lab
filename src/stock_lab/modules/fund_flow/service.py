@@ -23,7 +23,12 @@ class FundFlowService:
         if mysql_authoritative:
             payload = self.mysql_repository.history(flow_type, trade_date)
             if payload is not None:
-                self.repository.replace_history(flow_type, trade_date, payload)
+                self.repository.replace_history(
+                    flow_type,
+                    trade_date,
+                    payload,
+                    cache=str(trade_date) == date.today().strftime("%Y%m%d"),
+                )
         else:
             payload = self.repository.history(flow_type, trade_date)
         if payload is None:

@@ -260,7 +260,8 @@ def _default_writer(mysql_repository, redis_repository):
             for row in sorted(rows, key=lambda item: (item.get("board_name", ""), item.get("board_code", "")))
         ]
         mysql_repository.save_snapshot(flow_type, trade_date, snapshot_time, records)
-        redis_repository.save_history(flow_type, trade_date, records)
+        if str(trade_date) == dt.date.today().strftime("%Y%m%d"):
+            redis_repository.save_history(flow_type, trade_date, records)
     return write
 
 
@@ -291,7 +292,8 @@ def _backfill_legacy_fund_flow(start_date, end_date, source, mysql_repository, r
                 ]
                 collected_at = records[0].get("collected_at") or records[0].get("time") or dt.datetime.min.strftime("%H:%M:%S")
                 mysql_repository.save_snapshot(flow_type, trade_date, collected_at, records)
-                redis_repository.save_history(flow_type, trade_date, [records])
+                if str(trade_date) == dt.date.today().strftime("%Y%m%d"):
+                    redis_repository.save_history(flow_type, trade_date, [records])
                 result["saved"].append({"flow_type": flow_type, "trade_date": trade_date})
             except Exception as error:
                 result["failed"].append({"flow_type": flow_type, "trade_date": trade_date, "error": str(error)})

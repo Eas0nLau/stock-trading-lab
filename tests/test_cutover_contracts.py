@@ -30,6 +30,7 @@ LEGACY_REDIS_PATTERNS = (
     re.compile(r"fund_flow_概念"),
     re.compile(r"策略选股:"),
 )
+LEGACY_STORAGE_MIGRATION_FILES = {"src/stock_lab/jobs/redis_fact_migration.py"}
 WRAPPER_LIMITS = {
     "task/data_sources.py": 80,
     "task/_5_韭研公社异动.py": 80,
@@ -189,6 +190,8 @@ def test_active_python_has_no_legacy_storage_references():
     active_roots = [OFFICIAL_ROOT, ROOT / "task", ROOT / "实时监控", ROOT / "游资溢价分析", ROOT / "strategy", ROOT / "utils"]
     for active_root in active_roots:
         for path in _python_files(active_root):
+            if path.relative_to(ROOT).as_posix() in LEGACY_STORAGE_MIGRATION_FILES:
+                continue
             text = path.read_text(encoding="utf-8")
             literals = _string_literals(ast.parse(text, filename=str(path)))
             tables = sorted(

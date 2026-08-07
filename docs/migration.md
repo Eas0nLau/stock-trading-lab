@@ -68,9 +68,20 @@ Chinese five-minute task module contains no source or persistence implementation
 
 前端 `IndexCycle.vue` 和 `HotBoardEmotion.vue` 已使用 `/api/v1/emotion/*` 与英文模型字段。旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 已停止注册，避免读取不再更新的旧表。
 
-`FundFlow.vue` 已使用 `/api/v1/fund-flow/{flow_type}/dates`、`/history/{trade_date}` 和 `/api/v1/fund-flow/stream`，内部模型统一为英文 camelCase。采集快照只写入 `fund_flow:v1:{flow_type}:history:{trade_date}`，日期索引只写入 `fund_flow:v1:{flow_type}:dates`，同一采集时间重复写入时替换最后一帧。情绪与研究消费者均通过 `FundFlowRepository` 读取 V1 数据；旧键回退、双写和 `/api/zijin/*` 已删除。SSE 由单一应用进程内 broker 管理。
+`FundFlow.vue` 已使用 `/api/v1/fund-flow/{flow_type}/dates`、`/history/{trade_date}` 和 `/api/v1/fund-flow/stream`，内部模型统一为英文 camelCase。MySQL 的 `fund_flow_snapshots` 和 `fund_flow_records` 保存完整历史；Redis 只缓存当天快照、日期和 Top-N 图表并设置 TTL。情绪与研究消费者均通过正式 repository 读取数据；旧键回退、双写和 `/api/zijin/*` 已删除。SSE 由单一应用进程内 broker 管理。
 
-`StrategyPickMonitor.vue` 和 `App.vue` 已使用 `front/src/modules/strategy-pick`，请求 `/api/v1/strategy-pick/*` 并使用 camelCase view model。正式模块只写入 `strategy_pick:v1:*` 配置、快照、事件、状态和日期键；旧 `策略选股:*` 回退、双写和 `/api/strategy-pick/*` 已删除。浏览器页面、响应解析和 worker 调度均由正式 collector/source 拥有。
+`StrategyPickMonitor.vue` 和 `App.vue` 已使用 `front/src/modules/strategy-pick`，请求 `/api/v1/strategy-pick/*` 并使用 camelCase view model。MySQL 的四张 `strategy_*` 表保存定义、快照、股票和事件事实；正式 collector 先提交同一 MySQL 事务，再更新当天 `strategy_pick:v1:*` TTL 缓存并发布 SSE。旧 `策略选股:*` 回退、双写和 `/api/strategy-pick/*` 已删除。浏览器页面、响应解析和 worker 调度均由正式 collector/source 拥有。
+
+Redis cache-only live migration
+--------------------------------
+
+Live cleanup uses `stock_lab.jobs.redis_fact_migration.run_migration`. Stop all
+backend writers, create fresh `mysqldump` and Redis RDB backup files, apply only
+`001_create_english_schema.sql`, then run with confirmation `REDIS_CACHE_ONLY`
+and both backup paths. The job prints/returns before and after inventories,
+refuses cleanup on strategy-count or fund-flow parity failure, and retains only
+current-day V1 caches plus positive-TTL locks/completion markers. Never run
+`003_drop_legacy_schema.sql` as part of this operation.
 
 Cutover contract tests
 ----------------------
