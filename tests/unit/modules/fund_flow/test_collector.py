@@ -38,6 +38,27 @@ def test_collector_commits_mysql_before_redis_success_state():
     assert calls == ["mysql", "redis"]
 
 
+def test_collector_does_not_write_or_publish_when_mysql_commit_fails():
+    repository = Repository()
+
+    class MySQL:
+        def save_snapshot(self, *args):
+            raise RuntimeError("database unavailable")
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        save_snapshot(
+            repository,
+            "industry",
+            "20260807",
+            "10:00:00",
+            [{"board_code": "A", "net_inflow_100m": 1}],
+            MySQL(),
+        )
+
+    assert repository.saved is None
+    assert repository.published is None
+
+
 def test_collector_writes_and_publishes_english_v1_snapshot():
     repository = Repository()
     records = [{"时间": "10:00:00", "板块名称": "机器人", "资金净流入(亿)": 3}]

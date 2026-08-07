@@ -48,6 +48,42 @@ def test_legacy_redis_migration_is_guarded_after_success():
     assert result == {"saved": [], "failed": [], "skipped": True}
 
 
+def test_legacy_migration_does_not_divide_new_canonical_history():
+    class RedisMigration:
+        def __init__(self):
+            self.marker = None
+            self.redis = self
+            self.history_value = [[{"time": "10:00:00", "net_inflow_100m": 4.111302}]]
+
+        def get(self, key):
+            return self.marker
+
+        def set(self, key, value):
+            self.marker = value
+
+    class RedisRepository:
+        def __init__(self):
+            self.redis = RedisMigration()
+
+        def dates(self, flow_type):
+            return ["20260807"]
+
+        def history(self, flow_type, trade_date):
+            return self.redis.history_value
+
+        def replace_history(self, flow_type, trade_date, snapshots):
+            self.redis.history_value = snapshots
+
+        def is_canonical_history(self, flow_type, trade_date):
+            return True
+
+    mysql = MySQL()
+    result = migrate_legacy_redis(RedisRepository(), mysql)
+
+    assert result["failed"] == []
+    assert mysql.saved == []
+
+
 def test_backfill_iterates_newest_to_oldest_and_reports_failed_dates():
     source = Source({("industry", 20260807): [{"board_code": "A", "net_inflow_100m": "1", "source_unit": "wan"}]})
     mysql = MySQL(existing={("concept", 20260806)})

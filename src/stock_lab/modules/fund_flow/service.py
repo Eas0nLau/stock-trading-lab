@@ -1,5 +1,6 @@
 import heapq
 import threading
+from datetime import date
 
 from .contracts import translate_legacy_fund_flow
 
@@ -18,12 +19,14 @@ class FundFlowService:
         return {"status": "success", "flow_type": flow_type, "dates": dates}
 
     def history(self, flow_type, trade_date, top_n=None):
-        payload = self.repository.history(flow_type, trade_date)
-        if payload is None and self.mysql_repository is not None:
+        mysql_authoritative = self.mysql_repository is not None
+        if mysql_authoritative:
             payload = self.mysql_repository.history(flow_type, trade_date)
             if payload is not None:
                 for snapshot in payload:
                     self.repository.save_history(flow_type, trade_date, snapshot)
+        else:
+            payload = self.repository.history(flow_type, trade_date)
         if payload is None:
             return {"status": "empty", "error_message": "No fund-flow history is available"}
         payload = translate_legacy_fund_flow(payload)
@@ -33,7 +36,9 @@ class FundFlowService:
         if top_n <= 0:
             return build_matrix_v1(payload, top_n)
         with _chart_cache_lock:
-            cached = self.repository.cached_chart(flow_type, trade_date, top_n)
+            cached = None
+            if not mysql_authoritative or str(trade_date) == date.today().strftime("%Y%m%d"):
+                cached = self.repository.cached_chart(flow_type, trade_date, top_n)
             if cached is not None:
                 return cached
             compact = [filter_snapshot(snapshot, top_n) for snapshot in payload]

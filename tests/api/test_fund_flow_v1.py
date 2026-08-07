@@ -92,3 +92,28 @@ def test_custom_settings_control_fund_flow_service_default_top_n():
     response = TestClient(app).get("/api/v1/fund-flow/industry/history/20260806")
 
     assert response.json()["top_n"] == 1
+
+
+def test_api_reads_history_and_dates_from_mysql_when_redis_has_stale_data():
+    redis = Redis()
+    repository = FundFlowRepository(redis)
+    repository.save_history("industry", "20260806", [{"time": "10:00", "board_name": "Redis"}])
+
+    class MySQL:
+        def dates(self, flow_type):
+            return ["20260807"]
+
+        def history(self, flow_type, trade_date):
+            return [[{"time": "10:01", "board_name": "MySQL", "net_inflow_100m": 2}]]
+
+    app = FastAPI()
+    register_fund_flow_routes(
+        app,
+        settings=SimpleNamespace(fund_flow_history_top_n=0),
+        repository=repository,
+        mysql_repository=MySQL(),
+    )
+
+    assert TestClient(app).get("/api/v1/fund-flow/industry/dates").json()["dates"] == ["20260807"]
+    response = TestClient(app).get("/api/v1/fund-flow/industry/history/20260806")
+    assert response.json()["boards"][0]["name"] == "MySQL"

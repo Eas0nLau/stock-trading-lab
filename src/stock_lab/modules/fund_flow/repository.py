@@ -28,6 +28,10 @@ class FundFlowRepository:
     def chart_cache_index_key(flow_type, trade_date):
         return f"fund_flow:v1:{flow_type}:chart-index:{trade_date}"
 
+    @staticmethod
+    def canonical_history_key(flow_type, trade_date):
+        return f"fund_flow:v1:{flow_type}:canonical:{trade_date}"
+
     def save_history(self, flow_type, trade_date, payload):
         key = self.history_key(flow_type, trade_date)
         existing = self.history(flow_type, trade_date)
@@ -42,12 +46,17 @@ class FundFlowRepository:
             payload = snapshots
         self.redis.set(key, json.dumps(payload, ensure_ascii=False))
         self.redis.sadd(self.dates_key(flow_type), trade_date)
+        self.redis.set(self.canonical_history_key(flow_type, trade_date), "1")
         self.clear_chart_cache(flow_type, trade_date)
 
     def replace_history(self, flow_type, trade_date, snapshots):
         self.redis.set(self.history_key(flow_type, trade_date), json.dumps(snapshots, ensure_ascii=False))
         self.redis.sadd(self.dates_key(flow_type), trade_date)
+        self.redis.set(self.canonical_history_key(flow_type, trade_date), "1")
         self.clear_chart_cache(flow_type, trade_date)
+
+    def is_canonical_history(self, flow_type, trade_date):
+        return bool(self.redis.get(self.canonical_history_key(flow_type, trade_date)))
 
     def history(self, flow_type, trade_date):
         value = self.redis.get(self.history_key(flow_type, trade_date))

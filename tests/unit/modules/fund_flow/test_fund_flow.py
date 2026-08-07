@@ -152,6 +152,24 @@ def test_service_falls_back_to_mysql_and_repopulates_redis():
     assert repository.history("industry", "20260806") is not None
 
 
+def test_service_uses_mysql_history_when_redis_is_empty():
+    redis = FakeRedis()
+    repository = FundFlowRepository(redis)
+
+    class MySQL:
+        def dates(self, flow_type):
+            return ["20260806"]
+
+        def history(self, flow_type, trade_date):
+            return [[{"time": "10:00", "board_name": "A", "net_inflow_100m": 1}]]
+
+    service = FundFlowService(repository, MySQL())
+
+    assert service.dates("industry")["dates"] == ["20260806"]
+    assert service.history("industry", "20260806")["times"] == ["10:00"]
+    assert repository.history("industry", "20260806") is not None
+
+
 def test_repository_does_not_scan_keys_for_missing_concept_history():
     redis = FakeRedis()
     redis.keys = lambda _pattern: (_ for _ in ()).throw(AssertionError("key scan is forbidden"))

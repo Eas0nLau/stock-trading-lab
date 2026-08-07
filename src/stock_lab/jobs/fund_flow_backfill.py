@@ -60,6 +60,9 @@ def migrate_legacy_redis(redis_repository, mysql_repository, flow_types=("indust
     for flow_type in flow_types:
         for trade_date in redis_repository.dates(flow_type):
             try:
+                is_canonical = getattr(redis_repository, "is_canonical_history", None)
+                if callable(is_canonical) and is_canonical(flow_type, trade_date):
+                    continue
                 history = translate_legacy_fund_flow(redis_repository.history(flow_type, trade_date))
                 if not isinstance(history, list):
                     raise ValueError("legacy history is not a snapshot list")
