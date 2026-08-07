@@ -16,8 +16,8 @@ FLOW_TYPES = ("industry", "concept")
 DAYKLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
 DAYKLINE_HEADERS = {
     "Accept": "application/json, text/plain, */*",
-    "Referer": "https://quote.eastmoney.com/",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+    "Referer": "https://data.eastmoney.com/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
 }
 
 
@@ -143,7 +143,13 @@ class EastMoneyFundFlowSource:
             raise ValueError(f"unknown board: {board_name}")
         response = self.session.get(
             DAYKLINE_URL,
-            params={"secid": f"90.{board['board_code']}", "klt": "101", "fqt": "1", "lmt": "1000", "end": "20500101"},
+            params={
+                "secid": f"90.{board['board_code']}",
+                "klt": "101",
+                "lmt": "0",
+                "fields1": "f1,f2,f3,f7",
+                "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+            },
             headers=DAYKLINE_HEADERS,
             timeout=self.timeout,
         )

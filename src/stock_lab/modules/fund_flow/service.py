@@ -23,8 +23,7 @@ class FundFlowService:
         if mysql_authoritative:
             payload = self.mysql_repository.history(flow_type, trade_date)
             if payload is not None:
-                for snapshot in payload:
-                    self.repository.save_history(flow_type, trade_date, snapshot)
+                self.repository.replace_history(flow_type, trade_date, payload)
         else:
             payload = self.repository.history(flow_type, trade_date)
         if payload is None:
