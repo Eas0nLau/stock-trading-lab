@@ -8,6 +8,7 @@ MAPPING_PATH = ROOT / "db" / "schema_mapping.json"
 CREATE_PATH = ROOT / "db" / "migrations" / "001_create_english_schema.sql"
 MIGRATE_PATH = ROOT / "db" / "migrations" / "002_migrate_legacy_data.sql"
 DROP_PATH = ROOT / "db" / "migrations" / "003_drop_legacy_schema.sql"
+UPSERT_PATH = ROOT / "db" / "migrations" / "004_upsert_legacy_data.sql"
 INIT_PATH = ROOT / "init" / "stock_trading_lab_v2.sql"
 OLD_INIT_PATH = ROOT / "init" / "stock_trading_lab.sql"
 LEGACY_INIT_PATH = ROOT / "init" / "LEGACY_stock_trading_lab_chinese_schema.sql"
@@ -177,6 +178,8 @@ def test_001_is_resumable_but_validates_compatibility_before_recording():
     assert set(created_tables) == mapped_tables | {
         "schema_migrations",
         "migration_validations",
+        "migration_validation_tables",
+        "migration_cutover_runs",
         "fund_flow_snapshots",
         "fund_flow_records",
         "strategy_definitions",
@@ -349,18 +352,189 @@ def test_002_has_durable_running_failed_and_succeeded_state_transitions():
     assert "DECLARE EXIT HANDLER FOR SQLEXCEPTION" in sql
 
 
+def test_004_upserts_all_mappings_without_deleting_canonical_rows():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    mapping = json.loads(MAPPING_PATH.read_text(encoding="utf-8"))["tables"]
+
+    assert "004_legacy_containment_v1" in sql
+    assert sql.count("ON DUPLICATE KEY UPDATE") >= 18
+    for source, definition in mapping.items():
+        target = definition["table"]
+        assert f"FROM `{source}`" in sql
+        assert f"INSERT INTO `{target}`" in sql
+        assert not re.search(rf"DELETE\s+FROM\s+`{re.escape(target)}`", sql, re.I)
+        assert not re.search(rf"TRUNCATE(?:\s+TABLE)?\s+`{re.escape(target)}`", sql, re.I)
+        assert not re.search(rf"DROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+`{re.escape(target)}`", sql, re.I)
+
+
+def test_004_records_durable_state_around_transactional_dml():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    running = sql.index("'004_legacy_containment_v1', 'running'")
+    transaction = sql.index("START TRANSACTION")
+    succeeded = sql.index("'004_legacy_containment_v1', 'succeeded'")
+    last_upsert = sql.rindex("ON DUPLICATE KEY UPDATE", transaction, succeeded)
+
+    assert running < transaction < last_upsert < succeeded
+    assert "DECLARE EXIT HANDLER FOR SQLEXCEPTION" in sql
+    assert "GET DIAGNOSTICS" in sql
+    assert "'004_legacy_containment_v1', 'failed'" in sql
+    assert "'004_upsert_legacy_data'" in sql[succeeded:]
+
+
+def test_004_has_no_implicit_commit_ddl_inside_upsert_transaction():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    transaction = sql[sql.index("START TRANSACTION"):sql.index("'004_legacy_containment_v1', 'succeeded'")]
+
+    assert "CREATE TABLE" not in transaction
+    assert "ALTER TABLE" not in transaction
+    assert "DROP TABLE" not in transaction
+
+
+def test_004_persists_16_structured_containment_gate_rows():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    create_sql = CREATE_PATH.read_text(encoding="utf-8")
+    init_sql = INIT_PATH.read_text(encoding="utf-8")
+
+    for schema_sql in (create_sql, init_sql, sql):
+        assert "CREATE TABLE IF NOT EXISTS `migration_validation_tables`" in schema_sql
+        for column in (
+            "source_rows",
+            "source_distinct_keys",
+            "missing_target_keys",
+            "mapped_field_mismatches",
+            "target_rows_before",
+            "target_rows_after",
+            "lost_preexisting_target_keys",
+        ):
+            assert f"`{column}`" in schema_sql
+    assert sql.count("CALL assert_mapping_containment(") == 16
+    assert "INSERT INTO `migration_validation_tables`" in sql
+
+
+def test_004_containment_gate_rejects_missing_mismatched_or_lost_rows():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    procedure = sql[
+        sql.index("CREATE PROCEDURE assert_mapping_containment("):
+        sql.index("CREATE PROCEDURE run_migration_004()")
+    ]
+
+    assert "p_source_rows <> p_source_distinct_keys" in procedure
+    assert "p_missing_target_keys <> 0" in procedure
+    assert "p_mapped_field_mismatches <> 0" in procedure
+    assert "p_target_rows_after < p_target_rows_before" in procedure
+    assert "p_lost_preexisting_target_keys <> 0" in procedure
+    assert procedure.count("SIGNAL SQLSTATE '45000'") >= 5
+
+
+def test_004_uses_null_safe_field_and_binary_cross_collation_comparisons():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+
+    assert sql.count("WHERE NOT (") >= 16
+    assert "<=>" in sql
+    assert "COLLATE utf8mb4_bin" in sql
+    assert "missing_target_keys" in sql
+    assert "lost_preexisting_target_keys" in sql
+
+
+def test_004_gate_compares_every_non_key_column_written_by_each_upsert():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    call_starts = [match.start() for match in re.finditer(r"CALL assert_mapping_containment\(", sql)]
+    call_starts.append(sql.index("INSERT INTO `migration_validations`", call_starts[-1]))
+
+    for index, (target, definition) in enumerate(MIGRATIONS.items()):
+        insert = re.search(
+            rf"INSERT INTO `{target}` \((.*?)\)\s*SELECT",
+            sql,
+            re.DOTALL,
+        )
+        assert insert, target
+        columns = re.findall(r"`([^`]+)`", insert.group(1))
+        call = sql[call_starts[index]:call_starts[index + 1]]
+        assert f"'{definition['source']}', '{target}'" in call
+        for column in set(columns) - set(definition["keys"]):
+            assert f"t.`{column}`" in call, f"{target}.{column} is not field-validated"
+
+
+def test_004_invalidates_prior_authorization_before_any_ddl_or_procedure_creation():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    stale = sql.index("'004_legacy_containment_v1', 'stale'")
+    first_ddl = min(sql.index("CREATE TABLE"), sql.index("DROP PROCEDURE"))
+
+    assert stale < first_ddl
+    assert "COMMIT;" in sql[stale:first_ddl]
+
+
+def test_004_binds_summary_and_16_details_to_a_unique_run():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    create_sql = CREATE_PATH.read_text(encoding="utf-8")
+    init_sql = INIT_PATH.read_text(encoding="utf-8")
+
+    for schema_sql in (create_sql, init_sql, sql):
+        assert "CREATE TABLE IF NOT EXISTS `migration_cutover_runs`" in schema_sql
+        assert "`run_id` char(36)" in schema_sql
+    assert "SET @migration_004_run_id = UUID();" in sql
+    assert "INSERT INTO `migration_cutover_runs`" in sql
+    assert "@migration_004_run_id" in sql
+    assert sql.count("CALL assert_mapping_containment(") == 16
+
+
+def test_004_reuses_legacy_json_and_broker_numeric_preflight():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    first_upsert = sql.index("INSERT INTO `index_daily`")
+
+    assert "CREATE PROCEDURE preflight_legacy_data_004()" in sql
+    assert "JSON_VALID" in sql[:first_upsert]
+    assert "REGEXP_LIKE" in sql[:first_upsert]
+    assert "CALL preflight_legacy_data_004();" in sql[:first_upsert]
+
+
 def test_003_checks_versions_and_successful_validation_before_any_drop():
     sql = DROP_PATH.read_text(encoding="utf-8")
+    fresh_run = sql.index("CALL run_migration_004();")
     guard_call = sql.index("CALL guard_legacy_drop();")
     first_drop = sql.index("DROP TABLE IF EXISTS")
 
-    assert guard_call < first_drop
+    assert fresh_run < guard_call < first_drop
     assert "001_create_english_schema" in sql[:guard_call]
     assert "002_migrate_legacy_data" in sql[:guard_call]
-    assert "002_parity_v1" in sql[:guard_call]
+    assert "004_upsert_legacy_data" in sql[:guard_call]
+    assert "004_legacy_containment_v1" in sql[:guard_call]
+    assert "migration_validation_tables" in sql[:guard_call]
+    assert "v_successful_table_validations <> 16" in sql[:guard_call]
+    for condition in (
+        "detail.`source_rows` = detail.`source_distinct_keys`",
+        "detail.`missing_target_keys` = 0",
+        "detail.`mapped_field_mismatches` = 0",
+        "detail.`target_rows_after` >= detail.`target_rows_before`",
+        "detail.`lost_preexisting_target_keys` = 0",
+    ):
+        assert condition in sql[:guard_call]
+    assert "INTERVAL 30 MINUTE" in sql[:guard_call]
+    assert "migration_cutover_runs" in sql[:guard_call]
+    assert sql[:guard_call].count("UNION ALL") == 15
     assert "succeeded" in sql[:guard_call]
     assert "SIGNAL SQLSTATE '45000'" in sql[:guard_call]
     assert "ON DUPLICATE KEY UPDATE `applied_at`=`applied_at`" in sql
+
+
+def test_003_uses_one_multi_table_drop_without_disabling_foreign_keys():
+    sql = DROP_PATH.read_text(encoding="utf-8")
+    mapping = json.loads(MAPPING_PATH.read_text(encoding="utf-8"))["tables"]
+
+    assert sql.count("DROP TABLE IF EXISTS") == 1
+    drop = sql[sql.index("DROP TABLE IF EXISTS"):sql.index("INSERT INTO `schema_migrations`")]
+    for source in mapping:
+        assert f"`{source}`" in drop
+    assert "FOREIGN_KEY_CHECKS" not in sql
+
+
+def test_004_leaves_revalidation_procedures_for_guarded_003():
+    sql = UPSERT_PATH.read_text(encoding="utf-8")
+    after_call = sql[sql.index("CALL run_migration_004();"):]
+
+    assert "DROP PROCEDURE run_migration_004" not in after_call
+    assert "DROP PROCEDURE assert_mapping_containment" not in after_call
+    assert "DROP PROCEDURE preflight_legacy_data_004" not in after_call
 
 
 def test_clean_initializer_is_self_contained_and_matches_001_ddl():
@@ -379,6 +553,8 @@ def test_clean_initializer_is_self_contained_and_matches_001_ddl():
     for table in set(MIGRATIONS) | {
         "schema_migrations",
         "migration_validations",
+        "migration_validation_tables",
+        "migration_cutover_runs",
         "fund_flow_snapshots",
         "fund_flow_records",
         "strategy_definitions",

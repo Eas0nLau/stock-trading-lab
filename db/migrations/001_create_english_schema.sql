@@ -14,6 +14,34 @@ CREATE TABLE IF NOT EXISTS `migration_validations` (
   PRIMARY KEY (`validation_version`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `migration_validation_tables` (
+  `run_id` char(36) NOT NULL,
+  `validation_version` varchar(64) NOT NULL,
+  `source_table` varchar(128) NOT NULL,
+  `target_table` varchar(128) NOT NULL,
+  `source_rows` bigint NOT NULL,
+  `source_distinct_keys` bigint NOT NULL,
+  `missing_target_keys` bigint NOT NULL,
+  `mapped_field_mismatches` bigint NOT NULL,
+  `target_rows_before` bigint NOT NULL,
+  `target_rows_after` bigint NOT NULL,
+  `lost_preexisting_target_keys` bigint NOT NULL,
+  `validated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`run_id`, `source_table`),
+  KEY `idx_migration_validation_version` (`validation_version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `migration_cutover_runs` (
+  `run_id` char(36) NOT NULL,
+  `validation_version` varchar(64) NOT NULL,
+  `status` varchar(16) NOT NULL,
+  `started_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `completed_at` datetime DEFAULT NULL,
+  `details` varchar(512) DEFAULT NULL,
+  PRIMARY KEY (`run_id`),
+  KEY `idx_migration_cutover_validation` (`validation_version`, `status`, `completed_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `index_daily` (
   `trade_date` int NOT NULL,
   `open_price` double DEFAULT NULL,
@@ -488,6 +516,16 @@ BEGIN
     'migration_validations',
     'validation_version:varchar(64):NO|status:varchar(16):NO|validated_at:datetime:NO|details:varchar(512):YES',
     'PRIMARY:0(validation_version)'
+  );
+  CALL assert_table_compatible(
+    'migration_validation_tables',
+    'run_id:char(36):NO|validation_version:varchar(64):NO|source_table:varchar(128):NO|target_table:varchar(128):NO|source_rows:bigint:NO|source_distinct_keys:bigint:NO|missing_target_keys:bigint:NO|mapped_field_mismatches:bigint:NO|target_rows_before:bigint:NO|target_rows_after:bigint:NO|lost_preexisting_target_keys:bigint:NO|validated_at:datetime:NO',
+    'idx_migration_validation_version:1(validation_version)|PRIMARY:0(run_id,source_table)'
+  );
+  CALL assert_table_compatible(
+    'migration_cutover_runs',
+    'run_id:char(36):NO|validation_version:varchar(64):NO|status:varchar(16):NO|started_at:datetime:NO|completed_at:datetime:YES|details:varchar(512):YES',
+    'idx_migration_cutover_validation:1(validation_version,status,completed_at)|PRIMARY:0(run_id)'
   );
   CALL assert_table_compatible(
     'index_daily',

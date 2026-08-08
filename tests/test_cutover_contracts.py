@@ -34,9 +34,7 @@ LEGACY_REDIS_PATTERNS = (
 LEGACY_STORAGE_MIGRATION_FILES = {
     "src/stock_lab/jobs/redis_fact_migration.py",
 }
-LEGACY_STORAGE_TABLE_ALLOWLIST = {
-    "src/stock_lab/jobs/jiuyan_reconciliation.py": {"t_韭研公社异动解析"},
-}
+LEGACY_STORAGE_TABLE_ALLOWLIST = {}
 WRAPPER_LIMITS = {
     "task/data_sources.py": 80,
     "task/_5_韭研公社异动.py": 80,
@@ -212,6 +210,13 @@ def test_active_python_has_no_legacy_storage_references():
                     f"{path.relative_to(ROOT)} tables={tables} redis={redis_patterns}"
                 )
     assert violations == []
+
+
+def test_final_cutover_has_no_runtime_legacy_migration_exception():
+    reconciliation_path = ROOT / "src" / "stock_lab" / "jobs" / "jiuyan_reconciliation.py"
+
+    assert not reconciliation_path.exists()
+    assert "src/stock_lab/jobs/jiuyan_reconciliation.py" not in LEGACY_STORAGE_TABLE_ALLOWLIST
 
 
 def test_legacy_implementation_files_are_thin_wrappers():
