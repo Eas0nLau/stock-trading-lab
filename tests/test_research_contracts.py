@@ -13,9 +13,7 @@ from stock_lab.modules.research.backtest import aggregate_results, next_trade_da
 
 ROOT = Path(__file__).parents[1]
 LEGACY_TABLES = tuple(json.loads((ROOT / "db" / "schema_mapping.json").read_text(encoding="utf-8"))["tables"])
-LEGACY_SQL_MIGRATION_TABLES = {
-    Path("src/stock_lab/jobs/jiuyan_reconciliation.py"): {"t_韭研公社异动解析"},
-}
+LEGACY_SQL_MIGRATION_TABLES = {}
 
 
 def test_active_sql_contains_no_legacy_table_names():

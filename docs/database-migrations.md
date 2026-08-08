@@ -2,7 +2,7 @@
 
 ## 原则
 
-新版 schema 的表、列、索引和约束全部使用英文。迁移不直接覆盖旧表：先创建新表，再显式复制数据、执行阻断式校验、切换应用，最后由单独脚本删除旧表。三个脚本面向 MySQL 8，可在中断后重跑；任何 gate 失败都会停止脚本，不会把当前版本记录为成功。
+新版 schema 的表、列、索引和约束全部使用英文。迁移先创建新表，再显式复制数据、执行阻断式校验、切换应用，最后由单独脚本删除旧表。四个脚本面向 MySQL 8；任何 gate 失败都会停止流程，不会把当前版本记录为成功。
 
 全新环境不执行存量迁移，直接导入自包含的 `init/stock_trading_lab_v2.sql`。该文件包含 `CREATE DATABASE`、`USE` 和完整英文 DDL，不依赖 MySQL 客户端的 `SOURCE`。`init/LEGACY_stock_trading_lab_chinese_schema.sql` 是退役历史转储，禁止用于当前安装。
 
@@ -16,31 +16,29 @@
 6. 切换对应模块 repository、API 和前端。
 7. 运行完整测试和人工数据抽样。
 8. 资金流向完成 MySQL 回补后，校验 `fund_flow_snapshots`、`fund_flow_records` 的日期覆盖、行数、唯一键和金额样本；使用 `stock_lab.jobs.fund_flow_backfill.migrate_legacy_redis` 将旧 V1 Redis 快照按 万元到亿元校正一次并从 canonical 数据重建缓存。
-9. 所有模块完成后，另行审批并执行 `003_drop_legacy_schema.sql`。本次资金流向切换明确不执行该脚本；旧表和旧 Redis key 在人工抽样确认前保留。
+9. 所有模块完成后执行 `004_upsert_legacy_data.sql`，将旧表数据单向新增或更新到英文表，保留英文表独有业务键，并记录 16 条结构化包含校验。
+10. `004_legacy_containment_v1/succeeded`、16 条表级 gate、全量备份和人工抽样全部确认后，另行执行 `003_drop_legacy_schema.sql`。
 
 ## 回滚
 
 应用切换前，删除未投入使用的新表即可回滚。应用切换后，停止服务并恢复迁移前完整备份。旧表删除脚本不属于初始化或自动升级流程，禁止在无备份情况下执行。
 
-## 韭研数据补迁与情绪重算
+## 最终单向补迁
 
-旧表仍有新增韭研记录时，先停止每日更新、采集任务和 Web 写入，并完成 MySQL 全库备份。使用只读模式核对差异：
-
-```bash
-uv run python -m stock_lab.jobs.jiuyan_reconciliation --dry-run
-```
-
-确认报告中的 `duplicate_source_ids` 为空并抽样检查 `missing_dates` 后，显式执行缺失记录补迁和热门板块情绪重算：
+停止每日更新、采集任务和 Web 写入并完成全库备份后，通过 MySQL 客户端执行：
 
 ```bash
-uv run python -m stock_lab.jobs.jiuyan_reconciliation --write --recalculate
+db/migrations/004_upsert_legacy_data.sql
 ```
 
-任务只插入 `t_韭研公社异动解析` 存在而 `jiuyan_actions` 缺失的 `data_id`，不会覆盖新表已有记录。情绪重算只处理相邻交易日均有韭研数据的日期，并按 `(trade_date, board_name)` upsert 到 `hot_board_emotion_daily`。写入完成后，任务会再次检查旧表到新表的缺失键、规范表重复键和 `decision_reasons_json` 合法性；任一检查失败都会以非零状态退出。该流程不授权执行 `003_drop_legacy_schema.sql`。
+`004` 对 16 组映射执行 `INSERT ... ON DUPLICATE KEY UPDATE`：旧表缺失键插入，同键映射字段更新，新表独有键不删除。每组 gate 要求源键唯一、目标包含全部源键、映射字段一致、目标行数不减少且迁移前目标键无丢失。
 
 ## 验证项
 
-- 16 张表迁移前后行数一致，且源行数等于映射后 distinct key 数；重复键会阻断迁移。
+- 旧表源行数等于映射后 distinct key 数；重复键会阻断迁移。
+- 新表必须包含全部旧表业务键，但允许保留旧表不存在的新数据。
+- 所有同键映射字段必须 null-safe 一致。
+- 新表迁移后行数不得减少，迁移前业务键不得丢失。
 - 最早、最晚交易日期或采集日期一致（存在日期映射时）。
 - 关键金额、成交量、数量、指标或样本数聚合值一致（存在可比事实列时）。
 - legacy JSON 在复制前通过 `JSON_VALID`；canonical JSON 在复制后再次通过 `JSON_VALID`。
@@ -51,7 +49,7 @@ uv run python -m stock_lab.jobs.jiuyan_reconciliation --write --recalculate
 
 ## 当前切换状态
 
-`index_daily`、`securities`、`daily_quotes`、`intraday_bars_5m`、`kdj_indicators`、`index_market_breadth`、`index_emotion_daily` 和 `hot_board_emotion_daily` 已接入正式 repository、任务或新版 API。`jiuyan_actions` 已被新版情绪 job 读取，但采集任务仍需完成写入切换。
+`index_daily`、`securities`、`daily_quotes`、`intraday_bars_5m`、`kdj_indicators`、`index_market_breadth`、`index_emotion_daily`、`hot_board_emotion_daily` 和 `jiuyan_actions` 已接入正式 repository、任务或新版 API。
 
 市场数据的正式访问边界是 `stock_lab.modules.market_data`。Repository 只返回英文规范列：
 `securities.ts_code`、`securities.symbol`、`daily_quotes.ts_code`、
@@ -65,4 +63,4 @@ uv run python -m stock_lab.jobs.jiuyan_reconciliation --write --recalculate
 
 KDJ 与 5 分钟行情的正式写入和活跃策略读取已切换到 `kdj_indicators` 与 `intraday_bars_5m`。KDJ 迁移和新任务都按规范 `ts_code` 与日期生成稳定标识，4xxxxx/8xxxxx 代码统一映射为 `.BJ`；5 分钟行情迁移和新任务都按补齐后的六位代码、时间和复权标记重新生成相同标识，因此重复运行更新同一记录。旧 `task._2_分时数据获取_5分k` 仅投影历史列表字段，不再访问旧表，并同时接受历史 `stock=` 关键字与位置 `code` 参数。
 
-应用代码切换已经完成：韭研、情绪、资金流向、策略选股、龙虎榜、研究策略和兼容脚本均不再读取旧表或旧 Redis 键，正式代码也不反向导入中文实现。该状态由 `tests/test_cutover_contracts.py` 强制检查。`003_drop_legacy_schema.sql` 本次未执行；执行前仍必须停止应用、完成全库备份、确认 `001`/`002` 与 `002_parity_v1/succeeded`、人工抽样核对，并取得单独的破坏性操作审批。数据库 guard 是必要条件，不替代这些步骤。
+应用代码切换已经完成：韭研、情绪、资金流向、策略选股、龙虎榜、研究策略和兼容脚本均不再读取旧表或旧 Redis 键，正式代码也不反向导入中文实现。该状态由 `tests/test_cutover_contracts.py` 强制检查。执行 `003_drop_legacy_schema.sql` 前仍必须停止应用、完成全库备份、确认 `001`/`002`/`004`、`004_legacy_containment_v1/succeeded` 和 16 条表级 gate，并完成人工抽样。数据库 guard 是必要条件，不替代这些步骤。
