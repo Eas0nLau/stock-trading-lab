@@ -1,4 +1,5 @@
 from datetime import datetime
+from time import sleep
 
 
 HEADERS = {
@@ -11,25 +12,37 @@ HEADERS = {
 
 
 class DragonTigerHttpSource:
-    def __init__(self, get=None, timeout=30):
+    def __init__(self, get=None, timeout=30, max_attempts=3, retry_delay=0.5):
         self._get = get
         self.timeout = timeout
+        self.max_attempts = max_attempts
+        self.retry_delay = retry_delay
 
     @property
     def get(self):
         if self._get is None:
             import requests
 
-            self._get = requests.get
+            self._get = requests.Session().get
         return self._get
 
     def _request(self, url, *, referer=None):
         headers = dict(HEADERS)
         if referer:
             headers["Referer"] = referer
-        response = self.get(url, headers=headers, timeout=self.timeout)
-        response.raise_for_status()
-        return response.text
+        import requests
+
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                response = self.get(url, headers=headers, timeout=self.timeout)
+                response.raise_for_status()
+                return response.text
+            except (requests.Timeout, requests.ConnectionError) as error:
+                if attempt == self.max_attempts:
+                    raise RuntimeError(
+                        f"Dragon-tiger request failed after {attempt} attempts: {url}: {error}"
+                    ) from error
+                sleep(self.retry_delay * attempt)
 
     def fetch_listing_page(self, trade_date):
         date_text = datetime.strptime(str(trade_date), "%Y%m%d").strftime("%Y-%m-%d")
