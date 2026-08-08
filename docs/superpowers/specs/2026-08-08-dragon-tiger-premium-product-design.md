@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace the legacy `游资溢价分析/` executable wrappers with a canonical collection CLI, a read-only premium-analysis API, and a Vue page that lets users trigger and inspect the analysis.
+Replace the legacy `游资溢价分析/` executable wrappers with an asynchronous page-triggered collection job, a premium-analysis API, and a Vue page that lets users trigger and inspect the analysis.
 
 ## Product Meaning
 
@@ -12,18 +12,32 @@ The product is research assistance, not an automatic trading signal. Results dep
 
 ## Entry Points
 
-### Collection CLI
+### Page-Triggered Collection Job
 
-All commands use the root `.env` database/Redis configuration:
+The page sends:
 
-```powershell
-uv run python -m stock_lab.jobs.dragon_tiger collect-listings --date 20260806
-uv run python -m stock_lab.jobs.dragon_tiger collect-listings --start-date 20260404 --end-date 20260806
-uv run python -m stock_lab.jobs.dragon_tiger collect-broker-directory
-uv run python -m stock_lab.jobs.dragon_tiger collect-broker-history
+```text
+POST /api/v1/dragon-tiger/collection-jobs
+{
+  "startDate": 20260404,
+  "latestDate": 20260806
+}
 ```
 
-Collection writes only canonical tables and can be rerun through repository upsert behavior. It is deliberately not triggered from an HTTP request because external pages can be slow or unavailable.
+The API returns HTTP 202 with a `jobId`. A one-shot background job executes four stages in order:
+
+1. Collect all 龙虎榜 listing pages for trading dates in the requested range.
+2. Refresh the broker directory.
+3. Refresh broker history pages.
+4. Analyze broker premium using the refreshed canonical data.
+
+The page polls:
+
+```text
+GET /api/v1/dragon-tiger/collection-jobs/{jobId}
+```
+
+The job state is stored in Redis with a per-job key and an active-job lock. Duplicate active requests return HTTP 409. A failed stage records a non-secret error and stops later stages. The API process must not block the request thread while external pages are collected.
 
 ### Analysis API
 
@@ -43,7 +57,7 @@ Response contract:
 }
 ```
 
-The endpoint analyzes existing canonical data only. It does not collect data, write analysis results, or mutate Redis.
+The endpoint analyzes existing canonical data only. It does not collect data or write analysis results. The collection-job status endpoint returns the final analysis response when stage 4 completes.
 
 ### Frontend
 
@@ -63,7 +77,7 @@ The analysis response is ephemeral. Users can inspect source rows through MySQL 
 
 ## Legacy Retirement
 
-After CLI, API, frontend, product documentation, and tests pass:
+After collection jobs, API, frontend, product documentation, and tests pass:
 
 - Delete `游资溢价分析/` and its compatibility test file.
 - Remove its allowlist entry from `tests/test_cutover_contracts.py` and update compile/documentation references.
