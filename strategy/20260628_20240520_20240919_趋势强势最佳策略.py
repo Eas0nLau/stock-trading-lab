@@ -40,14 +40,14 @@ def _提取整数股票代码集合(codes):
     codes_series = pd.Series(list(codes)).astype(str).str.extract(r'(\d+)')[0].dropna()
     if codes_series.empty:
         return set()
-    return set(codes_series.astype(int).tolist())
+    return set(codes_series.map(common.normalize_symbol).tolist())
 
 
 def _最近交易日列表(end_date, days):
     rows = db.mysql_localhost(
         sql=f"""
             SELECT DISTINCT trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date <= {int(end_date)}
             ORDER BY trade_date DESC
             LIMIT {int(days)}
@@ -61,51 +61,49 @@ def _最近交易日列表(end_date, days):
 
 
 def _读取日线数据(trade_dates, filtered_codes=None):
-    trade_date_tuple = str(tuple([int(i) for i in trade_dates])).replace(',)', ')')
-    code_filter = ''
     codes = sorted(_提取整数股票代码集合(filtered_codes))
-    if codes:
-        code_filter = f"AND sd.ts_code IN {str(tuple(codes)).replace(',)', ')')}"
+    code_clause, code_params = common.stock_code_filter(codes, "sd.ts_code")
+    date_placeholders = ", ".join(["%s"] * len(trade_dates))
 
-    return pd.read_sql(
+    return db.read_sql(
         f"""
             SELECT
                 sd.ts_code,
                 sd.trade_date,
-                sd.open,
-                sd.high,
-                sd.low,
-                sd.close,
-                sd.pre_close,
-                sd.amount,
-                sd.pct_chg,
+                sd.open_price AS open,
+                sd.high_price AS high,
+                sd.low_price AS low,
+                sd.close_price AS close,
+                sd.previous_close AS pre_close,
+                sd.turnover AS amount,
+                sd.change_pct AS pct_chg,
                 sd.stock_name,
                 sb.market,
                 sb.list_status
-            FROM stock_daily sd
-            LEFT JOIN stock_basic sb ON sd.ts_code = sb.symbol
-            WHERE sd.trade_date IN {trade_date_tuple}
-              {code_filter}
+            FROM daily_quotes sd
+            LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
+            WHERE sd.trade_date IN ({date_placeholders})
+              AND {code_clause}
               AND sb.market = '主板'
               AND sb.list_status = 'L'
-              AND sd.open IS NOT NULL
-              AND sd.high IS NOT NULL
-              AND sd.low IS NOT NULL
-              AND sd.close IS NOT NULL
-              AND sd.pre_close IS NOT NULL
-              AND sd.amount IS NOT NULL
-              AND sd.pct_chg IS NOT NULL
-              AND sd.pre_close > 0
+              AND sd.open_price IS NOT NULL
+              AND sd.high_price IS NOT NULL
+              AND sd.low_price IS NOT NULL
+              AND sd.close_price IS NOT NULL
+              AND sd.previous_close IS NOT NULL
+              AND sd.turnover IS NOT NULL
+              AND sd.change_pct IS NOT NULL
+              AND sd.previous_close > 0
               AND sd.stock_name NOT REGEXP 'ST|退'
             ORDER BY sd.ts_code, sd.trade_date
         """,
-        db.engine,
+        (*trade_dates, *code_params),
     )
 
 
 def _计算技术指标(日线数据):
     日线数据 = 日线数据.copy()
-    日线数据['ts_code'] = 日线数据['ts_code'].astype(int)
+    日线数据['ts_code'] = 日线数据['ts_code'].map(common.normalize_symbol)
     日线数据 = 日线数据.sort_values(['ts_code', 'trade_date'])
     group = 日线数据.groupby('ts_code', group_keys=False)
     日线数据['ma5'] = group['close'].transform(lambda s: s.rolling(5, min_periods=5).mean())
@@ -191,7 +189,7 @@ def strategy(filtered_codes, target_date):
     logger.warning(f"入选股票：{' '.join(selected_df['stock_name'].astype(str).tolist())}")
     for _, row in selected_df.iterrows():
         logger.info(
-            f"   → 候选 {row['stock_name']} {int(row['ts_code'])} | 排序:{int(row['排序'])} | "
+            f"   → 候选 {row['stock_name']} {common.normalize_symbol(row['ts_code'])} | 排序:{int(row['排序'])} | "
             f"涨幅:{row['pct_chg']:.2f}% | 近5日:{row['ret5']:.2f}% | 近20日:{row['ret20']:.2f}% | "
             f"成交额:{row['amount']:.2f} | MA5:{row['ma5']:.2f} MA10:{row['ma10']:.2f} MA20:{row['ma20']:.2f} | "
             f"收盘位置:{row['收盘位置']:.2f} | 策略分:{row['策略分']:.2f}"
@@ -206,7 +204,7 @@ def strategy(filtered_codes, target_date):
 
 
 def buy(name, code, price, buy_date, close_price, signal_date):
-    code = int(code)
+    code = common.normalize_symbol(code)
     if code in account.holding_stocks:
         logger.error(f"{name} {code} 已经买过，本策略不允许重复买，不买了。")
         return False
@@ -271,9 +269,9 @@ def simulated_buy():
         return
 
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(',)', ')')}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
           AND trade_date = {int(buy_date)}
     """
     buy_day_data = pd.read_sql(query, db.engine)
@@ -284,7 +282,7 @@ def simulated_buy():
         if bought_count >= 单日最多买入数:
             break
 
-        ts_code = int(row.ts_code)
+        ts_code = common.normalize_ts_code(row.ts_code)
         stock_name = str(row.stock_name)
         if ts_code in account.holding_stocks:
             logger.error(f"{stock_name} {ts_code} 已经买过，本策略不允许重复买，跳过")
@@ -339,7 +337,7 @@ def simulated_buy():
 
 def simulated_sell(now_date=None):
     logger.warning(f"检查止盈止损/MA5破位/到期卖出 开始")
-    selected_codes = [int(code) for code, stock in account.holding_stocks.items() if stock['lots'] > 0]
+    selected_codes = [common.normalize_symbol(code) for code, stock in account.holding_stocks.items() if stock['lots'] > 0]
     if not selected_codes:
         logger.warning(f"检查止盈止损/MA5破位/到期卖出 完成")
         return

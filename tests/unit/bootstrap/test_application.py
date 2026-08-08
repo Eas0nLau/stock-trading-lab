@@ -1,0 +1,122 @@
+import threading
+
+import pytest
+from fastapi.testclient import TestClient
+
+from stock_lab.bootstrap.application import create_app
+from stock_lab.bootstrap.workers import WorkerManager
+from stock_lab.jobs.realtime_monitor import create_default_worker_manager
+
+
+class RouteRegistrar:
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, app, *, settings=None):
+        self.calls += 1
+
+        @app.get("/api/test")
+        def test_route():
+            return {"status": "ok"}
+
+
+def test_create_app_registers_routes_once():
+    registrar = RouteRegistrar()
+
+    app = create_app(
+        worker_manager=WorkerManager(),
+        route_registrar=registrar,
+    )
+
+    paths = [route.path for route in app.routes]
+    assert registrar.calls == 1
+    assert paths.count("/api/test") == 1
+
+
+def test_create_app_passes_custom_settings_to_route_and_worker_composition():
+    settings = object()
+    observed = []
+
+    def registrar(_app, *, settings):
+        observed.append(("routes", settings))
+
+    def workers(*, settings):
+        observed.append(("workers", settings))
+        return WorkerManager()
+
+    app = create_app(settings=settings, route_registrar=registrar, worker_factory=workers)
+
+    assert app.state.settings is settings
+    assert observed == [("workers", settings), ("routes", settings)]
+
+
+def test_application_startup_rejects_incomplete_migration_state():
+    def reject(*, settings):
+        raise RuntimeError("Migration 002 is incomplete: failed")
+
+    app = create_app(
+        settings=object(),
+        worker_manager=WorkerManager(),
+        route_registrar=lambda _app, *, settings: None,
+        migration_validator=reject,
+    )
+
+    with pytest.raises(RuntimeError, match="Migration 002 is incomplete"):
+        with TestClient(app):
+            pass
+
+
+def test_worker_manager_does_not_start_live_worker_twice():
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def target():
+        calls.append("started")
+        started.set()
+        release.wait(timeout=2)
+
+    manager = WorkerManager()
+    manager.register("sample", target)
+
+    manager.start_all()
+    assert started.wait(timeout=1)
+    manager.start_all()
+    release.set()
+    manager.stop_all()
+
+    assert calls == ["started"]
+
+
+def test_worker_manager_runs_stop_callback():
+    stopped = []
+    manager = WorkerManager()
+    manager.register("sample", lambda: None, stop=lambda: stopped.append("stopped"))
+
+    manager.start_all()
+    manager.stop_all()
+
+    assert stopped == ["stopped"]
+
+
+def test_default_worker_manager_declares_monitoring_workers():
+    manager = create_default_worker_manager()
+
+    assert manager.names == ("fund-flow-monitor", "strategy-pick-monitor")
+
+
+def test_legacy_app_entrypoint_builds_application_without_starting_workers():
+    import app as legacy_app
+
+    paths = [route.path for route in legacy_app.app.routes]
+    assert legacy_app.app.title == "stock_trading_lab_api"
+    assert "/api/v1/emotion/current" in paths
+    assert "/api/v1/fund-flow/{flow_type}/dates" in paths
+    assert "/api/v1/fund-flow/{flow_type}/history/{trade_date}" in paths
+    assert "/api/v1/fund-flow/stream" in paths
+    assert "/api/emotion/current" not in paths
+    assert not any(path.startswith("/api/zijin") for path in paths)
+    assert not any(
+        thread.name in {"fund-flow-monitor", "strategy-pick-monitor"}
+        for thread in threading.enumerate()
+    )

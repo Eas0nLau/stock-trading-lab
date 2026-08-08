@@ -49,7 +49,7 @@ def _提取整数股票代码集合(codes):
     if codes_series.empty:
         return set()
 
-    return set(codes_series.astype(int).tolist())
+    return set(codes_series.map(common.normalize_ts_code).tolist())
 
 
 def _生成每日入选股票ini(选中_df, target_date):
@@ -58,7 +58,7 @@ def _生成每日入选股票ini(选中_df, target_date):
 
     output_dir = Path(__file__).resolve().parents[1] / 'output' / '20260609_龙头缩量收红策略' / str(target_date)
     stock_items = [(row['ts_code'], row['stock_name']) for _, row in 选中_df.iterrows()]
-    ini_path = ini_util.写入列表ini(stock_items, output_dir, f"{len(stock_items)}_全部.ini")
+    ini_path = ini_util.write_ini_list(stock_items, output_dir, f"{len(stock_items)}_全部.ini")
 
     logger.warning(f"{target_date} 入选股票ini文件生成完成：{ini_path}")
     return ini_path
@@ -115,25 +115,20 @@ def _加载龙虎榜上榜次数(股票代码列表, target_date):
 
     target_date_obj = datetime.strptime(str(target_date), "%Y%m%d")
     龙虎榜起始日期 = int((target_date_obj - timedelta(days=前期龙头窗口天数)).strftime("%Y%m%d"))
+    code_clause, code_params = common.stock_code_filter(股票代码列表, "stock_code")
     query = f"""
-        SELECT `股票代码`, COUNT(*) AS `龙虎榜上榜次数`
-        FROM t_龙虎榜
-        WHERE `date` >= {龙虎榜起始日期}
-          AND `date` <= {target_date}
-          AND `股票代码` IN {str(tuple(股票代码列表)).replace(",)", ")")}
-        GROUP BY `股票代码`
+        SELECT `stock_code` AS `股票代码`, COUNT(*) AS `龙虎榜上榜次数`
+        FROM `dragon_tiger`
+        WHERE `trade_date` >= %s
+          AND `trade_date` <= %s
+          AND {code_clause}
+        GROUP BY `stock_code`
     """
-    龙虎榜次数_df = pd.read_sql(query, db.engine)
+    龙虎榜次数_df = db.read_sql(query, (龙虎榜起始日期, int(target_date), *code_params))
     if 龙虎榜次数_df.empty:
         return {}
 
-    龙虎榜次数_df['股票代码'] = (
-        龙虎榜次数_df['股票代码']
-        .astype(str)
-        .str.extract(r'(\d+)')[0]
-        .dropna()
-        .astype(int)
-    )
+    龙虎榜次数_df['股票代码'] = 龙虎榜次数_df['股票代码'].map(common.normalize_ts_code)
     return 龙虎榜次数_df.set_index('股票代码')['龙虎榜上榜次数'].astype(int).to_dict()
 
 
@@ -247,7 +242,7 @@ def strategy(filtered_codes, target_date):
     龙虎榜上榜次数 = _加载龙虎榜上榜次数(最终候选池, target_date)
     最终候选池 = [
         code for code in 最终候选池
-        if int(龙虎榜上榜次数.get(int(code), 0)) > 龙虎榜上榜次数阈值
+        if int(龙虎榜上榜次数.get(common.normalize_ts_code(code), 0)) > 龙虎榜上榜次数阈值
     ]
     if not 最终候选池:
         logger.warning(f"{target_date} 无近90天龙虎榜上榜次数大于{龙虎榜上榜次数阈值}的股票")
@@ -255,7 +250,7 @@ def strategy(filtered_codes, target_date):
 
     # 取足够自然日，覆盖近3个月连板判断和20日均线计算。
     开始日期 = (当前日期对象 - timedelta(days=120)).strftime('%Y%m%d')
-    日线数据 = common.load_stock_daily_data(最终候选池, 开始日期, target_date)
+    日线数据 = common.load_daily_quotes_data(最终候选池, 开始日期, target_date)
 
     if 日线数据.empty:
         logger.warning(f"{target_date} 无足够日线数据")
@@ -267,7 +262,7 @@ def strategy(filtered_codes, target_date):
         if 股票代码文本[:2] in ['92', '68', '30']:
             continue
 
-        股票龙虎榜上榜次数 = int(龙虎榜上榜次数.get(int(ts_code), 0))
+        股票龙虎榜上榜次数 = int(龙虎榜上榜次数.get(common.normalize_ts_code(ts_code), 0))
 
         单股数据 = 日线数据[日线数据['ts_code'] == ts_code].sort_values('trade_date').reset_index(drop=True).copy()
         if len(单股数据) < 均线天数:
@@ -320,7 +315,7 @@ def strategy(filtered_codes, target_date):
             continue
 
         候选列表.append({
-            'ts_code': int(ts_code),
+            'ts_code': common.normalize_symbol(ts_code),
             'stock_name': 股票名称,
             'trade_date': target_date,
             'close': float(当天数据['close']),
@@ -426,9 +421,9 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
@@ -513,9 +508,9 @@ def simulated_sell(sell_out_fall_threshold=None,
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
-            WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
+            FROM daily_quotes
+            WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date

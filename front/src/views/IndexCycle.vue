@@ -1,6 +1,7 @@
 <script setup>
 import * as echarts from 'echarts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { fetchIndexEmotion } from '../modules/emotion/api.js'
 
 const props = defineProps({
   active: {
@@ -9,7 +10,6 @@ const props = defineProps({
   },
 })
 
-const API_URL = '/api/emotion/current'
 const loading = ref(false)
 const errorMessage = ref('')
 const cycleData = ref(null)
@@ -20,8 +20,8 @@ let indexChart = null
 let limitCompareChart = null
 let breadthCompareChart = null
 
-const indexCycle = computed(() => cycleData.value?.指数周期 || null)
-const indexStateClass = computed(() => stateClass(indexCycle.value?.周期状态))
+const indexCycle = computed(() => cycleData.value?.indexCycle || null)
+const indexStateClass = computed(() => stateClass(indexCycle.value?.cycleState))
 
 onMounted(() => {
   fetchData()
@@ -49,10 +49,7 @@ async function fetchData() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const response = await fetch(API_URL)
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-    const data = await response.json()
-    if (data?.状态 !== 'success') throw new Error(data?.错误信息 || '情绪周期数据不可用')
+    const data = await fetchIndexEmotion()
     cycleData.value = data
     await nextTick()
     renderIndexChart()
@@ -66,7 +63,7 @@ async function fetchData() {
 
 function renderIndexChart() {
   const chartDom = indexChartRef.value
-  const rows = indexCycle.value?.波动图 || []
+  const rows = indexCycle.value?.volatilityChart || []
   if (!chartDom || !rows.length) return
   if (!indexChart) indexChart = echarts.init(chartDom)
 
@@ -88,7 +85,7 @@ function renderIndexChart() {
     },
     xAxis: {
       type: 'category',
-      data: rows.map(row => formatDateShort(row.日期)),
+      data: rows.map(row => formatDateShort(row.tradeDate)),
       axisLine: { lineStyle: { color: '#334155' } },
       axisLabel: { color: '#94a3b8' },
     },
@@ -117,7 +114,7 @@ function renderIndexChart() {
         showSymbol: false,
         lineStyle: { width: 3, color: '#22d3ee' },
         areaStyle: { color: 'rgba(34, 211, 238, 0.10)' },
-        data: rows.map(row => row.情绪分),
+        data: rows.map(row => row.emotionScore),
       },
       {
         name: '收盘',
@@ -126,7 +123,7 @@ function renderIndexChart() {
         smooth: true,
         showSymbol: false,
         lineStyle: { width: 2, color: '#f87171' },
-        data: rows.map(row => row.收盘),
+        data: rows.map(row => row.closePrice),
       },
       {
         name: '周期状态',
@@ -135,7 +132,7 @@ function renderIndexChart() {
         symbolSize: 8,
         z: 6,
         itemStyle: {
-          color: params => chartStateColor(params.data?.周期状态),
+          color: params => chartStateColor(params.data?.cycleState),
           borderColor: '#0f172a',
           borderWidth: 1,
         },
@@ -151,14 +148,14 @@ function renderIndexChart() {
           borderWidth: 1,
           borderRadius: 3,
           padding: [2, 4],
-          formatter: params => params.data?.周期状态 || '',
+          formatter: params => params.data?.cycleState || '',
         },
         emphasis: {
           label: { color: '#ffffff', backgroundColor: 'rgba(15, 23, 42, 0.95)' },
         },
         data: rows.map(row => ({
-          value: row.情绪分,
-          周期状态: row.周期状态,
+          value: row.emotionScore,
+          cycleState: row.cycleState,
         })),
       },
     ],
@@ -182,8 +179,8 @@ function renderMarketCompareCharts() {
     legend: ['涨停', '跌停'],
     colors: ['#f87171', '#34d399'],
     series: [
-      { name: '涨停', data: rows.map(row => Number(row.涨停 ?? row.涨停家数 ?? 0)) },
-      { name: '跌停', data: rows.map(row => Number(row.跌停 ?? row.跌停家数 ?? 0)) },
+      { name: '涨停', data: rows.map(row => Number(row.limitUpCount ?? 0)) },
+      { name: '跌停', data: rows.map(row => Number(row.limitDownCount ?? 0)) },
     ],
   })
 
@@ -194,8 +191,8 @@ function renderMarketCompareCharts() {
     legend: ['上涨家数', '下跌家数'],
     colors: ['#f87171', '#34d399'],
     series: [
-      { name: '上涨家数', data: rows.map(row => Number(row.上涨家数 ?? 0)) },
-      { name: '下跌家数', data: rows.map(row => Number(row.下跌家数 ?? 0)) },
+      { name: '上涨家数', data: rows.map(row => Number(row.advancingCount ?? 0)) },
+      { name: '下跌家数', data: rows.map(row => Number(row.decliningCount ?? 0)) },
     ],
   })
 }
@@ -224,7 +221,7 @@ function renderCompareChart({ chart, chartDom, rows, legend, colors, series }) {
     },
     xAxis: {
       type: 'category',
-      data: rows.map(row => formatDateShort(row.日期)),
+      data: rows.map(row => formatDateShort(row.tradeDate)),
       axisLine: { lineStyle: { color: '#334155' } },
       axisLabel: { color: '#94a3b8' },
     },
@@ -246,7 +243,7 @@ function renderCompareChart({ chart, chartDom, rows, legend, colors, series }) {
 }
 
 function recentMarketRows() {
-  return (indexCycle.value?.最近走势 || []).slice(-10)
+  return (indexCycle.value?.recentTrend || []).slice(-10)
 }
 
 function formatDate(date) {
@@ -275,13 +272,13 @@ function formatPercent(value, digits = 2) {
 
 function buildIndexTooltip(params) {
   const index = params?.[0]?.dataIndex ?? 0
-  const row = indexCycle.value?.波动图?.[index] || {}
-  const upRatio = row.上涨占比 === null || row.上涨占比 === undefined ? '-' : formatPercent(row.上涨占比, 1)
+  const row = indexCycle.value?.volatilityChart?.[index] || {}
+  const upRatio = row.advanceRatio === null || row.advanceRatio === undefined ? '-' : formatPercent(row.advanceRatio, 1)
   return [
-    `<div style="margin-bottom:4px;color:#f8fafc;font-weight:600">${formatDate(row.日期)} ${row.周期状态 || ''}</div>`,
-    `情绪分：${formatNumber(row.情绪分, 1)}`,
-    `收盘：${formatNumber(row.收盘, 2)}`,
-    `涨跌幅：${formatPercent(row.涨跌幅, 2)}`,
+    `<div style="margin-bottom:4px;color:#f8fafc;font-weight:600">${formatDate(row.tradeDate)} ${row.cycleState || ''}</div>`,
+    `情绪分：${formatNumber(row.emotionScore, 1)}`,
+    `收盘：${formatNumber(row.closePrice, 2)}`,
+    `涨跌幅：${formatPercent(row.changePct, 2)}`,
     `上涨占比：${upRatio}`,
   ].join('<br/>')
 }
@@ -318,7 +315,7 @@ function stateClass(state) {
         <div class="mt-1 text-xs text-slate-400">指数周期，基于现有日线和市场宽度计算</div>
       </div>
       <div class="flex items-center gap-3">
-        <span v-if="indexCycle" class="text-xs text-slate-400">交易日 {{ formatDate(indexCycle.交易日期) }}</span>
+        <span v-if="indexCycle" class="text-xs text-slate-400">交易日 {{ formatDate(indexCycle.tradeDate) }}</span>
         <button
           class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:border-cyan-400/60 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="loading"
@@ -339,15 +336,15 @@ function stateClass(state) {
             <div>
               <div class="text-xs text-slate-400">指数周期</div>
               <div class="mt-3 inline-flex rounded border px-4 py-2 text-2xl font-semibold" :class="indexStateClass">
-                {{ indexCycle.周期状态 }}
+                {{ indexCycle.cycleState }}
               </div>
             </div>
             <div class="text-right">
               <div class="text-xs text-slate-400">情绪分</div>
-              <div class="mt-2 text-5xl font-semibold text-white">{{ formatNumber(indexCycle.周期分数, 1) }}</div>
+              <div class="mt-2 text-5xl font-semibold text-white">{{ formatNumber(indexCycle.cycleScore, 1) }}</div>
             </div>
           </div>
-          <p class="mt-5 text-sm leading-6 text-slate-300">{{ indexCycle.摘要 }}</p>
+          <p class="mt-5 text-sm leading-6 text-slate-300">{{ indexCycle.summary }}</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
@@ -362,24 +359,24 @@ function stateClass(state) {
       <section class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-400">上证收盘</div>
-          <div class="mt-2 text-2xl font-semibold text-white">{{ formatNumber(indexCycle.指数.收盘, 2) }}</div>
-          <div class="mt-1 text-sm" :class="indexCycle.指数.涨跌幅 >= 0 ? 'text-red-300' : 'text-emerald-300'">
-            {{ formatPercent(indexCycle.指数.涨跌幅, 2) }}
+          <div class="mt-2 text-2xl font-semibold text-white">{{ formatNumber(indexCycle.indexQuote.closePrice, 2) }}</div>
+          <div class="mt-1 text-sm" :class="indexCycle.indexQuote.changePct >= 0 ? 'text-red-300' : 'text-emerald-300'">
+            {{ formatPercent(indexCycle.indexQuote.changePct, 2) }}
           </div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-400">市场宽度</div>
-          <div class="mt-2 text-2xl font-semibold text-white">{{ formatPercent(indexCycle.市场宽度.上涨占比, 1) }}</div>
-          <div class="mt-1 text-sm text-slate-400">上涨 {{ indexCycle.市场宽度.上涨家数 }} / 下跌 {{ indexCycle.市场宽度.下跌家数 }}</div>
+          <div class="mt-2 text-2xl font-semibold text-white">{{ formatPercent(indexCycle.marketBreadth.advanceRatio, 1) }}</div>
+          <div class="mt-1 text-sm text-slate-400">上涨 {{ indexCycle.marketBreadth.advancingCount }} / 下跌 {{ indexCycle.marketBreadth.decliningCount }}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-400">普通主板涨跌停</div>
-          <div class="mt-2 text-2xl font-semibold text-white">{{ indexCycle.市场宽度.涨停家数 }} / {{ indexCycle.市场宽度.跌停家数 }}</div>
+          <div class="mt-2 text-2xl font-semibold text-white">{{ indexCycle.marketBreadth.limitUpCount }} / {{ indexCycle.marketBreadth.limitDownCount }}</div>
           <div class="mt-1 text-sm text-slate-400">涨停 / 跌停</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900 p-4">
           <div class="text-xs text-slate-400">成交额比例</div>
-          <div class="mt-2 text-2xl font-semibold text-white">{{ formatNumber(indexCycle.市场宽度.成交额比例, 2) }}x</div>
+          <div class="mt-2 text-2xl font-semibold text-white">{{ formatNumber(indexCycle.marketBreadth.turnoverRatio, 2) }}x</div>
           <div class="mt-1 text-sm text-slate-400">相对近 20 日</div>
         </div>
       </section>

@@ -65,14 +65,14 @@ def _提取整数代码(代码列表):
     代码序列 = pd.Series(list(代码列表)).astype(str).str.extract(r'(\d+)')[0].dropna()
     if 代码序列.empty:
         return set()
-    return set(代码序列.astype(int).tolist())
+    return set(代码序列.map(common.normalize_ts_code).tolist())
 
 
 def _最近交易日(结束日期参数, 天数):
     查询结果 = db.mysql_localhost(
         sql=f"""
             SELECT DISTINCT trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date <= {int(结束日期参数)}
             ORDER BY trade_date DESC
             LIMIT {int(天数)}
@@ -86,50 +86,48 @@ def _最近交易日(结束日期参数, 天数):
 
 
 def _加载日线数据(filtered_codes, 交易日列表):
-    交易日元组 = str(tuple([int(i) for i in 交易日列表])).replace(',)', ')')
     股票代码列表 = sorted(_提取整数代码(filtered_codes))
-    代码过滤条件 = ''
-    if 股票代码列表:
-        代码过滤条件 = f"AND sd.ts_code IN {str(tuple(股票代码列表)).replace(',)', ')')}"
+    代码条件, 代码参数 = common.stock_code_filter(股票代码列表, "sd.ts_code")
+    日期占位符 = ", ".join(["%s"] * len(交易日列表))
 
     查询语句 = f"""
         SELECT
             sd.ts_code,
             sd.stock_name,
             sd.trade_date,
-            sd.open,
-            sd.high,
-            sd.low,
-            sd.close,
-            sd.pre_close,
-            sd.vol,
-            sd.amount,
-            sd.pct_chg,
+            sd.open_price AS open,
+            sd.high_price AS high,
+            sd.low_price AS low,
+            sd.close_price AS close,
+            sd.previous_close AS pre_close,
+            sd.volume AS vol,
+            sd.turnover AS amount,
+            sd.change_pct AS pct_chg,
             sb.market,
             sb.list_status
-        FROM stock_daily sd
-        LEFT JOIN stock_basic sb ON sd.ts_code = sb.symbol
-        WHERE sd.trade_date IN {交易日元组}
-          {代码过滤条件}
+        FROM daily_quotes sd
+        LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
+        WHERE sd.trade_date IN ({日期占位符})
+          AND {代码条件}
           AND sb.market = '主板'
           AND sb.list_status = 'L'
           AND sd.stock_name NOT REGEXP 'ST|退'
-          AND sd.pre_close > 0
-          AND sd.open IS NOT NULL
-          AND sd.high IS NOT NULL
-          AND sd.low IS NOT NULL
-          AND sd.close IS NOT NULL
-          AND sd.vol IS NOT NULL
-          AND sd.amount IS NOT NULL
-          AND sd.pct_chg IS NOT NULL
+          AND sd.previous_close > 0
+          AND sd.open_price IS NOT NULL
+          AND sd.high_price IS NOT NULL
+          AND sd.low_price IS NOT NULL
+          AND sd.close_price IS NOT NULL
+          AND sd.volume IS NOT NULL
+          AND sd.turnover IS NOT NULL
+          AND sd.change_pct IS NOT NULL
         ORDER BY sd.ts_code, sd.trade_date
     """
-    return pd.read_sql(查询语句, db.engine)
+    return db.read_sql(查询语句, (*交易日列表, *代码参数))
 
 
 def _计算指标(日线数据):
     日线数据 = 日线数据.copy()
-    日线数据['ts_code'] = 日线数据['ts_code'].astype(int)
+    日线数据['ts_code'] = 日线数据['ts_code'].map(common.normalize_symbol)
     日线数据 = 日线数据.sort_values(['ts_code', 'trade_date'])
     分组 = 日线数据.groupby('ts_code', group_keys=False)
 
@@ -252,7 +250,7 @@ def strategy(filtered_codes, target_date):
     logger.warning(f"入选股票：{' '.join(选中数据['stock_name'].astype(str).tolist())}")
     for _, 行 in 选中数据.iterrows():
         logger.info(
-            f"   → 候选 {行['stock_name']} {int(行['ts_code'])} | "
+            f"   → 候选 {行['stock_name']} {common.normalize_symbol(行['ts_code'])} | "
             f"排序:{int(行['排序'])} | {区间涨幅列名}:{行[区间涨幅列名]:.2f}% | "
             f"当日涨幅:{行['pct_chg']:.2f}% | 成交量:{行['vol']:.2f} | "
             f"成交额:{行['amount']:.2f} | {近3日成交额列名}:{行[近3日成交额列名]:.2f} | "
@@ -281,7 +279,7 @@ def _当前持仓数量():
 
 
 def buy(name, code, price, buy_date, close_price, signal_date):
-    code = int(code)
+    code = common.normalize_symbol(code)
     if code in account.holding_stocks and account.holding_stocks[code].get('lots', 0) > 0:
         logger.error(f"{name} {code} 之前买入的仓位还没有卖完，不重复买入")
         return False
@@ -363,9 +361,9 @@ def simulated_buy():
         return
 
     查询语句 = f"""
-        SELECT ts_code, trade_date, stock_name, open, high, low, close, pre_close
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(',)', ')')}
+        SELECT ts_code, trade_date, stock_name, open_price AS open, high_price AS high, low_price AS low, close_price AS close, previous_close AS pre_close
+        FROM daily_quotes
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
           AND trade_date = {int(buy_date)}
     """
     买入日数据 = pd.read_sql(查询语句, db.engine)
@@ -383,7 +381,7 @@ def simulated_buy():
             logger.warning(f"当前持仓已达到 {最大仓位数} 仓，停止买入")
             break
 
-        ts_code = int(候选['ts_code'])
+        ts_code = common.normalize_symbol(候选['ts_code'])
         stock_name = str(候选['stock_name'])
         if ts_code in account.holding_stocks and account.holding_stocks[ts_code].get('lots', 0) > 0:
             logger.error(f"{stock_name} {ts_code} 之前买入的仓位还没有卖完，跳过")
@@ -451,7 +449,7 @@ def simulated_buy():
 
 def simulated_sell(now_date=None, 卖出时点='收盘'):
     logger.warning(f"检查持仓是否{卖出时点}跌破MA5 开始")
-    持仓代码列表 = [int(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
+    持仓代码列表 = [common.normalize_symbol(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
     if not 持仓代码列表:
         logger.warning(f"检查持仓是否{卖出时点}跌破MA5 完成")
         return

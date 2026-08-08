@@ -25,13 +25,13 @@ def strategy(filtered_codes, target_date):
         '%Y%m%d')  # 余量确保足够数据
 
     # 加载日线数据
-    stock_daily = common.load_stock_daily_data(filtered_codes, start_date, target_date)
+    daily_quotes = common.load_daily_quotes_data(filtered_codes, start_date, target_date)
 
     logger.info(f"根据策略选择股票 开始")
     selected_stocks = []
     for ts_code in tqdm(filtered_codes):
         range_days = 90
-        df = stock_daily[stock_daily['ts_code'] == ts_code]
+        df = daily_quotes[daily_quotes['ts_code'] == ts_code]
         if len(df) < range_days:  # 需要足够数据计算均量
             continue
 
@@ -166,7 +166,7 @@ def main():
     filtered_codes = common.load_stock_pool_symbol()
     results = {}
     distinct_trade_date = db.mysql_localhost(sql=f"""
-        select distinct trade_date FROM stock_daily
+        select distinct trade_date FROM daily_quotes
         where trade_date >= '20250801'
         and trade_date < '20250901'
         order by trade_date

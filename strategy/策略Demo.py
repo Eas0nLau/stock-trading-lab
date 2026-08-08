@@ -18,7 +18,7 @@ from utils import account, common, db
 # ===== 回测和选股参数 =====
 回看交易日数 = 280
 候选返回数量 = 20
-成交额下限 = 500000  # stock_daily.amount 单位通常为千元，500000 约等于 5 亿成交额
+成交额下限 = 500000  # daily_quotes.amount 单位通常为千元，500000 约等于 5 亿成交额
 最新流通市值下限 = 1000000  # circ_mv 单位万元，1000000 约等于 100 亿
 近几日不允许跌停 = 5
 近几日涨停次数上限 = 2
@@ -55,11 +55,6 @@ from utils import account, common, db
 最大持仓天数 = 10
 
 
-def _sql_in(值列表):
-    值列表 = [int(i) for i in 值列表]
-    return str(tuple(值列表)).replace(',)', ')')
-
-
 def _提取整数代码(代码列表):
     if 代码列表 is None:
         return set()
@@ -73,14 +68,14 @@ def _提取整数代码(代码列表):
     代码序列 = pd.Series(list(代码列表)).astype(str).str.extract(r'(\d+)')[0].dropna()
     if 代码序列.empty:
         return set()
-    return set(代码序列.astype(int).tolist())
+    return set(代码序列.map(common.normalize_ts_code).tolist())
 
 
 def _最近交易日(结束日期参数, 天数):
     查询结果 = db.mysql_localhost(
         sql=f"""
             SELECT DISTINCT trade_date
-            FROM stock_daily
+            FROM daily_quotes
             WHERE trade_date <= {int(结束日期参数)}
             ORDER BY trade_date DESC
             LIMIT {int(天数)}
@@ -95,58 +90,57 @@ def _最近交易日(结束日期参数, 天数):
 
 def _加载日线数据(filtered_codes, 交易日列表):
     股票代码列表 = sorted(_提取整数代码(filtered_codes))
-    代码过滤条件 = ''
-    if 股票代码列表:
-        代码过滤条件 = f"AND sd.ts_code IN {_sql_in(股票代码列表)}"
+    代码条件, 代码参数 = common.stock_code_filter(股票代码列表, "sd.ts_code")
+    日期占位符 = ", ".join(["%s"] * len(交易日列表))
 
     查询语句 = f"""
         SELECT
             sd.ts_code,
             sd.stock_name,
             sd.trade_date,
-            sd.open,
-            sd.high,
-            sd.low,
-            sd.close,
-            sd.pre_close,
-            sd.change,
-            sd.pct_chg,
-            sd.vol,
-            sd.amount,
+            sd.open_price AS open,
+            sd.high_price AS high,
+            sd.low_price AS low,
+            sd.close_price AS close,
+            sd.previous_close AS pre_close,
+            sd.change_amount AS change,
+            sd.change_pct AS pct_chg,
+            sd.volume AS vol,
+            sd.turnover AS amount,
             mv.最新流通市值,
             sb.market,
             sb.list_status
-        FROM stock_daily sd
-        LEFT JOIN stock_basic sb ON sd.ts_code = sb.symbol
+        FROM daily_quotes sd
+        LEFT JOIN securities sb ON SUBSTRING_INDEX(sd.ts_code, '.', 1) = sb.symbol
         LEFT JOIN (
-            SELECT latest_sd.ts_code, latest_sd.circ_mv AS 最新流通市值
-            FROM stock_daily latest_sd
+            SELECT latest_sd.ts_code, latest_sd.circulating_market_value AS 最新流通市值
+            FROM daily_quotes latest_sd
             INNER JOIN (
                 SELECT MAX(trade_date) AS 最新市值日期
-                FROM stock_daily
-                WHERE circ_mv IS NOT NULL
+                FROM daily_quotes
+                WHERE circulating_market_value IS NOT NULL
             ) latest_date ON latest_sd.trade_date = latest_date.最新市值日期
         ) mv ON sd.ts_code = mv.ts_code
-        WHERE sd.trade_date IN {_sql_in(交易日列表)}
-          {代码过滤条件}
+        WHERE sd.trade_date IN ({日期占位符})
+          AND {代码条件}
           AND sb.market = '主板'
           AND sb.list_status = 'L'
           AND sd.stock_name NOT REGEXP 'ST|退'
-          AND sd.pre_close > 0
-          AND sd.open IS NOT NULL
-          AND sd.high IS NOT NULL
-          AND sd.low IS NOT NULL
-          AND sd.close IS NOT NULL
-          AND sd.amount IS NOT NULL
-          AND sd.pct_chg IS NOT NULL
+          AND sd.previous_close > 0
+          AND sd.open_price IS NOT NULL
+          AND sd.high_price IS NOT NULL
+          AND sd.low_price IS NOT NULL
+          AND sd.close_price IS NOT NULL
+          AND sd.turnover IS NOT NULL
+          AND sd.change_pct IS NOT NULL
         ORDER BY sd.ts_code, sd.trade_date
     """
-    return pd.read_sql(查询语句, db.engine)
+    return db.read_sql(查询语句, (*交易日列表, *代码参数))
 
 
 def _计算指标(日线数据):
     日线数据 = 日线数据.copy()
-    日线数据['ts_code'] = 日线数据['ts_code'].astype(int)
+    日线数据['ts_code'] = 日线数据['ts_code'].map(common.normalize_symbol)
     日线数据 = 日线数据.sort_values(['ts_code', 'trade_date'])
     分组 = 日线数据.groupby('ts_code', group_keys=False)
 
@@ -289,7 +283,7 @@ def strategy(filtered_codes, target_date):
     logger.warning(f"入选股票：{' '.join(选中数据['stock_name'].astype(str).tolist())}")
     for _, 行 in 选中数据.iterrows():
         logger.info(
-            f"   → 候选 {行['stock_name']} {int(行['ts_code'])} | "
+            f"   → 候选 {行['stock_name']} {common.normalize_symbol(行['ts_code'])} | "
             f"排序:{int(行['排序'])} | 信号:{行['信号类型']} | "
             f"成交额:{行['amount']:.2f} | 市值:{行['最新流通市值']:.2f} | "
             f"涨幅:{行['pct_chg']:.2f}% | close:{行['close']:.2f} | "
@@ -360,7 +354,7 @@ def _计算买入止损价(买入价, 信号防守价):
 
 
 def buy(name, code, price, buy_date, close_price, signal_row):
-    code = int(code)
+    code = common.normalize_symbol(code)
     if not 允许重复买入 and code in account.holding_stocks:
         logger.error(f"{name} {code} 已经买过，本 demo 不允许重复买，不买了。")
         return False
@@ -461,9 +455,9 @@ def simulated_buy(now_date=None, 执行时间=None, 是否清空预选池=True):
         return
 
     查询语句 = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {_sql_in(selected_stocks['ts_code'].tolist())}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
           AND trade_date = {int(buy_date)}
     """
     买入日数据 = pd.read_sql(查询语句, db.engine)
@@ -477,7 +471,7 @@ def simulated_buy(now_date=None, 执行时间=None, 是否清空预选池=True):
             logger.warning(f"当前持仓已达到 {最大仓位数} 仓，停止买入")
             break
 
-        ts_code = int(候选['ts_code'])
+        ts_code = common.normalize_symbol(候选['ts_code'])
         stock_name = str(候选['stock_name'])
         if not 允许重复买入 and ts_code in account.holding_stocks:
             logger.error(f"{stock_name} {ts_code} 已经买过，本 demo 不允许重复买，跳过")
@@ -608,7 +602,7 @@ def _减半仓(持仓信息, ts_code, price, now_date, 原因):
 def simulated_sell(now_date=None, 执行时间=None):
     执行时间 = 执行时间 or _标准化执行时间列表(卖出执行时间, '卖出执行时间')[0]
     logger.warning(f"检查持仓卖出/减仓逻辑 开始 | 执行时间:{执行时间}")
-    持仓代码列表 = [int(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
+    持仓代码列表 = [common.normalize_symbol(code) for code, 持仓 in account.holding_stocks.items() if 持仓.get('lots', 0) > 0]
     if not 持仓代码列表:
         logger.warning("检查持仓卖出/减仓逻辑 完成")
         return

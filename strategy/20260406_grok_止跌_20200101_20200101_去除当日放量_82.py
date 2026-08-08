@@ -10,7 +10,7 @@ import pandas as pd
 from loguru import logger
 
 from utils import db, common, account
-from 游资溢价分析 import 溢价分析
+from stock_lab.modules.dragon_tiger import runtime as premium_analysis
 
 
 def strategy(filtered_codes, target_date):
@@ -28,10 +28,10 @@ def strategy(filtered_codes, target_date):
 
     # 2. 获取近90天上过龙虎榜的活跃股票池（仅作池子）
     活跃股票池查询 = f"""
-        SELECT DISTINCT `股票代码`
-        FROM t_龙虎榜 
-        WHERE `date` >= {近90天起始日期}
-          AND `date` <= {target_date}
+        SELECT DISTINCT `stock_code` AS `股票代码`
+        FROM `dragon_tiger`
+        WHERE `trade_date` >= {近90天起始日期}
+          AND `trade_date` <= {target_date}
     """
     活跃股票池_df = pd.read_sql(活跃股票池查询, db.engine)
     logger.info(f"   └─ 近90天上过龙虎榜的活跃股票数量：{len(活跃股票池_df)} 只")
@@ -40,7 +40,7 @@ def strategy(filtered_codes, target_date):
         logger.warning(f"❌ {target_date} 近90天无任何龙虎榜股票")
         return pd.DataFrame([])
 
-    活跃股票代码列表 = 活跃股票池_df['股票代码'].astype(str).str.extract(r'(\d+)')[0].astype(int).unique().tolist()
+    活跃股票代码列表 = 活跃股票池_df['股票代码'].map(common.normalize_symbol).unique().tolist()
 
     if filtered_codes is not None and len(filtered_codes) > 0:
         过滤后集合 = set(filtered_codes['ts_code']) if isinstance(filtered_codes, pd.DataFrame) else set(filtered_codes)
@@ -52,7 +52,7 @@ def strategy(filtered_codes, target_date):
 
     # 3. 加载日线数据
     开始日期 = (datetime.strptime(str(target_date), "%Y%m%d") - timedelta(days=30)).strftime('%Y%m%d')
-    日线数据 = common.load_stock_daily_data(最终候选池, 开始日期, target_date)
+    日线数据 = common.load_daily_quotes_data(最终候选池, 开始日期, target_date)
 
     if 日线数据.empty:
         logger.warning(f"❌ {target_date} 无足够日线数据")
@@ -105,7 +105,7 @@ def strategy(filtered_codes, target_date):
         股票名称 = 当天数据.get('stock_name', f"未知{ts_code}")
 
         候选列表.append({
-            'ts_code': int(ts_code),
+            'ts_code': common.normalize_symbol(ts_code),
             'stock_name': 股票名称,
             'trade_date': target_date,
             'close': float(当天数据['close']),
@@ -197,9 +197,9 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
@@ -271,9 +271,9 @@ def simulated_sell(sell_out_fall_threshold=None,
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
-            WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
+            FROM daily_quotes
+            WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date

@@ -1,4 +1,9 @@
 /*
+ LEGACY ARCHIVE - DO NOT USE FOR CURRENT SETUP.
+ Use stock_trading_lab_v2.sql for a clean current installation. This historical
+ dump creates the retired Chinese-identifier schema and is retained only as a
+ migration reference.
+
  Navicat Premium Dump SQL
 
  Source Server         : 本机_docker_mysql8.0

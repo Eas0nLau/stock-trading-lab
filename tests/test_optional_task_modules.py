@@ -1,77 +1,26 @@
 import importlib
 import sys
-from types import ModuleType, SimpleNamespace
-
-import pytest
 
 
-def _stub_app_dependencies(monkeypatch):
-    redis = SimpleNamespace(exists=lambda _key: False, delete=lambda _key: None)
-    db = SimpleNamespace(redis_con_localhost=redis)
+def test_compatibility_task_modules_import_without_ambient_io(monkeypatch):
+    class FailingUtils:
+        def __getattr__(self, name):
+            raise AssertionError(f"task import attempted ambient I/O dependency: {name}")
 
-    utils = ModuleType("utils")
-    utils.db = db
-    utils.driver_chrome = SimpleNamespace()
-    monkeypatch.setitem(sys.modules, "utils", utils)
+    monkeypatch.setitem(sys.modules, "utils", FailingUtils())
+    for name in ("task.每日更新", "task.盘前纪要", "task.emotion_analysis"):
+        sys.modules.pop(name, None)
 
-    front_run = ModuleType("front_run")
-    front_run.run = lambda: None
-    monkeypatch.setitem(sys.modules, "front_run", front_run)
+    daily = importlib.import_module("task.每日更新")
+    premarket = importlib.import_module("task.盘前纪要")
+    emotion = importlib.import_module("task.emotion_analysis")
 
-    monitoring = ModuleType("实时监控")
-    for name in ("资金流向", "策略选股", "情绪周期", "热门板块情绪"):
-        module = SimpleNamespace(注册接口=lambda _app: None)
-        setattr(monitoring, name, module)
-    monkeypatch.setitem(sys.modules, "实时监控", monitoring)
+    assert callable(daily.tasks)
+    assert callable(premarket.韭研公社盘前纪要采集)
+    assert callable(emotion.落库指数周期)
 
 
-def _import_app(monkeypatch):
-    _stub_app_dependencies(monkeypatch)
-    sys.modules.pop("app", None)
-    return importlib.import_module("app")
+def test_premarket_wrapper_reports_disabled_without_source():
+    premarket = importlib.import_module("task.盘前纪要")
 
-
-def test_app_imports_without_unpublished_task_package(monkeypatch, capsys):
-    for name in ("task", "task.每日更新", "task.盘前纪要"):
-        monkeypatch.delitem(sys.modules, name, raising=False)
-
-    app_module = _import_app(monkeypatch)
-    captured = capsys.readouterr()
-
-    assert app_module.每日更新 is not None
-    assert app_module.盘前纪要 is None
-    assert "已禁用每日更新和盘前纪要定时任务" not in captured.err
-
-
-def test_app_uses_original_task_modules_when_present(monkeypatch):
-    task = ModuleType("task")
-    daily = ModuleType("task.每日更新")
-    premarket = ModuleType("task.盘前纪要")
-    task.每日更新 = daily
-    task.盘前纪要 = premarket
-    monkeypatch.setitem(sys.modules, "task", task)
-    monkeypatch.setitem(sys.modules, "task.每日更新", daily)
-    monkeypatch.setitem(sys.modules, "task.盘前纪要", premarket)
-
-    app_module = _import_app(monkeypatch)
-
-    assert app_module.每日更新 is daily
-    assert app_module.盘前纪要 is premarket
-
-
-def test_app_does_not_hide_dependency_errors_inside_task(monkeypatch, tmp_path):
-    package = tmp_path / "task"
-    package.mkdir()
-    (package / "__init__.py").write_text(
-        "from . import 每日更新, 盘前纪要\n", encoding="utf-8"
-    )
-    (package / "每日更新.py").write_text(
-        "import missing_task_dependency\n", encoding="utf-8"
-    )
-    (package / "盘前纪要.py").write_text("", encoding="utf-8")
-    monkeypatch.syspath_prepend(tmp_path)
-    for name in ("task", "task.每日更新", "task.盘前纪要"):
-        monkeypatch.delitem(sys.modules, name, raising=False)
-
-    with pytest.raises(ModuleNotFoundError, match="missing_task_dependency"):
-        _import_app(monkeypatch)
+    assert premarket.韭研公社盘前纪要采集(20260805, source=None)["status"] == "disabled"

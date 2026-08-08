@@ -24,7 +24,9 @@
 
 - 通过浏览器监听东方财富资金流向页面的接口响应，分别采集行业和概念板块数据。
 - 记录每个采样时间点的板块名称、资金净流入、板块代码和龙头股。
-- 按交易时段定频采集，并将当日原始快照、Top N 轻量快照和图表缓存保存到 Redis。
+- 按交易时段定频采集，并将规范快照保存到 `fund_flow:v1:*` Redis 键；图表矩阵在服务层构建。
+- 历史事实保存到 MySQL 的 `fund_flow_snapshots` 和 `fund_flow_records`；Redis 仅作为当日缓存、日期索引和 SSE 事件层，缺失时由 MySQL 回填。
+- 历史回补使用注入式日数据源按交易日从新到旧执行，已存在 canonical 批次跳过；旧 Redis 快照迁移时将万元按一次性规则转换为亿元。
 - 前端使用 ECharts 绘制板块资金流向的日内变化曲线，可切换历史日期。
 - 支持按净流入金额筛选板块，展示首次命中时间、命中龙头和最高净流入金额。
 - 支持一键复制龙头股名称，以及命中条件后的浏览器通知。
@@ -48,7 +50,7 @@ uv run --frozen python -m task.fund_flow_backfill --days 365
 - 可配置多条东方财富策略选股页面，包括策略名称、页面 URL、监听接口、启用状态、监控时间段和采集频率。
 - 后台线程按每条策略自己的时间窗口和频率执行采集。
 - 对采集结果进行股票代码规范化、去重和概念字段清洗。
-- 记录当前入选名单、最新快照、每日历史快照、新增股票和移除股票，数据保存在 Redis。
+- 记录当前入选名单、最新快照、每日历史快照、新增股票和移除股票，数据只保存在 `strategy_pick:v1:*` Redis 键。
 - 前端可新增、编辑、启停、删除策略，也可手动刷新单条策略或全部启用策略。
 - 页面展示当前入选数量、今日新增、最近入选时间、采集状态、股票字段和历史快照。
 - 通过 SSE 实时推送名单变化，并可对新入选股票发送浏览器桌面通知。
@@ -80,26 +82,27 @@ uv run --frozen python -m task.fund_flow_backfill --days 365
 ![img.png](init/img/img4.png)
 ### 2.5 每日数据更新流水线（17:35后跑批）
 
-`task/每日更新.py` 负责收盘后的数据更新。主服务在工作日 17:35 后检查并触发任务，Redis 用于防止同一天重复执行或多个任务并发执行。
+正式入口 `stock_lab.jobs.daily_update` 负责收盘后的数据更新，`task/每日更新.py` 仅保留命令行和直接调用兼容。主服务在工作日 17:35 后触发检查；任务使用带过期时间的 Redis V1 锁和日期完成标记，防止同一天重复执行或多个任务并发执行。
 
 默认流水线依次执行：
 
-1. 更新上证指数日线。
-2. 更新 A 股基础信息和个股日 K 数据。
-3. 计算并落库热门板块情绪。
-4. 计算并落库指数情绪周期和市场宽度。
-5. 补充总市值、流通市值、自由流通股本和自由流通市值。
-6. 采集龙虎榜数据。
-7. 从开盘啦接口补充日线 DDE 净额。
+1. 更新 A 股基础信息。
+2. 更新个股日 K 数据。
+3. 更新上证指数日线。
+4. 采集韭研公社异动板块数据。
+5. 计算并写入热门板块情绪。
+6. 计算并写入指数情绪周期和市场宽度。
 
-项目还实现了 5 分钟 K 线、KDJ、同花顺行业/概念成分股、韭研公社异动和龙虎榜溢价分析等更新模块；其中部分步骤在默认每日流水线中被注释，需要按研究需要单独启用。
+项目还实现了 5 分钟 K 线、KDJ、韭研公社异动和龙虎榜溢价分析等更新模块。5 分钟行情和 KDJ 的正式入口分别是 `stock_lab.jobs.intraday_bars_5m` 与 `stock_lab.jobs.kdj_indicators`；它们不在默认每日流水线中，需要按研究需要单独调用。同花顺板块、成分股和股票板块关系没有运行时采集器，现有数据仅作为迁移导入的归档参考数据保留。
 
 ### 2.6 盘前纪要股票提取（盘前用，用来捕捉热启动的题材和隔夜消息）
 
-- 工作日 08:00 后自动检查并采集最新韭研公社盘前纪要。
-- 从纪要指定章节中匹配本地股票基础信息，按正文出现顺序提取股票。
-- 将股票代码和名称生成通达信可使用的 INI 名单，输出到 `output/韭研公社盘前纪要/<日期>/`。
-- 使用 Redis 记录执行状态，避免同一天重复生成。
+- 正式入口 `stock_lab.jobs.premarket_summary` 接收注入的纪要来源和本地股票列表；公开仓库不包含韭研公社网络或浏览器 adapter，也不会伪造采集成功。
+- 未配置来源时任务明确返回 `disabled`，不获取 Redis 锁、不写完成标记。为 worker 注入来源后，工作日 08:00 起才会进入定时检查。
+- 从来源正文中匹配六位股票代码和本地股票名称，按首次出现顺序提取并去重。
+- 将股票代码和名称生成可导入行情软件的 INI 名单，输出到 `output/韭研公社盘前纪要/<日期>/`。
+- 使用带过期时间的 Redis V1 锁和日期完成标记，失败时释放锁且不标记完成。
+- `task/盘前纪要.py` 保留 `韭研公社盘前纪要采集(...)` 作为直接调用兼容入口，调用方必须通过 `source=` 注入来源。
 
 运行后会生成.ini格式的文件，可以直接用同花顺导入，非常方便和高效，不需要截图或者挨个去添加到板块中。
 如20260804的盘前纪要，直接把文章中的相关股票导入到板块中，盘前可以节省很多时间。
@@ -108,16 +111,16 @@ uv run --frozen python -m task.fund_flow_backfill --days 365
 ![img.png](init/img/img5.png)
 ### 2.7 韭研公社异动采集（复盘用，用来发现哪些板块最强，以及板块中哪些是身位板和涨停时间强度）
 
-`task/_5_韭研公社异动.py` 用于按交易日采集韭研公社异动榜单：
+正式模块 `stock_lab.modules.market_data.jiuyan` 用于按交易日采集韭研公社异动榜单；`task/_5_韭研公社异动.py` 仅保留直接脚本兼容：
 
 - 打开指定日期的异动页面，监听 `/jystock-app/api/v1/action/field` 接口响应。
 - 解析板块名称、板块个股数量、题材说明，以及股票代码、股票名称、涨停时间、几天几板、涨幅和涨停解析。
-- 仅保留涨幅在 9.5% 至 10.2% 之间的涨停附近股票，并写入 MySQL 表 `t_韭研公社异动解析`。
+- 仅保留涨幅在 9.5% 至 10.2% 之间的涨停附近股票，并写入 MySQL 表 `jiuyan_actions`。
 - 按连板身位、非连板板数和涨停时间排序，为每个板块生成单独的通达信 INI 股票名单。
-- 将板块与同花顺行业/概念进行匹配，生成包含板块导入代码和去重股票的合并名单。
+- 为每个板块生成包含去重股票的行情软件导入名单。
 - 文件输出到 `output/韭研公社异动板块/<日期>/`，采集结果同时为热门板块情绪分析提供基础数据。
 
-该步骤已经实现，但当前在默认每日更新流水线中被注释。需要启用时调用：
+该步骤已进入默认每日更新流水线，也可通过兼容入口单独调用：
 
 ```python
 _5_韭研公社异动.韭研公社异动采集(start_date)
@@ -142,6 +145,8 @@ _5_韭研公社异动.韭研公社异动采集(start_date)
 - 通过策略模板集中配置回测日期、候选数量、仓位、买卖时点和风控阈值。
 
 这些脚本主要是独立研究程序，不属于网页端实时策略管理功能。
+
+官方研究入口为 `stock_lab.modules.research`：它提供注入式行情/龙虎榜数据访问、共享回测编排、57 个可执行策略的静态英文标识注册表，以及显式选择本地或离线数据源的 CLI。所有策略统一通过 `run(context)` 对 `context.target_date` 执行单日选股；日期区间模拟由共享 backtest runner 完成，不再调用历史全局账户。可用 `uv run python -m stock_lab.modules.research run strategy_demo --target-date 20260102 --offline` 直接运行内置夹具，或使用 `--provider local` 读取已配置的 MySQL。策略研究文档见 `docs/research-backtesting.md`。`strategy/` 中的中文文件继续保留原展示名称和策略参数。
 
 常见比较好理解的策略有：新高策略、量窒息策略等。
 
@@ -176,14 +181,16 @@ strategy/20260609_龙头缩量收红策略.py
 
 ### 2.10 通达信本地行情与竞价监控（目前没开发到，计划用来盘中辅助交易的）
 
-`实时监控/tdx_全局监控.py` 和 `实时监控/tdx_竞价监控.py` 是可独立运行的通达信监控工具：
+`stock_lab.infrastructure.tdx` 和 `stock_lab.modules.tdx` 是正式的通达信监控实现。`实时监控/tdx_全局监控.py` 和 `实时监控/tdx_竞价监控.py` 保留为可独立运行的兼容启动器：
 
 - 只读通达信 `vipdoc` 下的日线和分钟线二进制文件。
 - 通过通达信 `PYPlugins/user/tqcenter.py` 读取或订阅实时行情快照。
 - 展示最新价、涨跌幅、开盘价、均价、成交额、竞价金额和未匹配金额。
 - 可监控向上突破开盘价或分时均价，并进行日志/蜂鸣提醒。
 - 集合竞价脚本可监控全体主板非 ST 股票，计算买卖量比、五档金额比、封单金额和封单变化，识别抢筹、封板、加封、减封等信号。
-- 所有运行参数均集中在脚本底部，适合直接在 IDE 中运行。
+- 运行参数通过 `Settings`、`TDX_CODES` 和模块运行函数注入；兼容启动器可直接从 checkout 运行，也可使用 `uv run python 实时监控/tdx_全局监控.py`。
+
+正式代码通过 `MarketDataRepository.securities()` 获取股票池，不直接导入 `config.py` 或 `PyMySQL`。测试使用临时二进制文件和 fake client，不需要安装通达信。
 
 ## 3. 系统结构
 
@@ -223,17 +230,23 @@ flowchart LR
 
 | 路径 | 作用 |
 | --- | --- |
-| `app.py` | FastAPI 入口；注册接口并启动资金流向、策略选股和定时任务线程 |
+| `src/stock_lab/` | 正式 Python 包；包含应用启动、配置、基础设施、任务和业务模块 |
+| `src/stock_lab/modules/ths/` | 同花顺归档参考数据的只读英文模型和查询仓储；不包含采集或写入 |
+| `app.py` | 兼容启动入口；应用由 `stock_lab.bootstrap.application` 创建 |
 | `front/` | Vue 前端，包含资金流向、策略监控、指数周期和热门板块情绪页面 |
-| `实时监控/` | 网页后端业务、SSE 推送、通达信快照和集合竞价监控 |
-| `task/` | 日线、指数、市值、DDE、板块、情绪、龙虎榜等批量更新任务 |
-| `strategy/` | 独立选股、回测和策略验证脚本 |
-| `游资溢价分析/` | 龙虎榜、营业部数据采集及历史溢价分析 |
-| `utils/` | 数据库、浏览器、行情、账户模拟、回测和通达信公共工具 |
-| `init/` | MySQL/Redis Docker 配置和数据库初始化 SQL |
+| `实时监控/` | 迁移期兼容目录；新业务实现不再写入这里 |
+| `task/` | 迁移期批量任务兼容目录 |
+| `strategy/` | 由正式研究注册表适配的中文策略源文件和兼容启动器 |
+| `游资溢价分析/` | 已由正式龙虎榜仓储与分析服务适配的历史入口 |
+| `utils/` | 迁移期兼容工具；MySQL 和 Redis 已转发到新基础设施层 |
+| `db/migrations/` | 版本化英文数据库结构和存量数据迁移脚本 |
+| `docs/` | 架构、开发、代码迁移和数据库迁移文档 |
+| `init/` | MySQL/Redis Docker 配置、自包含英文初始化 SQL 和明确标记的历史数据库转储 |
 | `data/` | 股票基础数据、采集缓存和浏览器用户目录等本地数据 |
 | `output/` | 研究 CSV、策略结果和盘前纪要 INI 等生成物 |
 | `记录/` | 按月份保存的 Excel 记录 |
+
+5 分钟行情通过 `IntradayBarSource` 注入数据源，默认 `BaoStockSource` 仅在实际采集时导入并登录 BaoStock。`fetch_intraday_bars_5m()` 只采集和标准化数据，`update_intraday_bars_5m()` 写入 `intraday_bars_5m`。`update_kdj_indicators()` 从 `daily_quotes` 计算标准 KDJ 并写入 `kdj_indicators`。旧的 `task._2_分时数据获取_5分k.get_data()` 只负责把正式结果投影为历史策略使用的列表顺序。
 
 ## 6. 数据存储分工
 
@@ -242,43 +255,43 @@ MySQL 负责保存需要长期查询和回测的结构化数据，主要包括�
 - 股票基础信息、日 K、5 分钟 K、KDJ、市值和 DDE。
 - 上证指数日线、市场宽度和指数情绪周期结果。
 - 韭研公社异动、热门板块情绪分析。
-- 龙虎榜、营业部历史和同花顺板块/成分股关系。
+- 龙虎榜和营业部历史；同花顺板块/成分股关系仅为迁移导入的归档参考数据。
 
 Redis 负责保存更新频繁或带运行状态的数据，主要包括：
 
-- 行业/概念资金流向快照与图表缓存。
-- 策略配置、当前选股名单、历史快照和入选事件。
-- 每日更新、盘前纪要等任务的执行锁和完成标记。
+- 行业/概念资金流向快照，使用 `fund_flow:v1:{flow_type}:history:{date}`、`fund_flow:v1:{flow_type}:dates` 和 `fund_flow:v1:stream`。
+- 策略配置、当前选股名单、历史快照和入选事件；策略选股只使用 `strategy_pick:v1:*` ASCII 键。
+- 每日更新和盘前纪要使用 `stock_lab:jobs:v1:daily_update:*` 与 `stock_lab:jobs:v1:premarket_summary:*` 保存执行锁和七天完成标记。
 
 ## 7. Web 页面与接口
 
 | 页面 | 主要接口 | 当前状态 |
 | --- | --- | --- |
-| 板块资金流向 | `/api/zijin/industry/*`、`/api/zijin/stream` | 已实现 |
-| 概念资金流向 | `/api/zijin/concept/*`、`/api/zijin/stream` | 已实现 |
-| 策略选股监控 | `/api/strategy-pick/*` | 已实现 |
-| 指数周期 | `/api/emotion/current` | 已实现 |
-| 热门板块情绪 | `/api/hot-board-emotion/current` | 已实现 |
+| 板块资金流向 V1 | `/api/v1/fund-flow/industry/dates`、`/history/{date}`、`/api/v1/fund-flow/stream` | 英文字段，前端已切换 |
+| 概念资金流向 V1 | `/api/v1/fund-flow/concept/dates`、`/history/{date}`、`/api/v1/fund-flow/stream` | 英文字段，前端已切换 |
+| 策略选股监控 V1 | `/api/v1/strategy-pick/strategies`、`/latest`、`/history/{date}`、`/events/{date}`、`/dates`、`/refresh`、`/stream` | 英文字段，前端和 worker 已切换 |
+| 指数情绪 V1 | `/api/v1/emotion/current` | 英文字段，前端已切换 |
+| 热门板块情绪 V1 | `/api/v1/emotion/hot-boards` | 英文字段，前端已切换 |
 
-后端另外提供 `/api/emotion/index/current` 和 `/api/emotion/topic/current`。当前前端指数周期页面使用 `/api/emotion/current` 返回的指数周期结果；独立指数接口和题材周期接口尚未形成单独页面。
+旧 `/api/zijin/*`、`/api/emotion/*`、`/api/hot-board-emotion/*` 和 `/api/strategy-pick/*` 不再注册。资金流向和策略选股浏览器采集、解析与调度位于正式英文模块，仅写入 V1 Redis；兼容文件只转发直接脚本调用。两类 SSE 都使用应用进程内 broker，由同一进程中的采集线程向 API 订阅者投递，并在连接关闭时清理订阅。
 
 ## 8. 运行条件与启动方式
 
 运行前需要准备：
 
-1. Python 3.12，并安装 `requirements.txt` 中的依赖。
-2. Node.js 与 npm，并在 `front/` 中完成依赖安装。
-3. MySQL 8 和 Redis；可使用 `init/docker/` 下的 Compose 文件，并导入 `init/stock_trading_lab.sql`。
-4. 在 `config.py` 中配置 MySQL、Tushare Token、项目路径、浏览器采集、策略和各类阈值。使用通达信功能时还需配置通达信安装目录。
+1. Python 3.12 和 `uv`，运行 `uv sync --all-groups --frozen` 安装依赖。
+2. Node.js 与 npm，运行 `npm --prefix front install` 安装前端依赖。
+3. MySQL 8 和 Redis；新环境使用自包含的 `init/stock_trading_lab_v2.sql`，旧库只按 `docs/database-migrations.md` 依次执行 `001`/`002`，不得导入历史中文 schema 转储。
+4. 复制 `.env.example` 为 `.env` 并配置 MySQL；可选集成按需要配置。
 5. 确保需要采集的网站可访问；部分页面采集依赖本地浏览器会话。
 
 项目根目录可直接运行：
 
 ```powershell
-.\python312\python.exe app.py
+.\启动项目.ps1
 ```
 
-`app.py` 默认启动 FastAPI 服务（8051 端口），并在后台执行 `npm run dev` 启动 Vite 前端（8990 端口）。Vite 会把 `/api` 请求代理到 FastAPI。
+`app.py` 默认启动 FastAPI 服务（8527 端口），并通过受管理的前端进程启动 Vite（9527 端口）。Vite 会把 `/api` 请求代理到 FastAPI。开发架构和命名规则见 `docs/architecture.md`。
 
 ## 9. 当前边界
 

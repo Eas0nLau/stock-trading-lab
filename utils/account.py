@@ -5,6 +5,7 @@ import pandas as pd
 from loguru import logger
 
 from utils import db, common
+from stock_lab.modules.market_data.helpers import normalize_symbol, stock_code_filter
 
 # 初始金额
 init_amount = float(1000000)
@@ -26,6 +27,13 @@ next_date_pre_selection_stocks = {
     'selected_stocks': None,
     'target_date': None,
 }
+
+
+def _quote_rows_for_holding(range_data, code):
+    """Match a holding key to daily quotes regardless of exchange suffix."""
+    if range_data.empty:
+        return range_data
+    return range_data[range_data["ts_code"].map(normalize_symbol) == normalize_symbol(code)]
 
 
 def print_account_info():
@@ -69,16 +77,18 @@ def sync_open_market_before(now_date):
     # logger.warning(f"同步开盘操作前市值 开始")
     selected_stocks = holding_stocks.keys()
     if selected_stocks:
+        code_sql, code_params = stock_code_filter(selected_stocks)
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-            FROM stock_daily
-            WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+                   previous_close AS pre_close, high_price AS high, low_price AS low
+            FROM daily_quotes
+            WHERE {code_sql}
             AND trade_date = {now_date}
         """
-        range_data = pd.read_sql(query, db.engine)
+        range_data = pd.read_sql(query, db.engine, params=code_params)
         for ts_code in selected_stocks:
             stock_info = holding_stocks[ts_code]
-            ts_code_df = range_data[range_data['ts_code'] == ts_code]
+            ts_code_df = _quote_rows_for_holding(range_data, ts_code)
             if ts_code_df.empty:
                 logger.error(f"{ts_code} {now_date} 当日数据为空。")
                 continue
@@ -134,16 +144,18 @@ def sync_close_market(now_date):
     # logger.warning(f"同步收盘市值 开始")
     selected_stocks = holding_stocks.keys()
     if selected_stocks:
+        code_sql, code_params = stock_code_filter(selected_stocks)
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-            FROM stock_daily
-            WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+                   previous_close AS pre_close, high_price AS high, low_price AS low
+            FROM daily_quotes
+            WHERE {code_sql}
             AND trade_date = {now_date}
         """
-        range_data = pd.read_sql(query, db.engine)
+        range_data = pd.read_sql(query, db.engine, params=code_params)
         for ts_code in selected_stocks:
             stock_info = holding_stocks[ts_code]
-            ts_code_df = range_data[range_data['ts_code'] == ts_code]
+            ts_code_df = _quote_rows_for_holding(range_data, ts_code)
             if ts_code_df.empty:
                 logger.error(f"{ts_code} {now_date} 当日数据为空。")
                 continue
@@ -186,16 +198,19 @@ def simulated_sell(sell_out_fall_threshold=None,
         f"开盘看看有没有符合卖出逻辑的进行卖出 开始 止损阈值:{sell_out_fall_threshold},止盈阈值:{sell_out_rise_threshold}")
     selected_stocks = holding_stocks.keys()
     if selected_stocks:
+        code_sql, code_params = stock_code_filter(selected_stocks)
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
-            WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+                   previous_close AS pre_close, high_price AS high, low_price AS low,
+                   change_pct AS pct_chg
+            FROM daily_quotes
+            WHERE {code_sql}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date
         """
-        range_data = pd.read_sql(query, db.engine)
+        range_data = pd.read_sql(query, db.engine, params=code_params)
         for ts_code in selected_stocks:
             stock_info = holding_stocks[ts_code]
             if stock_info['持股天数'] < 2:
@@ -204,15 +219,16 @@ def simulated_sell(sell_out_fall_threshold=None,
             if stock_info['lots'] == 0:
                 # logger.error(f"{ts_code} {stock_info['name']} 已卖出")
                 continue
-            if len(range_data[range_data['ts_code'] == ts_code]) < 3:
+            stock_range_data = _quote_rows_for_holding(range_data, ts_code)
+            if len(stock_range_data) < 3:
                 continue
             # 持仓持仓最高回撤达到止损率卖出
             _持仓最高回撤 = stock_info['持仓最高回撤']
             _持仓最高市值 = stock_info['持仓最高市值']
             # 获取当前交易日
-            stock_now_date_df = range_data[range_data['ts_code'] == ts_code].iloc[-1]
+            stock_now_date_df = stock_range_data.iloc[-1]
             # 获取上一个交易日
-            stock_pre_date_df = range_data[range_data['ts_code'] == ts_code].iloc[-2]
+            stock_pre_date_df = stock_range_data.iloc[-2]
 
             # 昨日收益率达到止损率卖出
             # if stock_pre_date_df['pct_chg'] < sell_out_fall_threshold:
@@ -257,16 +273,18 @@ def simulated_buy():
 
     range_date = (datetime.strptime(str(target_date), "%Y%m%d") + timedelta(days=15)).strftime('%Y%m%d')
     stock_name_list = selected_stocks['stock_name'].tolist()
+    code_sql, code_params = stock_code_filter(selected_stocks['ts_code'].tolist())
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple([int(i) for i in selected_stocks['ts_code'].tolist()])).replace(",)", ")")}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open,
+               previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE {code_sql}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
     """
-    range_data = pd.read_sql(query, db.engine)
+    range_data = pd.read_sql(query, db.engine, params=code_params)
     # buy_date = range_data['trade_date'].min()
     # 入选后的交易日期
     after_purchase_date_list = sorted(list(set(range_data['trade_date'].tolist())))
@@ -281,7 +299,8 @@ def simulated_buy():
     buy_date = common.get_next_date(target_date)
 
     for stock_name in stock_name_list:
-        stock_name_df = range_data[range_data['stock_name'] == stock_name]
+        selected_row = selected_stocks[selected_stocks['stock_name'] == stock_name].iloc[0]
+        stock_name_df = _quote_rows_for_holding(range_data, selected_row['ts_code'])
         if stock_name_df.empty:
             logger.error(f"{stock_name} 入选后可统计的交易日期为空")
             continue

@@ -22,6 +22,7 @@ function Ensure-ServiceRunning($name) {
 }
 
 Assert-Command "uv"
+Assert-Command "npm"
 
 if (-not (Test-Path -LiteralPath (Join-Path $projectRoot ".env"))) {
     throw "Missing .env. Configure the project connection settings first."
@@ -34,6 +35,15 @@ Write-Host "Syncing Python environment..." -ForegroundColor Cyan
 & uv sync --all-groups --frozen
 if ($LASTEXITCODE -ne 0) {
     throw "uv sync failed with exit code: $LASTEXITCODE"
+}
+
+$frontNodeModules = Join-Path $projectRoot "front\node_modules"
+if (-not (Test-Path -LiteralPath $frontNodeModules)) {
+    Write-Host "Installing frontend dependencies..." -ForegroundColor Cyan
+    & npm --prefix (Join-Path $projectRoot "front") install
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm install failed with exit code: $LASTEXITCODE"
+    }
 }
 
 Write-Host "Starting project. Start TongdaXin manually; press Ctrl+C to stop." -ForegroundColor Green

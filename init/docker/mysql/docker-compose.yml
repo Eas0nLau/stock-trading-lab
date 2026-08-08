@@ -7,6 +7,7 @@ services:
     restart: always # 自动启动
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      MYSQL_DATABASE: stock_trading_lab
       # 设置默认认证插件为 caching_sha2_password
       MYSQL_DEFAULT_AUTHENTICATION_PLUGIN: caching_sha2_password
     ports:
@@ -14,6 +15,8 @@ services:
     volumes:
 #      - G:\docker\mysql\data:/var/lib/mysql
       - mysql-data:/var/lib/mysql
+      # Optional clean initialization. Uncomment only for a new empty volume.
+      # - ../../stock_trading_lab_v2.sql:/docker-entrypoint-initdb.d/001-stock-trading-lab.sql:ro
     networks:
       - mysql_network
     command:

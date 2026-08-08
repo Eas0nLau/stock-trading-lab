@@ -16,7 +16,7 @@ def process_stock_batch(args):
     for ts_code in codes_batch:
         # 使用预分组数据
         if ts_code not in grouped.groups:
-            # logger.warning(f"ts_code {ts_code} not found in stock_daily, skipping")
+            # logger.warning(f"ts_code {ts_code} not found in daily_quotes, skipping")
             continue
         df = grouped.get_group(ts_code)
         target_data = df[df['trade_date'] == target_date]
@@ -49,17 +49,17 @@ def strategy(filtered_codes, target_date):
         DataFrame: 选中的股票（ts_code, stock_name, trade_date, close）
     """
     stock_code = db.mysql_localhost(f"""
-       SELECT x.ts_code FROM stock_kdj x
-        inner join stock_kdj x2
+       SELECT x.ts_code FROM kdj_indicators x
+        inner join kdj_indicators x2
         on x.ts_code = x2.ts_code 
         WHERE x.trade_date ={target_date}
-        and x2.trade_date = (SELECT MAX(trade_date) FROM stock_kdj x WHERE trade_date < {target_date})
-        and x.J < 50
-        and x.J>X.D*1.4
-        and x2.D>x2.j*1.4
-        and x2.J > (
-          SELECT MAX(recent_records.J) FROM (
-              SELECT x3.j FROM stock_kdj x3 
+        and x2.trade_date = (SELECT MAX(trade_date) FROM kdj_indicators x WHERE trade_date < {target_date})
+        and x.j_value < 50
+        and x.j_value>x.d_value*1.4
+        and x2.d_value>x2.j_value*1.4
+        and x2.j_value > (
+          SELECT MAX(recent_records.j_value) FROM (
+              SELECT x3.j_value FROM kdj_indicators x3
               WHERE x3.ts_code =  x2.ts_code
                 AND x3.trade_date <  x2.trade_date
               ORDER BY x3.trade_date DESC 
@@ -76,19 +76,19 @@ def strategy(filtered_codes, target_date):
         '%Y%m%d')  #
 
     # 加载日线数据
-    stock_daily = common.load_stock_daily_data(filtered_codes, start_date, target_date)
+    daily_quotes = common.load_daily_quotes_data(filtered_codes, start_date, target_date)
 
     logger.info(f"根据策略选择股票 开始")
     selected_stocks = []
     for ts_code in filtered_codes:
-        target_data = stock_daily[stock_daily['ts_code'] == ts_code]
+        target_data = daily_quotes[daily_quotes['ts_code'] == ts_code]
         if target_data.empty:
             continue
         # 红K线：收盘价 > 开盘价，涨幅在 min_pct_chg 到 max_pct_chg 之间
         target_row = target_data.iloc[-1]
         if target_row['pct_chg'] > 5:
             continue
-        df = stock_daily[stock_daily['ts_code'] == ts_code]
+        df = daily_quotes[daily_quotes['ts_code'] == ts_code]
         logger.info(
             f"{target_row['stock_name']} 最近：{range_days}天日均成交量：{df['vol'].mean()} 当日成交量：{target_row['vol']} 差数：{df['vol'].mean() / target_row['vol']}")
         # 缩量
@@ -178,9 +178,9 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
@@ -271,9 +271,9 @@ def simulated_sell(sell_out_fall_threshold=None,
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
-            WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
+            FROM daily_quotes
+            WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date
@@ -298,12 +298,12 @@ def simulated_sell(sell_out_fall_threshold=None,
             # 获取上一个交易日
             stock_pre_date_df = range_data[range_data['ts_code'] == ts_code].iloc[-2]
             kdj_data = db.mysql_localhost(f"""
-               SELECT x.J as J,x2.J AS J2 FROM stock_kdj x
-                inner join stock_kdj x2
+               SELECT x.j_value as J,x2.j_value AS J2 FROM kdj_indicators x
+                inner join kdj_indicators x2
                 on x.ts_code = x2.ts_code 
                WHERE x.trade_date ={now_date}
-               and x.ts_code = {ts_code}
-               and x2.trade_date = (SELECT MAX(trade_date) FROM stock_kdj x WHERE trade_date < {now_date})
+               and LPAD(SUBSTRING_INDEX(x.ts_code, '.', 1), 6, '0') = LPAD(CAST({ts_code} AS CHAR), 6, '0')
+               and x2.trade_date = (SELECT MAX(trade_date) FROM kdj_indicators x WHERE trade_date < {now_date})
             """, fetch=True)
             if len(kdj_data) == 0:
                 logger.error(f"{ts_code} {stock_info['name']} kdj_data is null")

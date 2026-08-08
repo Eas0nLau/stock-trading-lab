@@ -1,0 +1,20 @@
+{
+  "tables": {
+    "akshare_sh000001": {"table": "index_daily"},
+    "t_指数情绪周期_市场宽度": {"table": "index_market_breadth"},
+    "t_指数情绪周期_每日分析": {"table": "index_emotion_daily"},
+    "t_热门板块情绪_每日分析": {"table": "hot_board_emotion_daily"},
+    "stock_basic": {"table": "securities"},
+    "stock_daily": {"table": "daily_quotes"},
+    "stock_kdj": {"table": "kdj_indicators"},
+    "t_stock_5_min_k": {"table": "intraday_bars_5m"},
+    "t_韭研公社异动解析": {"table": "jiuyan_actions"},
+    "t_龙虎榜": {"table": "dragon_tiger"},
+    "t_龙虎榜_营业部_上榜历史数据": {"table": "broker_listing_history"},
+    "t_龙虎榜_营业部_上榜次数最多": {"table": "broker_top_stats"},
+    "t_龙虎榜_营业部_全部": {"table": "brokers"},
+    "t_同花顺板块列表": {"table": "ths_boards"},
+    "t_同花顺板块成分股": {"table": "ths_board_constituents"},
+    "t_同花顺股票板块概念对应关系": {"table": "ths_stock_relations"}
+  }
+}

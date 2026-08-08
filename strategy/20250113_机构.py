@@ -20,8 +20,16 @@ def strategy(filtered_codes, target_date):
 
     filtered_codes = []
     data_list = db.mysql_localhost(f"""
-        SELECT x.* FROM t_龙虎榜 x
-        where DATE = {target_date}
+        SELECT
+            `stock_code` AS `股票代码`, `stock_name` AS `股票名称`,
+            `net_buy_amount` AS `净买入额`, `date_type` AS `日期类型`,
+            `buy_1_broker_name` AS `买1营业部`, `buy_1_buy_amount` AS `买1买入额`, `buy_1_sell_amount` AS `买1卖出额`,
+            `buy_2_broker_name` AS `买2营业部`, `buy_2_buy_amount` AS `买2买入额`, `buy_2_sell_amount` AS `买2卖出额`,
+            `buy_3_broker_name` AS `买3营业部`, `buy_3_buy_amount` AS `买3买入额`, `buy_3_sell_amount` AS `买3卖出额`,
+            `buy_4_broker_name` AS `买4营业部`, `buy_4_buy_amount` AS `买4买入额`, `buy_4_sell_amount` AS `买4卖出额`,
+            `buy_5_broker_name` AS `买5营业部`, `buy_5_buy_amount` AS `买5买入额`, `buy_5_sell_amount` AS `买5卖出额`
+        FROM `dragon_tiger`
+        WHERE `trade_date` = {target_date}
 --         AND 股票代码 = 002757
     """, fetch=True)
     for row in data_list:
@@ -41,18 +49,18 @@ def strategy(filtered_codes, target_date):
             #     机构买入家数 = 2
         if 机构买入家数 >= 1:
             logger.warning(f"{row['股票代码']} {row['股票名称']} 机构买入家数：{机构买入家数}")
-            filtered_codes.append(int(row['股票代码']))
+            filtered_codes.append(common.normalize_ts_code(row['股票代码']))
     if not filtered_codes:
         return pd.DataFrame([])
     # 加载日线数据
     start_date = (datetime.strptime(str(target_date), "%Y%m%d") - timedelta(days=20)).strftime(
         '%Y%m%d')  # 余量确保足够数据
-    stock_daily = common.load_stock_daily_data(filtered_codes, start_date, target_date)
+    daily_quotes = common.load_daily_quotes_data(filtered_codes, start_date, target_date)
 
     logger.info(f"根据策略选择股票 开始")
     selected_stocks = []
     for ts_code in filtered_codes:
-        target_data = stock_daily[stock_daily['ts_code'] == ts_code]
+        target_data = daily_quotes[daily_quotes['ts_code'] == ts_code]
         if target_data.empty:
             continue
         if len(target_data) < 3:  # 需要足够数据计算均量
@@ -146,9 +154,9 @@ def simulated_buy():
     stock_name_list = selected_stocks['stock_name'].tolist()
     # 批量查询下一交易日数据
     query = f"""
-        SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low
-        FROM stock_daily
-        WHERE ts_code IN {str(tuple(selected_stocks['ts_code'].tolist())).replace(",)", ")")}
+        SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low
+        FROM daily_quotes
+        WHERE ts_code IN {common.stock_code_literals(selected_stocks['ts_code'].tolist())}
         AND trade_date >= {target_date}
         AND trade_date <= {range_date}
         order by trade_date
@@ -218,9 +226,9 @@ def simulated_sell(sell_out_fall_threshold=None,
     if selected_stocks:
         range_date = (datetime.strptime(str(now_date), "%Y%m%d") - timedelta(days=15)).strftime('%Y%m%d')  # 缓冲 30 天
         query = f"""
-            SELECT ts_code, trade_date, close, stock_name, open, pre_close, high, low, pct_chg
-            FROM stock_daily
-            WHERE ts_code IN  {str(tuple([int(i) for i in selected_stocks])).replace(",)", ")")}
+            SELECT ts_code, trade_date, close_price AS close, stock_name, open_price AS open, previous_close AS pre_close, high_price AS high, low_price AS low, change_pct AS pct_chg
+            FROM daily_quotes
+            WHERE ts_code IN {common.stock_code_literals(selected_stocks)}
             AND trade_date >= {range_date}
             AND trade_date <= {now_date}
             order by trade_date
