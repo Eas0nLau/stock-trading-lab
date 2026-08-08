@@ -32,10 +32,6 @@
                 class="px-5 py-2.5 hover:bg-[#1e293b] rounded-2xl transition-all flex items-center gap-2 active:bg-[#334155]">
           <span>🔥</span> 热门板块情绪
         </button>
-        <button @click="$emit('open-tab', '数据分析', 'Analysis')"
-                class="px-5 py-2.5 hover:bg-[#1e293b] rounded-2xl transition-all flex items-center gap-2 active:bg-[#334155]">
-          <span>📈</span> 数据分析
-        </button>
       </div>
     </div>
   </div>

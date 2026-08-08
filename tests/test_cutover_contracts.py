@@ -249,3 +249,9 @@ def route_handler(rows):
     assert "route:route_handler" in behavior
     assert "route:path" in behavior
     assert "algorithm:route_handler" in behavior
+
+
+def test_frontend_has_no_empty_analysis_entry():
+    assert not (ROOT / "front" / "src" / "views" / "Analysis.vue").exists()
+    assert "Analysis" not in (ROOT / "front" / "src" / "App.vue").read_text(encoding="utf-8")
+    assert "数据分析" not in (ROOT / "front" / "src" / "components" / "AppHeader.vue").read_text(encoding="utf-8")

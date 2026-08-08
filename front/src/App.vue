@@ -15,7 +15,6 @@ import TabBar from './components/TabBar.vue'
 import TabContent from './components/TabContent.vue'
 import { initDefaultTabs, openTab } from './composables/useTabs'
 import FundFlow from './views/FundFlow.vue'
-import Analysis from './views/Analysis.vue'
 import StrategyPickMonitor from './views/StrategyPickMonitor.vue'
 import IndexCycle from './views/IndexCycle.vue'
 import HotBoardEmotion from './views/HotBoardEmotion.vue'
@@ -29,7 +28,6 @@ initDefaultTabs()
 const handleOpenTab = (title, type) => {
   if (type === 'FundFlow') openTab(title, FundFlow)
   if (type === 'ConceptFundFlow') openTab(title, FundFlow, { title: '概念资金流向', flowType: 'concept' })
-  if (type === 'Analysis') openTab(title, Analysis)
   if (type === 'StrategyPickMonitor') openTab(title, StrategyPickMonitor)
   if (type === 'IndexCycle') openTab(title, IndexCycle)
   if (type === 'HotBoardEmotion') openTab(title, HotBoardEmotion)
