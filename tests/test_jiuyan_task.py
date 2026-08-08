@@ -42,6 +42,7 @@ def test_request_rate_limiter_waits_between_page_requests(monkeypatch):
     monkeypatch.setattr(jiuyan.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(jiuyan.time, "sleep", sleeps.append)
     monkeypatch.setattr(jiuyan, "MIN_REQUEST_INTERVAL_SECONDS", 60)
+    monkeypatch.setattr(jiuyan.random, "uniform", lambda low, high: 60.0)
     jiuyan._last_request_time = 70.0
 
     jiuyan.wait_for_request_slot()

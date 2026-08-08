@@ -1,4 +1,5 @@
 import datetime as dt
+import datetime as dt
 import json
 from types import SimpleNamespace
 
@@ -168,7 +169,8 @@ def test_default_writer_composes_repositories_and_commits_mysql_before_redis():
         redis_factory=lambda received: (received_settings.append(received), redis)[1],
     )
 
-    writer("industry", "20260807", "15:00:00", [{
+    trade_date = dt.date.today().strftime("%Y%m%d")
+    writer("industry", trade_date, "15:00:00", [{
         "board_code": "BK0420",
         "board_name": "robotics",
         "leader": "example",
@@ -181,7 +183,7 @@ def test_default_writer_composes_repositories_and_commits_mysql_before_redis():
     assert next(index for index, event in enumerate(events) if event[0] == "mysql_commit") < next(
         index for index, event in enumerate(events) if event[0] == "redis_set"
     )
-    redis_payload = json.loads(redis.values["fund_flow:v1:industry:history:20260807"])
+    redis_payload = json.loads(redis.values[f"fund_flow:v1:industry:history:{trade_date}"])
     assert redis_payload == [[{
         "board_code": "BK0420",
         "board_name": "robotics",

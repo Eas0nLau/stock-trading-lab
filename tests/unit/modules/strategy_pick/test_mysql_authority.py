@@ -1,3 +1,5 @@
+from datetime import date
+
 from stock_lab.modules.strategy_pick.collector import StrategyPickCollector
 from stock_lab.modules.strategy_pick.repository import StrategyPickRepository
 
@@ -30,7 +32,7 @@ class MySQL:
     def save_strategies(self, strategies): self._strategies = strategies
     def latest(self, strategy_id):
         if self.failure == "latest": raise RuntimeError("mysql unavailable")
-        return {"strategyId": strategy_id, "collectedDate": "20260807", "stocks": []}
+        return {"strategyId": strategy_id, "collectedDate": date.today().strftime("%Y%m%d"), "stocks": []}
     def history(self, strategy_id, date): return [{"strategyId": strategy_id, "collectedDate": date, "stocks": []}]
     def dates(self, strategy_id=None): return ["20260807"]
     def events(self, strategy_id, date): return [{"eventId": "db-event", "strategyId": strategy_id}]
@@ -58,7 +60,7 @@ def test_mysql_reads_ignore_stale_redis_values():
     redis.values["strategy_pick:v1:eastmoney_1:latest"] = '{"status":"stale"}'
     repository = StrategyPickRepository(redis, MySQL())
 
-    assert repository.latest("eastmoney_1")["collectedDate"] == "20260807"
+    assert repository.latest("eastmoney_1")["collectedDate"] == date.today().strftime("%Y%m%d")
 
 
 def test_mysql_write_failure_does_not_touch_cache_or_publish_success():

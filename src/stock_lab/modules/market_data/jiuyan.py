@@ -1,6 +1,7 @@
 import datetime as dt
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -12,9 +13,14 @@ class IncompleteJiuyanResponse(RuntimeError):
     pass
 
 
+class HumanVerificationRequired(IncompleteJiuyanResponse):
+    pass
+
+
 PAGE_TEMPLATE = os.getenv("JIUYAN_ACTION_URL_TEMPLATE", "https://www.jiuyangongshe.com/action/{date_text}")
 LISTEN_TARGET = "/jystock-app/api/v1/action/field"
 MIN_REQUEST_INTERVAL_SECONDS = max(int(os.getenv("JIUYAN_MIN_REQUEST_INTERVAL_SECONDS", "60")), 1)
+MAX_REQUEST_INTERVAL_SECONDS = max(int(os.getenv("JIUYAN_MAX_REQUEST_INTERVAL_SECONDS", "105")), MIN_REQUEST_INTERVAL_SECONDS)
 MAX_ATTEMPTS = max(int(os.getenv("JIUYAN_MAX_ATTEMPTS", "2")), 1)
 _request_lock = threading.Lock()
 _last_request_time = 0.0
@@ -24,7 +30,7 @@ def wait_for_request_slot():
     global _last_request_time
     with _request_lock:
         now = time.monotonic()
-        wait_seconds = max(0.0, MIN_REQUEST_INTERVAL_SECONDS - (now - _last_request_time))
+        wait_seconds = max(0.0, random.uniform(MIN_REQUEST_INTERVAL_SECONDS, MAX_REQUEST_INTERVAL_SECONDS) - (now - _last_request_time))
         if wait_seconds:
             time.sleep(wait_seconds)
         _last_request_time = time.monotonic()
@@ -131,6 +137,20 @@ def _decode_response(body):
         return json.loads(text[start + 1:end]) if start >= 0 and end > start else None
 
 
+def page_requires_human_verification(page) -> bool:
+    prompts = ("拖动下方滑块完成拼图", "拖动左边滑块完成上方拼图")
+    for prompt in prompts:
+        try:
+            if page.ele(f"text={prompt}", timeout=0.1):
+                return True
+        except Exception:
+            continue
+    try:
+        return any(prompt in str(getattr(page, "html", "") or "") for prompt in prompts)
+    except Exception:
+        return False
+
+
 class JiuyanBrowserSource:
     def __init__(self, page_factory):
         self.page_factory = page_factory
@@ -141,6 +161,8 @@ class JiuyanBrowserSource:
         page = self.page_factory("jiuyan-action", background=True)
         page.listen.start([LISTEN_TARGET])
         page.get(url, timeout=0)
+        if page_requires_human_verification(page):
+            raise HumanVerificationRequired("Jiuyan requires manual slider verification")
         tab = page.ele("text=全部异动解析")
         if tab:
             tab.click()
@@ -173,6 +195,8 @@ class JiuyanCollector:
                     "limit_up_reason": row.get("涨停解析"),
                 } for row in rows]
                 return self.repository.upsert_jiuyan_actions(canonical)
+            except HumanVerificationRequired:
+                raise
             except Exception as error:
                 last_error = error
                 logger.warning("Jiuyan collection attempt {}/{} failed: {}", attempt, self.max_attempts, error)

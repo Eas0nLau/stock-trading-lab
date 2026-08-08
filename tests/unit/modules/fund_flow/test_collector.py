@@ -1,5 +1,6 @@
 import threading
 import time
+import datetime as dt
 from types import SimpleNamespace
 
 import pytest
@@ -33,7 +34,7 @@ def test_collector_commits_mysql_before_redis_success_state():
             calls.append("redis")
             super().save_history(*args)
 
-    save_snapshot(Redis(), "industry", "20260807", "10:00:00", [{"board_code": "A", "net_inflow_100m": 1}], MySQL())
+    save_snapshot(Redis(), "industry", dt.date.today().strftime("%Y%m%d"), "10:00:00", [{"board_code": "A", "net_inflow_100m": 1}], MySQL())
 
     assert calls == ["mysql", "redis"]
 
