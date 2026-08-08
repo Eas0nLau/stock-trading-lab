@@ -329,13 +329,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createStrategyPick, deleteStrategyPick, fetchStrategyPickDateData, fetchStrategyPickDates, fetchStrategyPickLatest, fetchStrategyPickStrategies, openStrategyPickStream, refreshStrategyPick, updateStrategyPick } from '../modules/strategy-pick/api.js'
 
-const props = defineProps({
-  active: {
-    type: Boolean,
-    default: true,
-  },
-})
-
 const selectedDate = ref(getTodayKey())
 const selectedStrategyId = ref('')
 const strategies = ref([])

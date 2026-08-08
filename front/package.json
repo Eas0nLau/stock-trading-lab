@@ -10,7 +10,6 @@
     "test": "node --test src/modules/*/*.test.js"
   },
   "dependencies": {
-    "@tailwindcss/postcss": "^4.2.4",
     "autoprefixer": "^10.5.0",
     "echarts": "^6.0.0",
     "postcss": "^8.5.12",

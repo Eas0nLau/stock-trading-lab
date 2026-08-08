@@ -266,3 +266,19 @@ def test_retired_python_utilities_are_absent():
         "tests/test_driver_chrome.py",
     )
     assert [path for path in retired if (ROOT / path).exists()] == []
+
+
+def test_frontend_template_residue_is_absent():
+    retired = (
+        "front/src/assets/hero.png",
+        "front/src/assets/vite.svg",
+        "front/src/assets/vue.svg",
+        "front/public/icons.svg",
+        "front/README.md",
+    )
+    assert [path for path in retired if (ROOT / path).exists()] == []
+    assert "@tailwindcss/postcss" not in (ROOT / "front" / "package.json").read_text(encoding="utf-8")
+    style = (ROOT / "front" / "src" / "style.css").read_text(encoding="utf-8")
+    assert ".card" not in style
+    assert ".tab-active" not in style
+    assert "defineProps" not in (ROOT / "front" / "src" / "views" / "StrategyPickMonitor.vue").read_text(encoding="utf-8")
