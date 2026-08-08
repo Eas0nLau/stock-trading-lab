@@ -107,21 +107,22 @@ def test_backfill_uses_calendar_year_bounds_and_writes_newest_first():
     assert result["status"] == "success"
     assert result["processed_dates"] == [20260807, 20260806, 20250807]
     assert result["failed_dates"] == []
-    assert [(prefix, date) for prefix, date, _, _ in writes] == [
-        ("fund_flow", "20260807"),
-        ("fund_flow_概念", "20260807"),
-        ("fund_flow", "20260806"),
-        ("fund_flow_概念", "20260806"),
-        ("fund_flow", "20250807"),
-        ("fund_flow_概念", "20250807"),
+    assert [(flow_type, date) for flow_type, date, _, _ in writes] == [
+        ("industry", "20260807"),
+        ("concept", "20260807"),
+        ("industry", "20260806"),
+        ("concept", "20260806"),
+        ("industry", "20250807"),
+        ("concept", "20250807"),
     ]
     assert all(snapshot_time == "15:00:00" for _, _, snapshot_time, _ in writes)
     assert writes[0][3][0] == {
-        "时间": "15:00:00",
-        "板块代码": "industry-1",
-        "板块名称": "industry-board",
-        "龙头": "leader",
-        "资金净流入(亿)": 3.0,
+        "trade_date": 20260807,
+        "board_code": "industry-1",
+        "board_name": "industry-board",
+        "leader": "leader",
+        "net_inflow_100m": 3.0,
+        "flow_type": "industry",
     }
     assert sleeps == [0.25, 0.25, 0.25]
 
@@ -191,6 +192,6 @@ def test_write_network_failure_is_reported_and_older_dates_continue():
         {"trade_date": 20260807, "error": "redis unavailable"}
     ]
     assert writes == [
-        ("fund_flow", "20260806"),
-        ("fund_flow_概念", "20260806"),
+        ("industry", "20260806"),
+        ("concept", "20260806"),
     ]

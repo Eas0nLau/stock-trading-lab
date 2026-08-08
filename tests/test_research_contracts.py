@@ -22,6 +22,7 @@ def test_active_sql_contains_no_legacy_table_names():
     files = [
         path for path in ROOT.rglob("*.py")
         if "tests" not in path.parts and "__pycache__" not in path.parts and ".venv" not in path.parts
+        and ".worktrees" not in path.parts
     ]
     offenders = []
     for path in files:

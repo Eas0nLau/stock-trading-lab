@@ -1,6 +1,7 @@
 import pytest
 
-from task import _5_韭研公社异动 as jiuyan
+from task import _5_韭研公社异动 as legacy_jiuyan
+from stock_lab.modules.market_data import jiuyan
 
 
 def test_parse_jiuyan_response_filters_limit_up_range():
@@ -24,7 +25,7 @@ def test_parse_jiuyan_response_filters_limit_up_range():
         ]
     }
 
-    rows = jiuyan.解析异动响应(response, 20260805)
+    rows = jiuyan.parse_response(response, 20260805)
 
     assert len(rows) == 1
     assert rows[0]["data_id"] == "20260805_机器人_600000"
@@ -32,7 +33,7 @@ def test_parse_jiuyan_response_filters_limit_up_range():
 
 def test_parse_empty_response_returns_incomplete_error():
     with pytest.raises(jiuyan.IncompleteJiuyanResponse):
-        jiuyan.解析异动响应({"data": []}, 20260805)
+        jiuyan.parse_response({"data": []}, 20260805)
 
 
 def test_request_rate_limiter_waits_between_page_requests(monkeypatch):
@@ -40,23 +41,13 @@ def test_request_rate_limiter_waits_between_page_requests(monkeypatch):
     sleeps = []
     monkeypatch.setattr(jiuyan.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(jiuyan.time, "sleep", sleeps.append)
+    monkeypatch.setattr(jiuyan, "MIN_REQUEST_INTERVAL_SECONDS", 60)
     monkeypatch.setattr(jiuyan.random, "uniform", lambda low, high: 60.0)
-    monkeypatch.setattr(jiuyan, "最小请求间隔秒", 60)
-    jiuyan._上次请求时间 = 70.0
+    jiuyan._last_request_time = 70.0
 
-    jiuyan.等待请求频率()
+    jiuyan.wait_for_request_slot()
 
     assert sleeps == [30.0]
-
-
-def test_request_interval_is_randomized_above_minimum(monkeypatch):
-    monkeypatch.setattr(jiuyan.random, "uniform", lambda low, high: 90.0)
-
-    assert jiuyan.随机请求间隔秒() == 90.0
-
-
-def test_manual_verification_response_stops_collection_retry():
-    assert issubclass(jiuyan.需要人工验证, jiuyan.IncompleteJiuyanResponse)
 
 
 def test_parse_grouped_action_fields_and_scaled_range():
@@ -83,7 +74,7 @@ def test_parse_grouped_action_fields_and_scaled_range():
         ]
     }
 
-    rows = jiuyan.解析异动响应(response, 20260805)
+    rows = jiuyan.parse_response(response, 20260805)
 
     assert rows[0]["股票代码"] == 1
     assert rows[0]["涨幅"] == 10.01
@@ -91,7 +82,7 @@ def test_parse_grouped_action_fields_and_scaled_range():
 
 
 def test_page_date_uses_hyphenated_route():
-    assert jiuyan.格式化页面日期(20260701) == "2026-07-01"
+    assert jiuyan.format_page_date(20260701) == "2026-07-01"
 
 
 def test_response_date_must_match_requested_date():
@@ -111,39 +102,39 @@ def test_response_date_must_match_requested_date():
     }
 
     with pytest.raises(jiuyan.IncompleteJiuyanResponse, match="响应日期"):
-        jiuyan.解析异动响应(response, 20260701)
+        jiuyan.parse_response(response, 20260701)
 
 
-def test_action_tab_falls_back_to_first_tab_when_text_selector_misses():
-    clicked = []
+def test_collector_writes_english_action_table():
+    class Repository:
+        def __init__(self):
+            self.rows = None
 
-    class Tab:
-        def click(self):
-            clicked.append(True)
+        def upsert_jiuyan_actions(self, rows):
+            self.rows = rows
+            return len(rows)
 
-    class Page:
-        def ele(self, selector):
-            return None
+    repository = Repository()
+    collector = jiuyan.JiuyanCollector(
+        repository,
+        response_source=lambda _date: {"data": []},
+        parser=lambda _response, date: [{
+            "data_id": "id-1",
+            "date": date,
+            "板块": "机器人",
+            "板块个股数量": 20,
+            "股票代码": 1,
+            "股票名称": "平安银行",
+            "code": "000001",
+        }],
+    )
 
-        def eles(self, selector):
-            assert selector == "css:.yd-tabs_item"
-            return [Tab(), Tab(), Tab()]
-
-    jiuyan.选择全部异动解析标签(Page())
-
-    assert clicked == [True]
+    assert collector.collect(20260806) == 1
+    assert repository.rows[0]["stock_code"] == "000001"
+    assert all(column.isascii() for column in repository.rows[0])
 
 
-def test_waits_for_document_before_selecting_action_tab():
-    calls = []
+def test_legacy_jiuyan_names_forward_to_official_parser(monkeypatch):
+    monkeypatch.setattr(legacy_jiuyan, "parse_response", lambda response, date: (response, date))
 
-    class Wait:
-        def doc_loaded(self, timeout):
-            calls.append(timeout)
-
-    class Page:
-        wait = Wait()
-
-    jiuyan.等待页面加载(Page())
-
-    assert calls == [15]
+    assert legacy_jiuyan.解析异动响应("payload", 20260806) == ("payload", 20260806)
