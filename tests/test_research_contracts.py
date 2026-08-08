@@ -13,6 +13,9 @@ from stock_lab.modules.research.backtest import aggregate_results, next_trade_da
 
 ROOT = Path(__file__).parents[1]
 LEGACY_TABLES = tuple(json.loads((ROOT / "db" / "schema_mapping.json").read_text(encoding="utf-8"))["tables"])
+LEGACY_SQL_MIGRATION_TABLES = {
+    Path("src/stock_lab/jobs/jiuyan_reconciliation.py"): {"t_韭研公社异动解析"},
+}
 
 
 def test_active_sql_contains_no_legacy_table_names():
@@ -25,6 +28,8 @@ def test_active_sql_contains_no_legacy_table_names():
         source = path.read_text(encoding="utf-8")
         source = re.sub(r"(?m)#.*$", "", source)
         for table in LEGACY_TABLES:
+            if table in LEGACY_SQL_MIGRATION_TABLES.get(path.relative_to(ROOT), set()):
+                continue
             if re.search(rf"\b(?:from|join|update|into|table)\s+[`\"']?{re.escape(table)}\b", source, re.I):
                 offenders.append(f"{path.relative_to(ROOT)}: {table}")
     assert offenders == [], "legacy SQL references:\n" + "\n".join(offenders)

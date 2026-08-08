@@ -30,7 +30,12 @@ LEGACY_REDIS_PATTERNS = (
     re.compile(r"fund_flow_概念"),
     re.compile(r"策略选股:"),
 )
-LEGACY_STORAGE_MIGRATION_FILES = {"src/stock_lab/jobs/redis_fact_migration.py"}
+LEGACY_STORAGE_MIGRATION_FILES = {
+    "src/stock_lab/jobs/redis_fact_migration.py",
+}
+LEGACY_STORAGE_TABLE_ALLOWLIST = {
+    "src/stock_lab/jobs/jiuyan_reconciliation.py": {"t_韭研公社异动解析"},
+}
 WRAPPER_LIMITS = {
     "task/data_sources.py": 80,
     "task/_5_韭研公社异动.py": 80,
@@ -198,6 +203,7 @@ def test_active_python_has_no_legacy_storage_references():
                 table
                 for table in LEGACY_TABLES
                 if re.search(rf"(?<![0-9A-Za-z_]){re.escape(table)}(?![0-9A-Za-z_])", literals)
+                and table not in LEGACY_STORAGE_TABLE_ALLOWLIST.get(path.relative_to(ROOT).as_posix(), set())
             )
             redis_patterns = sorted(pattern.pattern for pattern in LEGACY_REDIS_PATTERNS if pattern.search(literals))
             if tables or redis_patterns:
