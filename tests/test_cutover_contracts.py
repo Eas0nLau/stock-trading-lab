@@ -1,5 +1,6 @@
 import ast
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -282,3 +283,15 @@ def test_frontend_template_residue_is_absent():
     assert ".card" not in style
     assert ".tab-active" not in style
     assert "defineProps" not in (ROOT / "front" / "src" / "views" / "StrategyPickMonitor.vue").read_text(encoding="utf-8")
+
+
+def test_output_directory_tracks_only_ignore_policy():
+    tracked = subprocess.run(
+        ["git", "ls-files", "output"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert tracked == ["output/.gitignore"]
+    assert (ROOT / "output" / ".gitignore").read_text(encoding="utf-8") == "*\n!.gitignore\n"
