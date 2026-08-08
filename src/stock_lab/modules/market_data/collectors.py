@@ -1,3 +1,5 @@
+import time
+
 import pandas as pd
 
 from stock_lab.config import get_settings
@@ -46,7 +48,23 @@ class MarketDataCollector:
         dates = [date for date in self.trading_dates(1000) if int(start_date) <= int(date) <= int(end_date)]
         if not dates:
             dates = [int(end_date)]
-        frames = [frame for date in dates if (frame := self.quote_source(date)) is not None and not frame.empty]
+        existing = set(self.repository.daily_quote_dates(start_date, end_date))
+        dates = [date for date in dates if int(date) not in existing]
+        if not dates:
+            return 0
+        frames = []
+        for date in dates:
+            started_at = time.monotonic()
+            try:
+                frame = self.quote_source(date)
+            except Exception as error:
+                if "频率" not in str(error):
+                    raise
+                time.sleep(65)
+                frame = self.quote_source(date)
+            if frame is not None and not frame.empty:
+                frames.append(frame)
+            time.sleep(max(0.0, 1.3 - (time.monotonic() - started_at)))
         if not frames:
             raise RuntimeError(f"Tushare returned no daily quotes for {start_date}-{end_date}")
         names = {normalize_symbol(row.get("symbol")): row.get("name") for row in self.repository.securities()}

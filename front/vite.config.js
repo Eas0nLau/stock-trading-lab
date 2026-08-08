@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   server: {
-    port: 8990,
+    port: 9527,
     host: true,                    // 允许外部访问（重要）
     allowedHosts: [
       '.ngrok-free.app'            // 允许所有 ngrok-free.app 的子域名（推荐）
@@ -13,7 +13,7 @@ export default defineConfig({
     ],
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8051',
+        target: 'http://127.0.0.1:8527',
         changeOrigin: true
       }
     }

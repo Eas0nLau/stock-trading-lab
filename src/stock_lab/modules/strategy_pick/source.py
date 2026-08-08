@@ -69,7 +69,12 @@ def _clean_concepts(value, excluded_concepts):
 def parse_strategy_response(payload, excluded_concepts=()):
     if not isinstance(payload, dict):
         return None
-    result = (payload.get("data") or {}).get("result") or {}
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None
+    result = data.get("result") or {}
+    if not isinstance(result, dict):
+        return None
     rows = result.get("dataList")
     if not isinstance(rows, list):
         return None
@@ -142,6 +147,25 @@ def execution_slot(strategy, now):
     return f"{now:%Y%m%d}:{seconds // interval}"
 
 
+class HumanVerificationRequired(RuntimeError):
+    """The source page requires a user to complete an anti-bot challenge."""
+
+
+def page_requires_human_verification(page) -> bool:
+    prompts = ("拖动下方滑块完成拼图", "拖动左边滑块完成上方拼图")
+    for prompt in prompts:
+        try:
+            if page.ele(f"text={prompt}", timeout=0.1):
+                return True
+        except Exception:
+            continue
+    try:
+        html = str(getattr(page, "html", "") or "")
+    except Exception:
+        return False
+    return any(prompt in html for prompt in prompts)
+
+
 class StrategyPickSource:
     def __init__(self, page_factory, repository, *, settings=None, clock=datetime.datetime.now, sleeper=time.sleep):
         self.page_factory = page_factory
@@ -165,6 +189,8 @@ class StrategyPickSource:
         )
         page.listen.start(strategy.get("listenTargets") or ["/api/smart-tag/stock/v3/pw/search-code"])
         page.get(strategy["pageUrl"], timeout=0)
+        if page_requires_human_verification(page):
+            raise HumanVerificationRequired("Eastmoney requires manual slider verification")
         for packet in page.listen.steps(timeout=self.settings.strategy_pick_timeout_seconds):
             payload = decode_response(packet.response.body)
             stocks = parse_strategy_response(payload, self.settings.concept_exclusions)
@@ -179,6 +205,9 @@ class StrategyPickSource:
             for attempt in range(1, self.settings.strategy_pick_max_retries + 1):
                 try:
                     return self._snapshot(strategy, self._collect_stocks(strategy))
+                except HumanVerificationRequired as error:
+                    last_error = error
+                    break
                 except Exception as error:
                     last_error = error
                     logger.warning("Strategy collection attempt {}/{} failed: {}", attempt, self.settings.strategy_pick_max_retries, error)

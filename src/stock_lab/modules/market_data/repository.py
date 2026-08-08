@@ -54,6 +54,21 @@ class MarketDataRepository:
     def daily_quotes_for_date(self, trade_date, stock_codes):
         return self.daily_quotes(stock_codes, trade_date, trade_date)
 
+    def daily_quote_dates(self, start_date=None, end_date=None):
+        conditions = []
+        params = []
+        if start_date is not None:
+            conditions.append("`trade_date` >= %s")
+            params.append(int(start_date))
+        if end_date is not None:
+            conditions.append("`trade_date` <= %s")
+            params.append(int(end_date))
+        sql = "SELECT DISTINCT `trade_date` FROM `daily_quotes`"
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        rows = self._query(sql, params=tuple(params) if params else None, fetch=True) or []
+        return sorted({int(row["trade_date"]) for row in rows if row.get("trade_date")})
+
     def index_daily(self, start_date=None, end_date=None, limit=None):
         conditions = []
         params = []

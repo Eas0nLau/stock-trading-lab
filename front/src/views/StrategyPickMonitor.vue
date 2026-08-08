@@ -1,6 +1,6 @@
 <template>
   <div class="h-full overflow-hidden bg-[#0f172a] text-slate-100">
-    <div class="mx-auto flex h-full min-h-0 max-w-[1900px] flex-col gap-4 px-6 py-5">
+    <div class="mx-auto flex h-full min-h-0 flex-col gap-4 px-6 py-5">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div>
           <h1 class="text-xl font-semibold text-white">策略选股监控</h1>

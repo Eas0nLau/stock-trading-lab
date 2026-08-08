@@ -20,7 +20,7 @@ class FrontendProcess:
         self.process: subprocess.Popen | None = None
 
     @staticmethod
-    def build_command(project_root: Path | str, port: int = 8990) -> FrontendCommand:
+    def build_command(project_root: Path | str, port: int = 9527) -> FrontendCommand:
         root = Path(project_root).resolve()
         front_dir = root / "front"
         if not front_dir.is_dir():
@@ -34,7 +34,7 @@ class FrontendProcess:
                 raise RuntimeError("Node.js/npm was not found on PATH")
             command = FrontendCommand(args=[npm_path, "run", "dev"], cwd=front_dir, env=None)
 
-        if port != 8990:
+        if port != 9527:
             command.args.extend(["--", "--port", str(port)])
         return command
 
@@ -58,7 +58,7 @@ class FrontendProcess:
             creation_flags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
-    def start(self, project_root: Path | str, port: int = 8990) -> subprocess.Popen:
+    def start(self, project_root: Path | str, port: int = 9527) -> subprocess.Popen:
         if self.process is not None and self.process.poll() is None:
             return self.process
 
