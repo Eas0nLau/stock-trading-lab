@@ -59,6 +59,17 @@ def test_settings_reads_tdx_refresh_interval(monkeypatch):
     assert Settings.from_env(load_file=False).tdx_cache_refresh_interval_seconds == 4.5
 
 
+def test_settings_reads_browser_runtime_flags(monkeypatch):
+    from stock_lab.config.settings import Settings
+
+    set_required_env(monkeypatch, BROWSER_AUTO_START="0", BROWSER_HEADLESS="1")
+
+    settings = Settings.from_env(load_file=False)
+
+    assert settings.browser_auto_start is False
+    assert settings.browser_headless is True
+
+
 def test_legacy_config_projects_new_settings(monkeypatch):
     monkeypatch.setattr(dotenv, "load_dotenv", lambda *_args, **_kwargs: False)
     set_required_env(monkeypatch)

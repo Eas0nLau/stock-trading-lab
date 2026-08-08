@@ -3,6 +3,8 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from stock_lab.infrastructure.browser import client
 from stock_lab.modules.strategy_pick.collector import create_strategy_pick_source
 
@@ -69,6 +71,18 @@ def test_create_page_forwards_composed_settings_to_browser(monkeypatch):
 
     assert page is browser
     assert observed == [settings]
+
+
+def test_create_browser_refuses_to_launch_when_auto_start_is_disabled():
+    settings = SimpleNamespace(
+        project_root=Path("project"),
+        browser_close_old_tabs=False,
+        browser_auto_start=False,
+        browser_headless=True,
+    )
+
+    with pytest.raises(RuntimeError, match="BROWSER_AUTO_START"):
+        client.create_browser(settings=settings)
 
 
 def test_strategy_pick_factory_binds_composed_settings_to_page_factory():

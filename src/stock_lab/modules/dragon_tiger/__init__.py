@@ -10,6 +10,7 @@ from .parsing import (
     parse_listing_page,
 )
 from .repository import DragonTigerRepository
+from .jobs import DragonTigerCollectionJobManager
 
 __all__ = [
     "Broker",
@@ -17,6 +18,7 @@ __all__ = [
     "BrokerTopStats",
     "DragonTigerListing",
     "DragonTigerRepository",
+    "DragonTigerCollectionJobManager",
     "analyze_broker_premium",
     "collect_broker_directory",
     "collect_broker_history",

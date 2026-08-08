@@ -23,7 +23,14 @@ def create_app(
     manager = worker_manager or worker_factory(settings=settings)
     app = FastAPI(
         title="stock_trading_lab_api",
-        lifespan=create_lifespan(manager, migration_validator=migration_validator, settings=settings),
+        lifespan=create_lifespan(
+            manager,
+            migration_validator=migration_validator,
+            settings=settings,
+            job_managers=lambda current_app: tuple(
+                manager for manager in (getattr(current_app.state, "dragon_tiger_job_manager", None),) if manager
+            ),
+        ),
     )
     app.add_middleware(
         CORSMiddleware,

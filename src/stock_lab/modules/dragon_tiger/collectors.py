@@ -7,9 +7,14 @@ from .parsing import (
 )
 
 
-def collect_listings(start_date, repository, fetch_page):
+def collect_listings(start_date, repository, fetch_page, end_date=None):
     listings = []
-    for trade_date in repository.trading_dates(start_date):
+    dates = (
+        repository.trading_dates(start_date)
+        if end_date is None
+        else repository.trading_dates(start_date, end_date)
+    )
+    for trade_date in dates:
         listings.extend(parse_listing_page(fetch_page(trade_date), trade_date))
     brokers = listing_brokers(listings)
     history = listing_history(listings)

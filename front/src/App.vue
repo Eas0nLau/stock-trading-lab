@@ -18,6 +18,7 @@ import FundFlow from './views/FundFlow.vue'
 import StrategyPickMonitor from './views/StrategyPickMonitor.vue'
 import IndexCycle from './views/IndexCycle.vue'
 import HotBoardEmotion from './views/HotBoardEmotion.vue'
+import DragonTigerPremium from './views/DragonTigerPremium.vue'
 import { openStrategyPickStream } from './modules/strategy-pick/api.js'
 
 const notifiedStrategyEventIds = new Set()
@@ -31,6 +32,7 @@ const handleOpenTab = (title, type) => {
   if (type === 'StrategyPickMonitor') openTab(title, StrategyPickMonitor)
   if (type === 'IndexCycle') openTab(title, IndexCycle)
   if (type === 'HotBoardEmotion') openTab(title, HotBoardEmotion)
+  if (type === 'DragonTigerPremium') openTab(title, DragonTigerPremium)
 }
 
 onMounted(() => {

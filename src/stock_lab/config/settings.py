@@ -34,6 +34,8 @@ class Settings:
     init_url: str
     tdx_cache_refresh_interval_seconds: float
     browser_close_old_tabs: bool
+    browser_auto_start: bool
+    browser_headless: bool
     fund_flow_interval_seconds: int
     fund_flow_history_top_n: int
     concept_exclusions: tuple[str, ...]
@@ -73,6 +75,8 @@ class Settings:
                 defaults.DEFAULT_TDX_CACHE_REFRESH_INTERVAL_SECONDS,
             ),
             browser_close_old_tabs=defaults.DEFAULT_BROWSER_CLOSE_OLD_TABS,
+            browser_auto_start=_optional_bool_env("BROWSER_AUTO_START", defaults.DEFAULT_BROWSER_AUTO_START),
+            browser_headless=_optional_bool_env("BROWSER_HEADLESS", defaults.DEFAULT_BROWSER_HEADLESS),
             fund_flow_interval_seconds=defaults.DEFAULT_FUND_FLOW_INTERVAL_SECONDS,
             fund_flow_history_top_n=defaults.DEFAULT_FUND_FLOW_HISTORY_TOP_N,
             concept_exclusions=defaults.DEFAULT_CONCEPT_EXCLUSIONS,
@@ -121,6 +125,17 @@ def _optional_positive_float_env(name: str, default: float) -> float:
     if parsed <= 0:
         raise RuntimeError(f"环境变量 {name} 必须是正数")
     return parsed
+
+
+def _optional_bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"环境变量 {name} 必须是布尔值")
 
 
 def _csv_env(name: str) -> list[str]:

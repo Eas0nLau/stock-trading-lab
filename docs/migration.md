@@ -19,7 +19,7 @@
 | `task/_2_分时数据获取_5分k.py` | `stock_lab.jobs.intraday_bars_5m` | 已恢复薄兼容入口；正式采集写入 `intraday_bars_5m` |
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
 | KDJ 更新与策略 SQL | `stock_lab.jobs.kdj_indicators` / `kdj_indicators` | 已切换英文任务、列名和表名 |
-| `游资溢价分析/` | `stock_lab.modules.dragon_tiger` | canonical models, parsers, repositories, collectors, and premium analysis migrated; executable paths are thin adapters |
+| 龙虎榜溢价页面 | `stock_lab.modules.dragon_tiger` | canonical models, parsers, repositories, collectors, premium analysis, and async API are active |
 | `strategy/` | `stock_lab.modules.research` | 57 个单日选股 adapter、共享回测编排、本地/离线 provider 已迁移；中文源文件保留参数和展示名称 |
 | 同花顺板块归档表 | `stock_lab.modules.ths` | 三张英文表由只读 repository 正式拥有；仅通过迁移导入，无运行时采集器或消费者 |
 
@@ -97,8 +97,8 @@ Dragon-tiger and broker migration
 parsers, repository SQL, collector orchestration, and broker-premium analysis
 for `dragon_tiger`, `broker_listing_history`, `broker_top_stats`, and `brokers`.
 Premium analysis reads `daily_quotes` through `MarketDataRepository`. The old
-`游资溢价分析` files contain only executable adapters and perform no work when
-imported. Active strategy dragon-tiger queries use canonical tables and columns;
+`游资溢价分析` files have been retired; collection and analysis use the 龙虎榜溢价
+page and `/api/v1/dragon-tiger/*` endpoints. Active strategy dragon-tiger queries use canonical tables and columns;
 Chinese aliases remain only where historical DataFrame consumers require them.
 
 THS archival reference migration

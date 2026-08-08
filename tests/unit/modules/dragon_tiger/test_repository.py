@@ -49,6 +49,16 @@ def test_trading_dates_are_read_from_daily_quotes():
     assert query.calls[0][1] == (20260806,)
 
 
+def test_trading_dates_accept_an_inclusive_end_date():
+    query = FakeQuery([{"trade_date": 20260805}, {"trade_date": 20260806}])
+
+    result = DragonTigerRepository(query).trading_dates(20260805, 20260805)
+
+    assert result == [20260805]
+    assert "`trade_date` <= %s" in query.calls[0][0]
+    assert query.calls[0][1] == (20260805, 20260805)
+
+
 def test_listings_use_bound_filters_and_canonical_columns():
     query = FakeQuery([{"stock_code": "000001", "trade_date": 20260806}])
 

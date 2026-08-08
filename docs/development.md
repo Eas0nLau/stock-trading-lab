@@ -21,7 +21,7 @@ uv run python app.py
 
 ```powershell
 uv run pytest -q
-uv run python -m compileall -q src task 实时监控 游资溢价分析 utils strategy tests
+uv run python -m compileall -q src task 实时监控 utils strategy tests
 npm --prefix front test
 npm --prefix front run build
 ```

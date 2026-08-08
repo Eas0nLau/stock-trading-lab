@@ -18,13 +18,22 @@ class DragonTigerRepository:
         self._query = query
         self._engine = engine
 
-    def trading_dates(self, start_date):
+    def trading_dates(self, start_date, end_date=None):
+        conditions = ["`trade_date` >= %s"]
+        params = [int(start_date)]
+        if end_date is not None:
+            conditions.append("`trade_date` <= %s")
+            params.append(int(end_date))
         rows = self._query(
-            "SELECT DISTINCT `trade_date` FROM `daily_quotes` WHERE `trade_date` >= %s ORDER BY `trade_date`",
-            params=(int(start_date),),
+            f"SELECT DISTINCT `trade_date` FROM `daily_quotes` WHERE {' AND '.join(conditions)} ORDER BY `trade_date`",
+            params=tuple(params),
             fetch=True,
         ) or []
-        return [int(row["trade_date"]) for row in rows if int(row["trade_date"]) >= int(start_date)]
+        return [
+            int(row["trade_date"])
+            for row in rows
+            if int(start_date) <= int(row["trade_date"]) <= (int(end_date) if end_date is not None else int(row["trade_date"]))
+        ]
 
     def listings(self, trade_date=None, start_date=None, end_date=None, stock_codes=None):
         conditions = []

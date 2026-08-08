@@ -36,7 +36,11 @@ def _new_browser(*, settings=None, close_old_tabs=None):
         from stock_lab.config import get_settings
 
         settings = get_settings()
+    if not getattr(settings, "browser_auto_start", True):
+        raise RuntimeError("BROWSER_AUTO_START is disabled; enable it before using browser-backed collection")
     options = ChromiumOptions()
+    if getattr(settings, "browser_headless", False):
+        options.headless(True)
     options.set_timeouts(1, 2, 5)
     options.set_user_data_path(str(settings.project_root / "data" / "chrome_profile"))
     browser = WebPage(chromium_options=options)
@@ -61,7 +65,12 @@ def create_browser(close_old_tabs=None, *, settings=None):
 
         settings = get_settings()
     should_close = settings.browser_close_old_tabs if close_old_tabs is None else close_old_tabs
-    configuration = (str(settings.project_root), bool(should_close))
+    configuration = (
+        str(settings.project_root),
+        bool(should_close),
+        bool(getattr(settings, "browser_auto_start", True)),
+        bool(getattr(settings, "browser_headless", False)),
+    )
     with _lock:
         if not _is_browser_available(_browser) or _browser_configuration != configuration:
             _browser = _new_browser(settings=settings, close_old_tabs=close_old_tabs)

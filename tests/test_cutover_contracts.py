@@ -43,10 +43,6 @@ WRAPPER_LIMITS = {
     "实时监控/情绪周期.py": 120,
     "实时监控/热门板块情绪.py": 80,
     "utils/热门板块情绪算法.py": 100,
-    "游资溢价分析/采集/龙虎榜数据采集.py": 80,
-    "游资溢价分析/采集/营业部数据采集.py": 80,
-    "游资溢价分析/采集/游资数据采集.py": 80,
-    "游资溢价分析/溢价分析.py": 80,
 }
 FORBIDDEN_WRAPPER_IMPORTS = {
     "fastapi",
@@ -300,3 +296,9 @@ def test_output_directory_tracks_only_ignore_policy():
     ).stdout.splitlines()
     assert tracked == ["output/.gitignore"]
     assert (ROOT / "output" / ".gitignore").read_text(encoding="utf-8") == "*\n!.gitignore\n"
+
+
+def test_dragon_tiger_legacy_wrappers_are_retired():
+    legacy_root = ROOT / "游资溢价分析"
+    assert not legacy_root.exists()
+    assert "游资溢价分析" not in (ROOT / "README.md").read_text(encoding="utf-8")
