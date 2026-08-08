@@ -200,11 +200,10 @@ def _采集响应(date):
     )
     page.listen.start([监听路径])
     page.get(url, timeout=0)
+    等待页面加载(page)
     if 页面需要人工验证(page):
         raise 需要人工验证("韭研公社页面需要人工完成滑块验证")
-    tab = page.ele("text=全部异动解析")
-    if tab:
-        tab.click()
+    选择全部异动解析标签(page)
     for packet in page.listen.steps(timeout=15):
         target = str(getattr(packet, "target", ""))
         if 监听路径 not in target:
@@ -213,6 +212,19 @@ def _采集响应(date):
         if response is not None:
             return response
     raise IncompleteJiuyanResponse(f"{date} 韭研公社异动接口响应超时")
+
+
+def 选择全部异动解析标签(page):
+    tab = page.ele("text=全部异动解析")
+    if tab is None:
+        tabs = page.eles("css:.yd-tabs_item")
+        tab = tabs[0] if tabs else None
+    if tab:
+        tab.click()
+
+
+def 等待页面加载(page):
+    page.wait.doc_loaded(timeout=15)
 
 
 def 韭研公社异动采集(date):

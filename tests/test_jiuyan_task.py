@@ -112,3 +112,38 @@ def test_response_date_must_match_requested_date():
 
     with pytest.raises(jiuyan.IncompleteJiuyanResponse, match="响应日期"):
         jiuyan.解析异动响应(response, 20260701)
+
+
+def test_action_tab_falls_back_to_first_tab_when_text_selector_misses():
+    clicked = []
+
+    class Tab:
+        def click(self):
+            clicked.append(True)
+
+    class Page:
+        def ele(self, selector):
+            return None
+
+        def eles(self, selector):
+            assert selector == "css:.yd-tabs_item"
+            return [Tab(), Tab(), Tab()]
+
+    jiuyan.选择全部异动解析标签(Page())
+
+    assert clicked == [True]
+
+
+def test_waits_for_document_before_selecting_action_tab():
+    calls = []
+
+    class Wait:
+        def doc_loaded(self, timeout):
+            calls.append(timeout)
+
+    class Page:
+        wait = Wait()
+
+    jiuyan.等待页面加载(Page())
+
+    assert calls == [15]
