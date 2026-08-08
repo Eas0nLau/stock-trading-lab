@@ -22,6 +22,22 @@
 
 应用切换前，删除未投入使用的新表即可回滚。应用切换后，停止服务并恢复迁移前完整备份。旧表删除脚本不属于初始化或自动升级流程，禁止在无备份情况下执行。
 
+## 韭研数据补迁与情绪重算
+
+旧表仍有新增韭研记录时，先停止每日更新、采集任务和 Web 写入，并完成 MySQL 全库备份。使用只读模式核对差异：
+
+```bash
+uv run python -m stock_lab.jobs.jiuyan_reconciliation --dry-run
+```
+
+确认报告中的 `duplicate_source_ids` 为空并抽样检查 `missing_dates` 后，显式执行缺失记录补迁和热门板块情绪重算：
+
+```bash
+uv run python -m stock_lab.jobs.jiuyan_reconciliation --write --recalculate
+```
+
+任务只插入 `t_韭研公社异动解析` 存在而 `jiuyan_actions` 缺失的 `data_id`，不会覆盖新表已有记录。情绪重算只处理相邻交易日均有韭研数据的日期，并按 `(trade_date, board_name)` upsert 到 `hot_board_emotion_daily`。写入完成后，任务会再次检查旧表到新表的缺失键、规范表重复键和 `decision_reasons_json` 合法性；任一检查失败都会以非零状态退出。该流程不授权执行 `003_drop_legacy_schema.sql`。
+
 ## 验证项
 
 - 16 张表迁移前后行数一致，且源行数等于映射后 distinct key 数；重复键会阻断迁移。

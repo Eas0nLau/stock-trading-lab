@@ -34,3 +34,4 @@ login.txt
 
 # Codex 隔离开发工作区
 .worktrees/
+data/chrome_profile/
