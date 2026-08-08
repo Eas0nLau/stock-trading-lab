@@ -41,6 +41,19 @@ def test_create_collection_job_rejects_invalid_date_range():
     assert response.status_code == 422
 
 
+def test_create_collection_job_rejects_non_trading_day():
+    class ValidatingManager(FakeManager):
+        def start(self, start_date, latest_date):
+            raise ValueError("start_date must be a trading day")
+
+    response = client(ValidatingManager()).post(
+        "/api/v1/dragon-tiger/collection-jobs",
+        json={"startDate": 20260404, "latestDate": 20260404},
+    )
+
+    assert response.status_code == 422
+
+
 def test_status_returns_job_state_or_not_found():
     response = client(FakeManager(status={"jobId": "job-1", "status": "succeeded"})).get(
         "/api/v1/dragon-tiger/collection-jobs/job-1"

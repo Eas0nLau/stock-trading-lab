@@ -50,9 +50,13 @@ def _cache_set(cache, key, value):
         cache.set(key, value)
 
 
-def collect_broker_history(repository, fetch_page, cache=None):
+def collect_broker_history(repository, fetch_page, cache=None, *, start_date=None, end_date=None, broker_ids=None):
     rows = {}
-    for broker in repository.brokers():
+    selected_ids = {str(value) for value in broker_ids or []}
+    brokers = repository.brokers()
+    if selected_ids:
+        brokers = [broker for broker in brokers if str(broker.broker_id) in selected_ids]
+    for broker in brokers:
         page = 1
         page_count = 1
         while page <= page_count:
@@ -62,7 +66,13 @@ def collect_broker_history(repository, fetch_page, cache=None):
                 html = fetch_page(broker.broker_id, page)
                 _cache_set(cache, key, html)
             parsed, page_count = parse_broker_history_page(html, broker.broker_id, broker.broker_name)
+            if start_date is not None and parsed and max(row.trade_date for row in parsed) < int(start_date):
+                break
             for row in parsed:
+                if start_date is not None and row.trade_date < int(start_date):
+                    continue
+                if end_date is not None and row.trade_date > int(end_date):
+                    continue
                 rows[row.data_id] = row
             page += 1
     return repository.upsert_broker_history(rows.values())

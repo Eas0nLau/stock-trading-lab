@@ -79,3 +79,36 @@ def test_collect_broker_history_uses_cache_and_stops_at_reported_page_count():
     assert result == 2
     assert fetched == [("B1", 2)]
     assert [row.trade_date for row in repository.writes[0][1]] == [20260806, 20260805]
+
+
+def test_collect_broker_history_scopes_brokers_and_dates():
+    repository = RecordingRepository()
+    repository.brokers = lambda: [Broker("B1", "Broker One"), Broker("B2", "Broker Two")]
+    fetched = []
+
+    def fetch_page(broker_id, page):
+        fetched.append((broker_id, page))
+        return """<span class="page_info">1/1</span><table class="m-table m-table-nosort">
+        <tr><th>x</th></tr><tr><td>2026-08-06</td><td><a href="/code/000001/">Ping An</a></td><td>Reason</td><td>1%</td><td>3</td><td>1</td><td>2</td><td>Bank</td></tr>
+        </table>"""
+
+    assert collect_broker_history(
+        repository, fetch_page, start_date=20260806, end_date=20260806, broker_ids={"B1"}
+    ) == 1
+    assert fetched == [("B1", 1)]
+
+
+def test_collect_broker_history_stops_when_pages_are_before_start_date():
+    repository = RecordingRepository()
+    fetched = []
+
+    def fetch_page(broker_id, page):
+        fetched.append((broker_id, page))
+        return """<span class="page_info">1/3</span><table class="m-table m-table-nosort">
+        <tr><th>x</th></tr><tr><td>2026-08-05</td><td><a href="/code/000001/">Ping An</a></td><td>Reason</td><td>1%</td><td>3</td><td>1</td><td>2</td><td>Bank</td></tr>
+        </table>"""
+
+    assert collect_broker_history(
+        repository, fetch_page, start_date=20260806, end_date=20260806, broker_ids={"B1"}
+    ) == 0
+    assert fetched == [("B1", 1)]

@@ -19,6 +19,7 @@ class DragonTigerCollectionJobManager:
         run_broker_directory,
         run_broker_history,
         run_analysis,
+        validate_dates=None,
         executor=None,
         expiry_seconds=86400,
     ):
@@ -27,6 +28,7 @@ class DragonTigerCollectionJobManager:
         self.run_broker_directory = run_broker_directory
         self.run_broker_history = run_broker_history
         self.run_analysis = run_analysis
+        self.validate_dates = validate_dates
         self.executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix="dragon-tiger")
         self.expiry_seconds = expiry_seconds
 
@@ -35,6 +37,8 @@ class DragonTigerCollectionJobManager:
         latest_date = int(latest_date)
         if start_date > latest_date:
             raise ValueError("start_date must be less than or equal to latest_date")
+        if self.validate_dates is not None:
+            self.validate_dates(start_date, latest_date)
 
         job_id = str(uuid.uuid4())
         lock = RedisJobLock(self.redis, ACTIVE_KEY, self.expiry_seconds)

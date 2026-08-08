@@ -64,10 +64,18 @@ def create_collection_job_manager(*, settings=None):
             start, repository, source.fetch_listing_page, end_date=latest
         ),
         run_broker_directory=lambda *_dates: collect_broker_directory_data(repository, source),
-        run_broker_history=lambda *_dates: collect_broker_history_data(repository, source, RedisPageCache(redis)),
+        run_broker_history=lambda start, latest: collect_broker_history_data(
+            repository,
+            source,
+            RedisPageCache(redis),
+            start_date=start,
+            end_date=latest,
+            broker_ids=_broker_ids_for_date(repository, latest),
+        ),
         run_analysis=lambda start, latest: analyze_premium_result(
             start, latest, settings=settings, database=database
         ),
+        validate_dates=lambda start, latest: _validate_trading_dates(repository, start, latest),
     )
     manager.database = database
     return manager
@@ -78,7 +86,32 @@ def collect_broker_directory_data(repository=None, source=None):
     return collect_broker_directory(repository or create_repository(), source.broker_directory_pages)
 
 
-def collect_broker_history_data(repository=None, source=None, cache=None):
+def collect_broker_history_data(repository=None, source=None, cache=None, *, start_date=None, end_date=None, broker_ids=None):
     source = source or DragonTigerHttpSource()
     cache = cache or RedisPageCache(create_redis_client(get_settings()))
-    return collect_broker_history(repository or create_repository(), source.fetch_broker_history_page, cache)
+    return collect_broker_history(
+        repository or create_repository(),
+        source.fetch_broker_history_page,
+        cache,
+        start_date=start_date,
+        end_date=end_date,
+        broker_ids=broker_ids,
+    )
+
+
+def _broker_ids_for_date(repository, trade_date):
+    listings = repository.listings(trade_date=trade_date)
+    ids = set()
+    for listing in listings:
+        for rank in range(1, 6):
+            for side in ("buy", "sell"):
+                broker_id = getattr(listing, f"{side}_{rank}_broker_id", None)
+                if broker_id:
+                    ids.add(str(broker_id))
+    return ids
+
+
+def _validate_trading_dates(repository, start_date, latest_date):
+    dates = repository.trading_dates(start_date, latest_date)
+    if int(start_date) not in dates or int(latest_date) not in dates:
+        raise ValueError("start_date and latest_date must be trading days")
