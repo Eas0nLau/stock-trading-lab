@@ -38,10 +38,6 @@ LEGACY_STORAGE_TABLE_ALLOWLIST = {}
 WRAPPER_LIMITS = {
     "task/data_sources.py": 80,
     "task/_5_韭研公社异动.py": 80,
-    "实时监控/资金流向.py": 100,
-    "实时监控/策略选股.py": 120,
-    "实时监控/情绪周期.py": 120,
-    "实时监控/热门板块情绪.py": 80,
     "utils/热门板块情绪算法.py": 100,
 }
 FORBIDDEN_WRAPPER_IMPORTS = {
@@ -302,3 +298,10 @@ def test_dragon_tiger_legacy_wrappers_are_retired():
     legacy_root = ROOT / "游资溢价分析"
     assert not legacy_root.exists()
     assert "游资溢价分析" not in (ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def test_realtime_monitor_legacy_directory_is_retired():
+    assert not (ROOT / "实时监控").exists()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "实时监控/tdx_全局监控.py" not in readme
+    assert "实时监控/tdx_竞价监控.py" not in readme

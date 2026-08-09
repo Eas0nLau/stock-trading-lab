@@ -181,14 +181,14 @@ strategy/20260609_龙头缩量收红策略.py
 
 ### 2.10 通达信本地行情与竞价监控（目前没开发到，计划用来盘中辅助交易的）
 
-`stock_lab.infrastructure.tdx` 和 `stock_lab.modules.tdx` 是正式的通达信监控实现。`实时监控/tdx_全局监控.py` 和 `实时监控/tdx_竞价监控.py` 保留为可独立运行的兼容启动器：
+`stock_lab.infrastructure.tdx` 和 `stock_lab.modules.tdx` 是正式的通达信监控实现。通过应用入口或对应模块运行函数启动，不再执行旧兼容脚本：
 
 - 只读通达信 `vipdoc` 下的日线和分钟线二进制文件。
 - 通过通达信 `PYPlugins/user/tqcenter.py` 读取或订阅实时行情快照。
 - 展示最新价、涨跌幅、开盘价、均价、成交额、竞价金额和未匹配金额。
 - 可监控向上突破开盘价或分时均价，并进行日志/蜂鸣提醒。
 - 集合竞价脚本可监控全体主板非 ST 股票，计算买卖量比、五档金额比、封单金额和封单变化，识别抢筹、封板、加封、减封等信号。
-- 运行参数通过 `Settings`、`TDX_CODES` 和模块运行函数注入；兼容启动器可直接从 checkout 运行，也可使用 `uv run python 实时监控/tdx_全局监控.py`。
+- 运行参数通过 `Settings`、`TDX_CODES` 和模块运行函数注入。
 
 正式代码通过 `MarketDataRepository.securities()` 获取股票池，不直接导入 `config.py` 或 `PyMySQL`。测试使用临时二进制文件和 fake client，不需要安装通达信。
 
@@ -197,7 +197,7 @@ strategy/20260609_龙头缩量收红策略.py
 ```mermaid
 flowchart LR
     Sources["外部数据源<br/>Tushare / Baostock / 东方财富<br/>同花顺 / 韭研公社 / 开盘啦 / 通达信"]
-    Collect["Python 采集与计算<br/>task / 实时监控 / utils"]
+    Collect["Python 采集与计算<br/>stock_lab.jobs / stock_lab.modules"]
     MySQL["MySQL<br/>长期结构化数据"]
     Redis["Redis<br/>实时快照、策略状态、任务锁"]
     API["FastAPI<br/>REST + SSE"]
@@ -234,7 +234,6 @@ flowchart LR
 | `src/stock_lab/modules/ths/` | 同花顺归档参考数据的只读英文模型和查询仓储；不包含采集或写入 |
 | `app.py` | 兼容启动入口；应用由 `stock_lab.bootstrap.application` 创建 |
 | `front/` | Vue 前端，包含资金流向、策略监控、指数周期和热门板块情绪页面 |
-| `实时监控/` | 迁移期兼容目录；新业务实现不再写入这里 |
 | `task/` | 迁移期批量任务兼容目录 |
 | `strategy/` | 由正式研究注册表适配的中文策略源文件和兼容启动器 |
 | `龙虎榜溢价` | 前端异步采集与溢价分析页面 |
