@@ -8,10 +8,10 @@
 | `app.py` | `stock_lab.bootstrap.application` | 已建立兼容入口 |
 | `front_run.py` | `stock_lab.bootstrap.frontend` | 已建立兼容入口 |
 | `app.py` 后台线程 | `stock_lab.jobs.realtime_monitor` | 已迁移装配和定时任务分发，不再删除其他进程持有的任务锁 |
-| `实时监控/资金流向.py` | `stock_lab.modules.fund_flow` | 浏览器采集、解析、调度、V1 Redis、REST/SSE 和前端已迁移；旧文件仅转发 |
-| `实时监控/策略选股.py` | `stock_lab.modules.strategy_pick` | 浏览器采集、解析、调度、V1 Redis、REST/SSE 和前端已迁移；旧文件仅转发 |
-| `实时监控/情绪周期.py` | `stock_lab.modules.emotion.index_cycle` | 英文算法、API 和数据读写已迁移；旧文件仅转发且无旧路由 |
-| `实时监控/热门板块情绪.py` | `stock_lab.modules.emotion.hot_board` | 英文算法、repository/service 查询已迁移；旧文件不查询旧表或注册路由 |
+| 资金流向旧监控入口 | `stock_lab.modules.fund_flow` | 浏览器采集、解析、调度、V1 Redis、REST/SSE 和前端已迁移；旧文件已删除 |
+| 策略选股旧监控入口 | `stock_lab.modules.strategy_pick` | 浏览器采集、解析、调度、V1 Redis、REST/SSE 和前端已迁移；旧文件已删除 |
+| 指数情绪旧监控入口 | `stock_lab.modules.emotion.index_cycle` | 英文算法、API 和数据读写已迁移；旧文件已删除 |
+| 热门板块旧监控入口 | `stock_lab.modules.emotion.hot_board` | 英文算法和 repository/service 查询已迁移；旧文件已删除 |
 | `task/每日更新.py` | `stock_lab.jobs.daily_update` | 正式英文编排和 V1 幂等状态已迁移；旧路径为 CLI/调用兼容入口 |
 | `task/盘前纪要.py` | `stock_lab.jobs.premarket_summary` | 正式提取、INI 输出和 V1 幂等状态已迁移；公开仓库需注入来源 adapter |
 | `task/emotion_analysis.py` | `stock_lab.modules.emotion.jobs` | 已移除旧表写入，仅转发到正式英文表 job |
@@ -28,9 +28,8 @@ TDX monitor migration
 
 `stock_lab.infrastructure.tdx` owns the lazy TDX plugin adapter, while
 `stock_lab.modules.tdx` owns English parsing, snapshot, global-alert, auction,
-and securities-universe logic. `实时监控/tdx_全局监控.py` and
-`实时监控/tdx_竞价监控.py` remain executable compatibility launchers. The
-auction universe is read through `MarketDataRepository.securities()`; official
+and securities-universe logic. The legacy TDX compatibility launchers have
+been removed. The auction universe is read through `MarketDataRepository.securities()`; official
 code does not open a direct PyMySQL connection.
 
 兼容文件只允许转发。业务模块完成英文 API、数据库、前端和测试迁移后，更新本表并删除对应旧入口。
