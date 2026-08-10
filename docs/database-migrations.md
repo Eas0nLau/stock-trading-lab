@@ -43,7 +43,7 @@ db/migrations/004_upsert_legacy_data.sql
 - 关键金额、成交量、数量、指标或样本数聚合值一致（存在可比事实列时）。
 - legacy JSON 在复制前通过 `JSON_VALID`；canonical JSON 在复制后再次通过 `JSON_VALID`。
 - 新 schema 中不存在非 ASCII 标识符。
-- `fund_flow_records.net_inflow_100m` 必须为 `DECIMAL(20,6)`，单位为亿元；EastMoney `f62` 只在 canonical 边界除以 `10000` 一次。
+- `fund_flow_records.net_inflow_100m` 必须为 `DECIMAL(20,6)`，单位为亿元；EastMoney `f62` 原始单位为元，只在 canonical 边界除以 `100000000` 一次。
 
 `002` 开始时先提交 `migration_validations(validation_version='002_parity_v1', status='running')`，再开启数据复制事务并在事务内移除陈旧的 `002` 版本/validation。SQL 异常 handler 会回滚复制 DML、写入 `failed` 及 MySQL 错误信息并重新抛出；全部 gate 成功后才在同一事务中写入 `succeeded` 和 `schema_migrations`。因此中断、失败和成功都可跨进程观察，应用 lifespan 会拒绝 `running`/`failed` 状态。仅看脚本输出或仅看迁移版本不构成删除授权，`003` 同时检查两类状态。
 

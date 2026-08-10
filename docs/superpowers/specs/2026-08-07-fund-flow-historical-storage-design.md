@@ -11,7 +11,7 @@
 - `collected_at`：采集时间。
 - `board_code`、`board_name`、`leader`：板块维度。
 - `net_inflow_100m`：亿元，MySQL 使用 `DECIMAL(20,6)`。
-- EastMoney 原始 `f62` 单位为万元，进入 canonical 层统一除以 `10000`；已存在旧 Redis 数据按同一规则校正一次。
+- EastMoney 原始 `f62` 单位为元，进入 canonical 层统一除以 `100000000`；已存在旧 Redis 数据按同一规则校正一次。
 - API 返回保留 canonical 数值，前端金额、坐标轴、tooltip 和标签统一四舍五入到 2 位。
 
 ## 表与索引

@@ -23,7 +23,9 @@ def normalize_net_inflow_100m(value: object, source_unit: str = "wan") -> Decima
         raise DataValidationError(f"Invalid fund-flow amount: {value!r}") from error
     if not amount.is_finite():
         raise DataValidationError(f"Invalid fund-flow amount: {value!r}")
-    if source_unit.lower() in {"wan", "万元"}:
+    if source_unit.lower() in {"yuan", "元"}:
+        amount /= Decimal("100000000")
+    elif source_unit.lower() in {"wan", "万元"}:
         amount /= Decimal("10000")
     elif source_unit.lower() not in {"100m", "yi", "亿元"}:
         raise DataValidationError(f"Unsupported fund-flow amount unit: {source_unit}")

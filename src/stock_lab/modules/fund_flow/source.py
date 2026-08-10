@@ -73,7 +73,7 @@ def parse_fund_flow_packets(packets, collected_at, flow_type, excluded_names=(),
             "board_code": item.get("f12", ""),
             "board_name": str(item.get("f14", "")),
             "leader": str(leaders.get(item.get("f12"), "")),
-            "net_inflow_100m": float(normalize_net_inflow_100m(item.get("f62") or 0, "wan")),
+            "net_inflow_100m": float(normalize_net_inflow_100m(item.get("f62") or 0, "yuan")),
         }
         if flow_type != "concept" or not is_excluded_concept(record["board_name"], excluded_names):
             records.append(record)

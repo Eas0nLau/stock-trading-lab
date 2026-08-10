@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - `net_inflow_100m` is stored as `DECIMAL(20,6)` in units of 亿元.
-- EastMoney source `f62` values in 万元 are divided by `10000` exactly once at the canonical boundary.
+- EastMoney source `f62` values in 元 are divided by `100000000` exactly once at the canonical boundary.
 - MySQL is the historical source of truth; Redis is a same-day/cache and event layer.
 - UI amounts, axis labels, tooltips, and end labels display two decimal places using normal rounding.
 - Do not execute `003_drop_legacy_schema.sql`.

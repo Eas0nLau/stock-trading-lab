@@ -7,7 +7,7 @@ import pytest
 
 from stock_lab.modules.fund_flow import collector
 from stock_lab.modules.fund_flow.collector import save_snapshot
-from stock_lab.modules.fund_flow.source import FundFlowSource
+from stock_lab.modules.fund_flow.source import FundFlowSource, parse_fund_flow_packets
 
 
 class Repository:
@@ -20,6 +20,31 @@ class Repository:
 
     def publish_snapshot(self, flow_type, trade_date, collected_at, record_count):
         self.published = (flow_type, trade_date, collected_at, record_count)
+
+
+def test_realtime_source_converts_eastmoney_f62_yuan_to_100m():
+    packets = [
+        SimpleNamespace(
+            target="https://data.eastmoney.com/dataapi/bkzj/getbkzj",
+            response=SimpleNamespace(body={
+                "data": {"diff": [{"f12": "BK0727", "f14": "医疗服务", "f62": 805_952_800}]},
+            }),
+        ),
+        SimpleNamespace(
+            target="https://push2.eastmoney.com/api/qt/clist/get",
+            response=SimpleNamespace(body={
+                "data": {"diff": [{"f12": "BK0727", "f204": "示例股份"}]},
+            }),
+        ),
+    ]
+
+    assert parse_fund_flow_packets(packets, "09:46:00", "industry") == [{
+        "time": "09:46:00",
+        "board_code": "BK0727",
+        "board_name": "医疗服务",
+        "leader": "示例股份",
+        "net_inflow_100m": 8.059528,
+    }]
 
 
 def test_collector_commits_mysql_before_redis_success_state():
