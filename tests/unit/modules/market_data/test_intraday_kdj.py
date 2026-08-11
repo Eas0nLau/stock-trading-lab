@@ -14,12 +14,26 @@ def test_intraday_bar_normalizes_source_types_and_identity():
     })
 
     assert row == {
-        "data_id": "000001_20260806093500000_3", "trade_date": 20260806,
-        "trade_time": 20260806093500000, "stock_code": "000001",
+        "data_id": "000001_202608060935_3", "trade_date": 20260806,
+        "trade_time": 202608060935, "stock_code": "000001",
         "open_price": 10.1, "high_price": 10.8, "low_price": 9.9,
         "close_price": 10.5, "volume": 100.0, "turnover": 1030.5,
         "adjustment_flag": 3,
     }
+
+
+def test_intraday_bar_uses_same_identity_for_minute_and_baostock_timestamp():
+    base = {
+        "date": "2026-08-06", "code": "sz.000001",
+        "open": "10", "high": "11", "low": "9", "close": "10.5",
+        "volume": "100", "amount": "1050", "adjustflag": "3",
+    }
+
+    minute = normalize_intraday_bar({**base, "time": "202608060935"})
+    full = normalize_intraday_bar({**base, "time": "20260806093500000"})
+
+    assert minute["trade_time"] == full["trade_time"] == 202608060935
+    assert minute["data_id"] == full["data_id"] == "000001_202608060935_3"
 
 
 @pytest.mark.parametrize("changes", [

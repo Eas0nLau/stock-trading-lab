@@ -9,6 +9,7 @@ CREATE_PATH = ROOT / "db" / "migrations" / "001_create_english_schema.sql"
 MIGRATE_PATH = ROOT / "db" / "migrations" / "002_migrate_legacy_data.sql"
 DROP_PATH = ROOT / "db" / "migrations" / "003_drop_legacy_schema.sql"
 UPSERT_PATH = ROOT / "db" / "migrations" / "004_upsert_legacy_data.sql"
+NORMALIZE_INTRADAY_PATH = ROOT / "db" / "migrations" / "005_normalize_intraday_minute_identity.sql"
 INIT_PATH = ROOT / "init" / "stock_trading_lab_v2.sql"
 OLD_INIT_PATH = ROOT / "init" / "stock_trading_lab.sql"
 LEGACY_INIT_PATH = ROOT / "init" / "LEGACY_stock_trading_lab_chinese_schema.sql"
@@ -160,6 +161,18 @@ def split_sql_list(sql):
     assert quote is None and depth == 0
     items.append(sql[start:].strip())
     return tuple(items)
+
+
+def test_005_normalizes_existing_intraday_rows_to_minute_identity():
+    sql = NORMALIZE_INTRADAY_PATH.read_text(encoding="utf-8")
+
+    assert "START TRANSACTION" in sql
+    assert "CREATE TEMPORARY TABLE `intraday_bars_5m_minute_normalized`" in sql
+    assert "LEFT(CAST(`trade_time` AS CHAR), 12)" in sql
+    assert "ON DUPLICATE KEY UPDATE" in sql
+    assert "DELETE FROM `intraday_bars_5m`" in sql
+    assert "COMMIT" in sql
+    assert "t_stock_5_min_k" not in sql
 
 
 def test_schema_mapping_contains_exactly_the_16_migrations():

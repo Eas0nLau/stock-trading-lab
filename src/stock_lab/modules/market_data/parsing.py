@@ -24,16 +24,17 @@ def _source_symbol(value):
 def normalize_intraday_bar(row):
     trade_date = normalize_trade_date(row.get("date"))
     trade_time_raw = str(row.get("time") or "").strip()
-    if not trade_date or len(trade_time_raw) < 14 or not trade_time_raw.isdigit():
+    if not trade_date or len(trade_time_raw) < 12 or not trade_time_raw.isdigit():
         raise DataValidationError("Invalid intraday date or time")
-    if int(trade_time_raw[:8]) != trade_date:
+    trade_time_text = trade_time_raw[:12]
+    if int(trade_time_text[:8]) != trade_date:
         raise DataValidationError("Intraday date and time do not match")
     symbol = _source_symbol(row.get("code"))
     try:
         adjustment_flag = int(row.get("adjustflag"))
     except (TypeError, ValueError) as error:
         raise DataValidationError(f"Invalid adjustment flag: {row.get('adjustflag')!r}") from error
-    trade_time = int(trade_time_raw)
+    trade_time = int(trade_time_text)
     return {
         "data_id": f"{symbol}_{trade_time}_{adjustment_flag}",
         "trade_date": trade_date,
