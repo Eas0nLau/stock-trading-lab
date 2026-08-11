@@ -102,3 +102,15 @@ def create_page(
     if url and not (stop_event is not None and stop_event.is_set()):
         page.get(url, timeout=0)
     return page
+
+
+def close_page(name, page=None):
+    with _lock:
+        stored_page = _pages.get(name)
+        if stored_page is None or (page is not None and stored_page is not page):
+            return
+        selected_page = _pages.pop(name)
+    try:
+        selected_page.close()
+    except Exception as error:
+        logger.warning("Could not close browser page {}: {}", name, error)

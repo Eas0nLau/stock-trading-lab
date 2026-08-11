@@ -2,6 +2,7 @@ import pytest
 
 from task import _5_韭研公社异动 as legacy_jiuyan
 from stock_lab.modules.market_data import jiuyan
+from stock_lab.modules.market_data import jiuyan_source
 
 
 def test_parse_jiuyan_response_filters_limit_up_range():
@@ -44,11 +45,11 @@ def test_parse_empty_response_returns_incomplete_error():
 def test_request_rate_limiter_waits_between_page_requests(monkeypatch):
     clock = iter([100.0, 100.0])
     sleeps = []
-    monkeypatch.setattr(jiuyan.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(jiuyan.time, "sleep", sleeps.append)
-    monkeypatch.setattr(jiuyan, "MIN_REQUEST_INTERVAL_SECONDS", 60)
-    monkeypatch.setattr(jiuyan.random, "uniform", lambda low, high: 60.0)
-    jiuyan._last_request_time = 70.0
+    monkeypatch.setattr(jiuyan_source.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(jiuyan_source.time, "sleep", sleeps.append)
+    monkeypatch.setattr(jiuyan_source, "MIN_REQUEST_INTERVAL_SECONDS", 60)
+    monkeypatch.setattr(jiuyan_source.random, "uniform", lambda low, high: 60.0)
+    jiuyan_source._last_request_time = 70.0
 
     jiuyan.wait_for_request_slot()
 

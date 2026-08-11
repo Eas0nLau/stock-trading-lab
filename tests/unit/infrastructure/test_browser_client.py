@@ -117,3 +117,28 @@ def test_create_page_returns_owned_page_when_stop_arrives_during_navigation(monk
     )
 
     assert created is page
+
+
+def test_close_page_removes_owned_registry_page_and_closes_it(monkeypatch):
+    page = SimpleNamespace(close_calls=0)
+
+    def close():
+        page.close_calls += 1
+
+    page.close = close
+    monkeypatch.setattr(client, "_pages", {"test": page})
+
+    client.close_page("test", page)
+
+    assert "test" not in client._pages
+    assert page.close_calls == 1
+
+
+def test_close_page_does_not_remove_newer_registry_page(monkeypatch):
+    stale = SimpleNamespace(close=lambda: None)
+    current = SimpleNamespace(close=lambda: None)
+    monkeypatch.setattr(client, "_pages", {"test": current})
+
+    client.close_page("test", stale)
+
+    assert client._pages["test"] is current

@@ -1,3 +1,3 @@
-from .client import create_browser, create_page
+from .client import close_page, create_browser, create_page
 
-__all__ = ["create_browser", "create_page"]
+__all__ = ["close_page", "create_browser", "create_page"]
