@@ -39,6 +39,8 @@ WRAPPER_LIMITS = {
     "task/_2_分时数据获取_5分k.py": 140,
     "task/_3_kdj.py": 120,
     "task/_5_韭研公社异动.py": 80,
+    "task/_8_指数情绪周期每日更新.py": 80,
+    "task/_9_热门板块情绪每日更新.py": 80,
     "utils/热门板块情绪算法.py": 100,
 }
 FORBIDDEN_WRAPPER_IMPORTS = {
