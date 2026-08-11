@@ -64,7 +64,14 @@ def update_dde(
                 if not source_rows:
                     result["empty_codes"].append(code)
                     continue
-                rows = [dde_from_source(row) for row in source_rows]
+                rows = []
+                for source_row in source_rows:
+                    row = dde_from_source(source_row)
+                    if row["dde_net_amount"] is not None:
+                        rows.append(row)
+                if not rows:
+                    result["empty_codes"].append(code)
+                    continue
                 result["updated"] += repository.update_daily_quote_enrichment(
                     rows,
                     ("dde_net_amount",),

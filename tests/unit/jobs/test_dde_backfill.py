@@ -122,3 +122,26 @@ def test_dde_backfill_fails_when_every_pending_code_is_empty():
     assert result["status"] == "failed"
     assert result["updated"] == 0
     assert result["empty_codes"] == ["000001.SZ", "600000.SH"]
+
+
+def test_dde_backfill_treats_non_finite_amounts_as_empty():
+    class NonFiniteSource:
+        def fetch_daily_dde(self, stock_code, **_kwargs):
+            return [{
+                "stock_code": stock_code,
+                "trade_date": 20260807,
+                "dde": float("nan"),
+            }]
+
+    result = update_dde(
+        20260807,
+        20260807,
+        source=NonFiniteSource(),
+        repository=Repository(),
+        max_workers=2,
+    )
+
+    assert result["status"] == "failed"
+    assert result["updated"] == 0
+    assert result["processed_codes"] == []
+    assert result["empty_codes"] == ["000001.SZ", "600000.SH"]

@@ -178,6 +178,8 @@ class KplDdeSource:
                 value = float(raw_value)
             except (DataValidationError, TypeError, ValueError):
                 continue
+            if not math.isfinite(value):
+                continue
             rows_by_date.setdefault(trade_date, {
                 "stock_code": stock_code,
                 "trade_date": trade_date,

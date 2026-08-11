@@ -166,3 +166,14 @@ def test_daily_dde_rejects_excessive_pagination():
             start_date=20260801,
             end_date=20260807,
         )
+
+
+def test_daily_dde_discards_non_finite_amounts():
+    session = Session([Response({
+        "errcode": "0",
+        "Date": ["20260807", "20260806"],
+        "DDJE": ["NaN", "Infinity"],
+    })])
+    source = KplDdeSource(session=session, limiter=Limiter())
+
+    assert source.fetch_daily_dde("000001", count=2) == []
