@@ -232,7 +232,9 @@ The single-date hot-board algorithm remains canonical. A range coordinator:
    matching persisted action counts;
 4. filters sample stocks to Shanghai/Shenzhen main boards and excludes ST names;
 5. calls the single-date canonical job;
-6. commits each target date independently;
+6. transactionally replaces all hot-board emotion rows for the target date after
+   the complete result set is calculated, removing stale boards from corrected
+   reruns;
 7. returns deterministic processed and failed date lists.
 
 The result contains `status`, `updated`, `processed_dates`, and `failed_dates`.
