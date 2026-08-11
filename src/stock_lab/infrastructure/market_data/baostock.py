@@ -47,11 +47,17 @@ class BaoStockSource:
         return self._injected_client or importlib.import_module("baostock")
 
     def fetch_5m_bars(self, start_date, end_date, ts_code):
+        start_iso = _iso_date(start_date)
+        end_iso = _iso_date(end_date)
+        if start_iso > end_iso:
+            raise DataValidationError(
+                f"Invalid BaoStock five-minute range: {start_date!r}-{end_date!r}"
+            )
         return self._query_rows(
             _baostock_code(ts_code),
             BAOSTOCK_5M_FIELDS,
-            start_date=_iso_date(start_date),
-            end_date=_iso_date(end_date),
+            start_date=start_iso,
+            end_date=end_iso,
             frequency="5",
             adjustflag="3",
         )

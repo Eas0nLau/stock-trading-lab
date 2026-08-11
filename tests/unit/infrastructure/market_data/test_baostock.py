@@ -5,7 +5,7 @@ import pytest
 
 from stock_lab.infrastructure.market_data import baostock as baostock_module
 from stock_lab.infrastructure.market_data.baostock import BaoStockSource
-from stock_lab.shared.errors import InfrastructureError
+from stock_lab.shared.errors import DataValidationError, InfrastructureError
 
 
 class Result:
@@ -220,3 +220,16 @@ def test_index_source_rejects_malformed_rows():
         BaoStockSource(client=client).fetch_index_daily(20260807, 20260807)
 
     assert client.logout_count == 1
+
+
+def test_five_minute_source_rejects_reversed_range_before_login():
+    client = Client(Result([]))
+
+    with pytest.raises(DataValidationError, match="range"):
+        BaoStockSource(client=client).fetch_5m_bars(
+            20260807,
+            20260806,
+            "000001.SZ",
+        )
+
+    assert client.login_count == 0
