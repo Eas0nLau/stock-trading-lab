@@ -100,7 +100,7 @@ uv run --frozen python -m task.每日更新 --backfill 160
 - `--date YYYYMMDD`：只处理一个交易日，必须和本地交易日历匹配。
 - `--backfill N`：处理本地 `index_daily` 中最新 N 个交易日，不是任意开始日期和结束日期。
 - 任务最多按当前本地日历向前读取 160 个交易日用于计算。
-- 任务写入或更新 `securities`、`daily_quotes`、`index_daily`、`jiuyan_actions`，并执行指数情绪和热门板块情绪派生任务。
+- 任务按 index → securities/daily quotes → 市值/DDE → Jiuyan → 情绪顺序执行，写入或更新 `index_daily`、`securities`、`daily_quotes`、`jiuyan_actions` 和情绪表。
 - 同一日期有 Redis 完成标记，标记存在时返回 `skipped`；锁 TTL 为 6 小时，完成标记 TTL 为 7 天。
 
 ### 2. 日更任务的依赖和失败处理
@@ -112,6 +112,42 @@ uv run --frozen python -m task.每日更新 --date 20260810
 ```
 
 不要因为完成标记存在就直接删除整批数据。先查看该日期四张事实表和两张情绪表是否完整，再决定是否清除单日完成标记或使用 repository upsert 修复。
+
+### 3. 作者市场数据入口
+
+状态：**已支持 CLI**。
+
+证券和日线范围更新：
+
+```powershell
+uv run --frozen python -m task._1_日k数据更新 --start-date 20260101 --end-date 20260810
+```
+
+增加 `--force` 会重新请求范围内所有本地交易日并 upsert；默认跳过已有日线日期。
+
+上证指数范围更新：
+
+```powershell
+uv run --frozen python -m task._4_上证指数日k --start-date 20260101 --end-date 20260810
+```
+
+当前 source 是 BaoStock `sh.000001` 日频。任务额外请求开始日前 20 个日历日，用前收计算振幅和涨跌额，再只写请求范围。
+
+市值和自由流通字段：
+
+```powershell
+uv run --frozen python -m task._7_市值信息每日更新 --start-date 20260101 --end-date 20260810
+```
+
+使用 Tushare `daily_basic`。`total_market_value`、`circulating_market_value`、`free_float_market_value` 单位万元，`free_float_shares` 单位万股。默认只填空字段；`--force` 允许有效新值更新已有值，但 source 空值仍不擦除 MySQL 非空事实。
+
+KPL DDE：
+
+```powershell
+uv run --frozen python -m task._10_开盘啦dde读取 --start-date 20260101 --end-date 20260810 --max-workers 4 --timeout 20 --retries 3
+```
+
+`dde_net_amount` 单位元。所有 worker 共用默认 0.5 秒全局请求间隔；部分证券失败时保留已提交行、打印失败证券并返回非零退出码。重新执行默认只补空值；`--force` 才覆盖有效已有值。上述四个入口都直接写 MySQL，不把历史事实或完成事实写入 Redis。
 
 ## 四、独立事实数据
 
@@ -319,11 +355,12 @@ LIMIT 20;
 以 2026 年为例，先确定本地 `index_daily` 已包含 2026 年完整交易日序列，再按以下顺序执行：
 
 1. 用日更 CLI 按交易日补 `securities`、`daily_quotes` 和指数数据。
-2. 对需要分钟级回测的证券调用 5 分钟程序接口。
-3. 按日期范围运行龙虎榜 API，按单日调用 Jiuyan。
-4. 资金流执行前先确认实际 source 类和上游状态；当前命令不等于 AkShare 年度回补。
-5. 日线和 Jiuyan 完整后按交易日重算 KDJ、市场宽度和两类情绪。
-6. 对每张目标表执行日期覆盖、行数和重复键检查。
+2. 用 `_7` 和 `_10` 补齐市值及 DDE，并处理结构化失败日期/证券。
+3. 对需要分钟级回测的证券调用 5 分钟程序接口。
+4. 按日期范围运行龙虎榜 API，按单日调用 Jiuyan。
+5. 资金流执行前先确认实际 source 类和上游状态；当前命令不等于 AkShare 年度回补。
+6. 日线和 Jiuyan 完整后按交易日重算 KDJ、市场宽度和两类情绪。
+7. 对每张目标表执行日期覆盖、行数和重复键检查。
 
 当前 `--backfill N` 只表示最近 N 个本地交易日，资金流 `--days` 只表示自然日窗口；两者都不能直接宣称“完整 2026 年”。
 

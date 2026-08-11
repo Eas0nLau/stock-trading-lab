@@ -15,7 +15,11 @@
 | `task/每日更新.py` | `stock_lab.jobs.daily_update` | 正式英文编排和 V1 幂等状态已迁移；旧路径为 CLI/调用兼容入口 |
 | `task/盘前纪要.py` | `stock_lab.jobs.premarket_summary` | 正式提取、INI 输出和 V1 幂等状态已迁移；公开仓库需注入来源 adapter |
 | `task/emotion_analysis.py` | `stock_lab.modules.emotion.jobs` | 已移除旧表写入，仅转发到正式英文表 job |
-| `task/data_sources.py` | `stock_lab.modules.market_data.collectors` | 来源、规范化和英文表写入已迁移；旧文件仅转发 |
+| `task/data_sources.py` | `stock_lab.modules.market_data.collectors` | 本地猜测兼容文件已删除；规范化和英文表写入由 canonical 模块拥有 |
+| `task/_1_日k数据更新.py` | `stock_lab.modules.market_data.collectors` | 作者命名薄入口已恢复，支持日期范围和强制重抓 |
+| `task/_4_上证指数日k.py` | `stock_lab.infrastructure.market_data.BaoStockSource` | 作者 BaoStock 指数行为已迁移，写入 `index_daily` |
+| `task/_7_市值信息每日更新.py` | `stock_lab.jobs.market_cap_backfill` | Tushare daily_basic enrichment 已迁移，事实写入 `daily_quotes` |
+| `task/_10_开盘啦dde读取.py` | `stock_lab.jobs.dde_backfill` | KPL DDE 已迁移，限速抓取并写入 `daily_quotes.dde_net_amount` |
 | `task/_2_分时数据获取_5分k.py` | `stock_lab.jobs.intraday_bars_5m` | 已恢复薄兼容入口；正式采集写入 `intraday_bars_5m` |
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
 | KDJ 更新与策略 SQL | `stock_lab.jobs.kdj_indicators` / `kdj_indicators` | 已切换英文任务、列名和表名 |
@@ -44,6 +48,11 @@ names exactly as stored. `utils/common.py` and `utils/account.py` remain thin ad
 for existing strategy callers and may expose legacy-shaped aliases only after the
 repository query. A bare numeric code is padded to six digits; an exchange suffix is
 preserved, so `1.SZ` becomes `000001.SZ` and never becomes an integer.
+
+Shanghai index history is collected lazily through BaoStock. Tushare owns securities,
+daily quotes, and daily-basic enrichment; KPL/LonghuVIP owns DDE. Market-cap and DDE
+updates use null-preserving parameterized updates against existing `daily_quotes` rows.
+No historical market fact is stored in Redis.
 
 The 57 strategy files run through `stock_lab.modules.research` adapters. They use
 canonical string stock codes, English tables, normalized joins, and injected local

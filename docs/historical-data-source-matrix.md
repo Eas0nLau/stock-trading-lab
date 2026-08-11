@@ -24,8 +24,8 @@
 | 数据集 | 当前目标表/用途 | 当前来源与入口 | AkShare API | 判定 | 主要限制 | 推荐方案 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 证券列表与基础信息 | `securities`，股票代码、名称、交易所和上市状态 | Tushare `stock_basic`，由 `collectors.update_securities()` 调用 | `stock_info_a_code_name`；`stock_individual_info_em`；`stock_profile_cninfo` | 部分可用 | `stock_info_a_code_name` 只有代码和名称；逐股接口无法一次复现项目的 `area`、`market`、`list_status` 等规范字段 | 保持当前 Tushare 规范；只有在明确字段映射和限速后才评估 AkShare 替代 |
-| A 股日线行情 | `daily_quotes` | Tushare 日线和 `daily_basic`，由 `collectors.update_daily_quotes()` 调用 | `stock_zh_a_hist` | 部分可用 | 可提供 OHLCV、成交额等基础字段，但不能直接保证历史市值、流通股本、`dde_net_amount` 和项目全部字段的同口径 | 当前 Tushare 作为规范来源；AkShare 可用于补充或独立验证，必须固定 `adjust` 口径 |
-| 指数日线 | `index_daily` | 当前 `AkShareSource.fetch_index_daily()` 调用 `stock_zh_index_daily(symbol="sh000001")` | `stock_zh_index_daily_em`；`stock_zh_index_daily`；`stock_zh_index_daily_tx` | 可直接使用 | 不同上游的成交额、字段名和历史起始时间可能不同；必须统一日期和金额单位 | 保持当前已落库字段契约；切换 AkShare 上游接口前先做字段、日期和样本金额对照 |
+| A 股日线行情和市值 | `daily_quotes` | Tushare `daily` 与 `daily_basic`；入口 `task._1_日k数据更新`、`task._7_市值信息每日更新` | `stock_zh_a_hist` | 部分可用 | AkShare 可提供 OHLCV，但不能直接保证 Tushare 市值、自由流通股本和项目全部字段同口径 | 保持当前 Tushare 规范；`total_mv`/`circ_mv` 单位万元，`free_share` 单位万股，空 enrichment 不覆盖 MySQL 非空事实 |
+| 指数日线 | `index_daily` | `BaoStockSource.fetch_index_daily()` 调用 `sh.000001` 日频后写入 canonical 表；入口 `task._4_上证指数日k` | `stock_zh_index_daily_em`；`stock_zh_index_daily`；`stock_zh_index_daily_tx` | 可直接使用 | 不同上游的成交量、成交额和历史起始时间可能不同；必须统一日期和金额单位 | 当前使用 BaoStock 并以 20 日历天缓冲计算前收、振幅和涨跌额；切换前先做样本对照 |
 | 交易日历 | `index_daily` 日期序列及任务交易日选择 | 当前项目从本地指数数据生成交易日序列 | `tool_trade_date_hist_sina` | 部分可用 | 文档数据可能滞后，不能未经检查作为未来年份唯一日历；当前日更依赖本地 `index_daily` | 以已落库 `index_daily.trade_date` 为运行日历；首次初始化后再用 AkShare 或其他来源校验缺口 |
 | 5 分钟行情 | `intraday_bars_5m`，策略回测和盘中分析 | BaoStock `query_history_k_data_plus`，入口 `update_intraday_bars_5m()` | `stock_zh_a_hist_min_em`；`stock_zh_a_minute` | 部分可用 | AkShare 1 分钟历史通常只有最近数个交易日，其他周期历史深度受上游控制；不能保证完整年度回补 | 继续使用当前 BaoStock 入口，按证券和日期范围串行补数；AkShare 仅适合短窗口核验 |
 | 行业、概念板块当前目录 | 资金流板块目录、当前板块选择 | 东方财富实时接口；历史资金流适配器中的板块目录 | `stock_board_industry_name_em`；`stock_board_concept_name_em`；`stock_sector_fund_flow_rank` | 可直接使用 | 目录和代码会变化；`stock_sector_fund_flow_rank` 是排行结果，不是稳定的历史目录快照 | 采集时保存板块代码和名称；回补任务应使用落库目录或同次请求得到的代码，不按名称长期猜测 |
@@ -35,7 +35,7 @@
 | 行业/概念板块资金流历史 | `fund_flow_snapshots`、`fund_flow_records` | 当前默认 `EastMoneyFundFlowSource` 直连 `push2his.eastmoney.com`；目标方案是 `AkShareFundFlowSource` | `stock_sector_fund_flow_hist`；`stock_concept_fund_flow_hist` | 部分可用 | AkShare 当前历史函数仍依赖东方财富旧历史接口；板块名称到代码映射可能变化；返回异常时可能没有 `data.klines`；历史深度由上游控制 | 按项目改造目标使用 AkShare，串行限速并记录失败；在改造完成前不要把现有直连 EastMoney 实现描述为 AkShare |
 | 个股资金流历史 | 个股资金流研究 | 东方财富 | `stock_individual_fund_flow` | 部分可用 | 通常只返回近期有限交易日，不保证多年完整历史；资金流定义是东方财富口径 | 只用于近期研究或补充，不作为完整长期事实表的唯一来源 |
 | 大盘资金流历史 | 市场级资金流研究 | 东方财富 | `stock_market_fund_flow` | 部分可用 | 历史深度受上游控制，字段与板块资金流不完全相同 | 需要时单独落库并保留来源字段；不能与板块或个股资金流混用 |
-| `dde_net_amount` | `daily_quotes.dde_net_amount`，策略信号 | 当前 Tushare/历史兼容字段 | 个股主力资金流相关接口 | 语义不一致 | 主力净流入、大单净流入和 DDE 是不同供应商或算法定义，数值单位也可能不同 | 保持原字段来源；没有完成定义、单位和样本对照前禁止替换 |
+| `dde_net_amount` | `daily_quotes.dde_net_amount`，策略信号 | KPL/LonghuVIP `GetDaDanKLine2New`；入口 `task._10_开盘啦dde读取` | 个股主力资金流相关接口 | 语义不一致 | 主力净流入、大单净流入和 KPL DDE 是不同算法定义 | 保持 KPL DDE 元单位；全局请求间隔默认 0.5 秒、并发默认 4，只更新 MySQL，失败证券结构化返回 |
 | 涨停池 | 热门板块情绪的辅助数据 | Jiuyan actions 和项目情绪任务 | `stock_zt_pool_em`；`stock_zt_pool_previous_em` 等 | 部分可用 | 主要支持近期日期；没有项目所需的完整长期编辑语义 | AkShare 只能做近期辅助校验；项目 `jiuyan_actions` 仍用 Jiuyan |
 | Jiuyan 异动与涨停原因 | `jiuyan_actions`、热门板块情绪 | Jiuyan 页面和 `/jystock-app/api/v1/action/field`，入口 `collect_jiuyan_actions()` | 无对应 API | 不可使用 | AkShare 没有韭研公社编辑内容、`limit_up_reason` 和项目板块归类语义；可能触发滑块验证 | 保留 Jiuyan 浏览器/网络采集；严格校验返回日期匹配请求日期 |
 | 龙虎榜明细 | `dragon_tiger` | 同花顺采集器，经 `/api/v1/dragon-tiger/collection-jobs` 启动 | `stock_lhb_detail_em`；`stock_lhb_stock_detail_em` | 语义不一致 | AkShare 东方财富龙虎榜字段和同花顺字段、业务键、营业部列不保证一致 | 继续使用当前同花顺规范；AkShare 只能作为对照或另建供应商字段 |
@@ -64,6 +64,9 @@
 ## 当前代码依据
 
 - [市场数据 collector](../src/stock_lab/modules/market_data/collectors.py)
+- [市值回补任务](../src/stock_lab/jobs/market_cap_backfill.py)
+- [DDE 回补任务](../src/stock_lab/jobs/dde_backfill.py)
+- [KPL DDE source](../src/stock_lab/infrastructure/market_data/kpl.py)
 - [5 分钟行情任务](../src/stock_lab/jobs/intraday_bars_5m.py)
 - [KDJ 重算任务](../src/stock_lab/jobs/kdj_indicators.py)
 - [资金流历史任务](../src/stock_lab/jobs/fund_flow_backfill.py)
