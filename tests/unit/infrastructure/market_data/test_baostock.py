@@ -1,5 +1,8 @@
 import builtins
 import importlib
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -233,3 +236,61 @@ def test_five_minute_source_rejects_reversed_range_before_login():
         )
 
     assert client.login_count == 0
+
+
+@pytest.mark.parametrize(("start_date", "end_date", "ts_code"), [
+    (20260231, 20260301, "000001.SZ"),
+    (20260806, 20260806, "sh.bad"),
+])
+def test_five_minute_source_rejects_invalid_dates_and_codes_before_login(
+    start_date,
+    end_date,
+    ts_code,
+):
+    client = Client(Result([]))
+
+    with pytest.raises(DataValidationError):
+        BaoStockSource(client=client).fetch_5m_bars(
+            start_date,
+            end_date,
+            ts_code,
+        )
+
+    assert client.login_count == 0
+
+
+def test_baostock_requests_are_serialized_across_source_instances():
+    class ConcurrentClient:
+        def __init__(self):
+            self.active = 0
+            self.max_active = 0
+            self.guard = threading.Lock()
+
+        def login(self):
+            return Result()
+
+        def query_history_k_data_plus(self, *_args, **_kwargs):
+            with self.guard:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+            time.sleep(0.02)
+            with self.guard:
+                self.active -= 1
+            return Result([])
+
+        def logout(self):
+            return None
+
+    client = ConcurrentClient()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(
+            lambda code: BaoStockSource(client=client).fetch_5m_bars(
+                20260806,
+                20260806,
+                code,
+            ),
+            ["000001.SZ", "600000.SH"],
+        ))
+
+    assert client.max_active == 1

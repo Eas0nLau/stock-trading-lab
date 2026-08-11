@@ -55,6 +55,26 @@ def test_intraday_job_uses_injected_source_and_repository():
     assert repository.intraday_rows == rows
 
 
+@pytest.mark.parametrize("change", [
+    {"code": "sh.600000"},
+    {"date": "2026-08-07", "time": "20260807093500000"},
+])
+def test_intraday_job_rejects_rows_outside_requested_scope(change):
+    class MismatchedSource(Source):
+        def fetch_5m_bars(self, start_date, end_date, ts_code):
+            row = super().fetch_5m_bars(start_date, end_date, ts_code)[0]
+            row.update(change)
+            return [row]
+
+    with pytest.raises(DataValidationError, match="requested"):
+        fetch_intraday_bars_5m(
+            20260806,
+            20260806,
+            "000001.SZ",
+            source=MismatchedSource(),
+        )
+
+
 def test_kdj_job_reads_daily_quotes_and_limits_writes_to_requested_dates():
     repository = Repository()
 
@@ -88,5 +108,14 @@ def test_kdj_job_rejects_reversed_range_before_query():
 
     with pytest.raises(DataValidationError, match="range"):
         update_kdj_indicators(20260807, 20260806, repository=repository)
+
+    assert repository.requested_stock_codes is None
+
+
+def test_kdj_job_rejects_impossible_calendar_date_before_query():
+    repository = Repository()
+
+    with pytest.raises(DataValidationError, match="date"):
+        update_kdj_indicators(20260231, 20260231, repository=repository)
 
     assert repository.requested_stock_codes is None

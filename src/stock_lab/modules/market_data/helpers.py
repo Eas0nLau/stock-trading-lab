@@ -1,6 +1,8 @@
 import datetime as dt
 import math
 
+from stock_lab.shared.errors import DataValidationError
+
 
 def _number(value, default=None):
     if value in (None, ""):
@@ -49,6 +51,15 @@ def normalize_trade_date(value):
         return int(value.strftime("%Y%m%d"))
     raw = str(value or "").replace("-", "").replace("/", "")[:8]
     return int(raw) if raw.isdigit() else 0
+
+
+def validated_trade_date(value, label="trade date"):
+    raw = str(value or "").strip().replace("-", "").replace("/", "")[:8]
+    try:
+        parsed = dt.datetime.strptime(raw, "%Y%m%d")
+    except ValueError as error:
+        raise DataValidationError(f"Invalid {label}: {value!r}") from error
+    return int(parsed.strftime("%Y%m%d"))
 
 
 def security_from_source(row):

@@ -1,6 +1,8 @@
+import datetime as dt
+
 from stock_lab.shared.errors import DataValidationError
 
-from .helpers import normalize_symbol, normalize_trade_date
+from .helpers import normalize_symbol, validated_trade_date
 
 
 def _required_float(row, name):
@@ -22,12 +24,17 @@ def _source_symbol(value):
 
 
 def normalize_intraday_bar(row):
-    trade_date = normalize_trade_date(row.get("date"))
+    trade_date = validated_trade_date(row.get("date"), "intraday date")
     trade_time_raw = str(row.get("time") or "").strip()
     if not trade_date or len(trade_time_raw) < 12 or not trade_time_raw.isdigit():
         raise DataValidationError("Invalid intraday date or time")
     trade_time_text = trade_time_raw[:12]
-    if int(trade_time_text[:8]) != trade_date:
+    try:
+        parsed_time = validated_trade_date(trade_time_text[:8], "intraday time")
+        dt.datetime.strptime(trade_time_text, "%Y%m%d%H%M")
+    except (DataValidationError, ValueError) as error:
+        raise DataValidationError("Invalid intraday date or time") from error
+    if parsed_time != trade_date:
         raise DataValidationError("Intraday date and time do not match")
     symbol = _source_symbol(row.get("code"))
     try:

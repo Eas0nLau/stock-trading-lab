@@ -1,5 +1,6 @@
 import importlib
 import datetime as dt
+import threading
 
 from stock_lab.modules.market_data.helpers import normalize_symbol, normalize_ts_code
 from stock_lab.shared.errors import DataValidationError, InfrastructureError
@@ -7,18 +8,26 @@ from stock_lab.shared.errors import DataValidationError, InfrastructureError
 
 BAOSTOCK_5M_FIELDS = "open,close,date,time,code,high,low,volume,amount,adjustflag"
 BAOSTOCK_INDEX_FIELDS = "date,code,open,close,high,low,volume,amount,adjustflag,turn,pctChg"
+BAOSTOCK_REQUEST_LOCK = threading.Lock()
 
 
 def _iso_date(value):
     raw = str(value or "").replace("-", "").replace("/", "")[:8]
     if len(raw) != 8 or not raw.isdigit():
         raise DataValidationError(f"Invalid BaoStock date: {value!r}")
-    return f"{raw[:4]}-{raw[4:6]}-{raw[6:]}"
+    try:
+        parsed = dt.datetime.strptime(raw, "%Y%m%d")
+    except ValueError as error:
+        raise DataValidationError(f"Invalid BaoStock date: {value!r}") from error
+    return parsed.strftime("%Y-%m-%d")
 
 
 def _baostock_code(value):
     raw = str(value or "").strip().lower()
     if raw.startswith(("sh.", "sz.", "bj.")):
+        symbol = raw.split(".", 1)[1]
+        if len(symbol) != 6 or not symbol.isdigit():
+            raise DataValidationError(f"Invalid stock code: {value!r}")
         return raw
     ts_code = normalize_ts_code(value)
     symbol = normalize_symbol(ts_code)
@@ -113,6 +122,10 @@ class BaoStockSource:
         return normalized
 
     def _query_rows(self, code, fields, **options):
+        with BAOSTOCK_REQUEST_LOCK:
+            return self._query_rows_locked(code, fields, **options)
+
+    def _query_rows_locked(self, code, fields, **options):
         try:
             client = self._client()
             login = client.login()

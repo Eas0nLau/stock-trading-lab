@@ -63,6 +63,6 @@ db/migrations/004_upsert_legacy_data.sql
 
 KDJ 与 5 分钟行情的正式写入和活跃策略读取已切换到 `kdj_indicators` 与 `intraday_bars_5m`。KDJ 迁移和新任务都按规范 `ts_code` 与日期生成稳定标识，4xxxxx/8xxxxx 代码统一映射为 `.BJ`；5 分钟行情迁移和新任务都按补齐后的六位代码、时间和复权标记重新生成相同标识，因此重复运行更新同一记录。旧 `task._2_分时数据获取_5分k` 仅投影历史列表字段，不再访问旧表，并同时接受历史 `stock=` 关键字与位置 `code` 参数。
 
-在继续运行新的 5 分钟历史任务前，执行 `005_normalize_intraday_minute_identity.sql`。该迁移把 BaoStock 17 位时间和旧迁移的 12 位时间统一为 `YYYYMMDDHHMM`，并在事务中折叠同一证券、分钟和复权标记的重复行。
+在继续运行新的 5 分钟历史任务前，停止相关写入并执行 `005_normalize_intraday_minute_identity.sql`。该迁移在 SERIALIZABLE 事务中把 BaoStock 17 位时间和旧迁移的 12 位时间统一为 `YYYYMMDDHHMM`，通过临时表折叠同一证券、分钟和复权标记的重复行，并在源/归一化/目标计数全部通过后记录 `migration_validations` 与 `schema_migrations`；异常会回滚并记录失败。
 
 应用代码切换已经完成：韭研、情绪、资金流向、策略选股、龙虎榜、研究策略和兼容脚本均不再读取旧表或旧 Redis 键，正式代码也不反向导入中文实现。该状态由 `tests/test_cutover_contracts.py` 强制检查。执行 `003_drop_legacy_schema.sql` 前仍必须停止应用、完成全库备份、确认 `001`/`002`/`004`、`004_legacy_containment_v1/succeeded` 和 16 条表级 gate，并完成人工抽样。数据库 guard 是必要条件，不替代这些步骤。

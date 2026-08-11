@@ -167,10 +167,16 @@ def test_005_normalizes_existing_intraday_rows_to_minute_identity():
     sql = NORMALIZE_INTRADAY_PATH.read_text(encoding="utf-8")
 
     assert "START TRANSACTION" in sql
+    assert "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE" in sql
+    assert "DECLARE EXIT HANDLER FOR SQLEXCEPTION" in sql
     assert "CREATE TEMPORARY TABLE `intraday_bars_5m_minute_normalized`" in sql
     assert "LEFT(CAST(`trade_time` AS CHAR), 12)" in sql
     assert "ON DUPLICATE KEY UPDATE" in sql
     assert "DELETE FROM `intraday_bars_5m`" in sql
+    assert "SIGNAL SQLSTATE '45000'" in sql
+    assert "INSERT INTO `schema_migrations`" in sql
+    assert "005_normalize_intraday_minute_identity" in sql
+    assert "INSERT INTO `migration_validations`" in sql
     assert "COMMIT" in sql
     assert "t_stock_5_min_k" not in sql
 

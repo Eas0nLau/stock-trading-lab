@@ -63,7 +63,10 @@ def run_daily_update(
         market_cap_count = _enrichment_count("market_cap", market_cap_result)
         dde_result = collector.update_dde(trade_date)
         dde_count = _enrichment_count("dde", dde_result)
-        kdj_count = collector.update_kdj(trade_date)
+        try:
+            kdj_count = collector.update_kdj(trade_date)
+        except Exception as error:
+            raise JobExecutionError(f"KDJ update failed: {error}") from error
         counts = {
             "index_daily": index_count,
             "securities": securities_count,

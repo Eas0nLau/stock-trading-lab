@@ -215,7 +215,7 @@ def test_daily_update_rejects_kdj_failure_without_completion():
         RuntimeError("kdj failed")
     )
 
-    with pytest.raises(RuntimeError, match="kdj failed"):
+    with pytest.raises(JobExecutionError, match="KDJ update failed"):
         run_daily_update(
             20260805,
             collector=collector,

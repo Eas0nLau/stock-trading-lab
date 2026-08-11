@@ -1,6 +1,6 @@
 from stock_lab.modules.market_data.indicators import calculate_kdj
 from stock_lab.modules.market_data.collectors import create_default_repository
-from stock_lab.modules.market_data.helpers import normalize_trade_date
+from stock_lab.modules.market_data.helpers import validated_trade_date
 from stock_lab.modules.market_data.repository import MarketDataRepository
 from stock_lab.shared.errors import DataValidationError
 
@@ -10,9 +10,9 @@ def _default_repository():
 
 
 def update_kdj_indicators(start_date, end_date, stock_codes=None, repository=None, period=9):
-    start_date = normalize_trade_date(start_date)
-    end_date = normalize_trade_date(end_date)
-    if not start_date or not end_date or start_date > end_date:
+    start_date = validated_trade_date(start_date, "KDJ start date")
+    end_date = validated_trade_date(end_date, "KDJ end date")
+    if start_date > end_date:
         raise DataValidationError(
             f"Invalid KDJ date range: {start_date}-{end_date}"
         )

@@ -3,7 +3,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from stock_lab.infrastructure.market_data import BaoStockSource
 from stock_lab.modules.market_data.collectors import create_default_repository
 from stock_lab.modules.market_data.contracts import IntradayBarSource
-from stock_lab.modules.market_data.helpers import normalize_ts_code
+from stock_lab.modules.market_data.helpers import (
+    normalize_symbol,
+    normalize_ts_code,
+    validated_trade_date,
+)
 from stock_lab.modules.market_data.parsing import normalize_intraday_bar
 from stock_lab.modules.market_data.repository import MarketDataRepository
 from stock_lab.shared.errors import DataValidationError
@@ -16,11 +20,32 @@ def _default_repository():
 def fetch_intraday_bars_5m(
     start_date, end_date, ts_code, source: IntradayBarSource | None = None
 ):
+    start_date = validated_trade_date(start_date, "intraday start date")
+    end_date = validated_trade_date(end_date, "intraday end date")
+    if start_date > end_date:
+        raise DataValidationError(
+            f"Invalid intraday date range: {start_date}-{end_date}"
+        )
+    requested_symbol = normalize_symbol(ts_code)
+    if len(requested_symbol) != 6 or not requested_symbol.isdigit():
+        raise DataValidationError(f"Invalid intraday stock code: {ts_code!r}")
     source = source or BaoStockSource()
-    return [
-        normalize_intraday_bar(row)
-        for row in source.fetch_5m_bars(start_date, end_date, ts_code)
-    ]
+    rows = []
+    for source_row in source.fetch_5m_bars(
+        start_date,
+        end_date,
+        ts_code,
+    ):
+        row = normalize_intraday_bar(source_row)
+        if (
+            row["stock_code"] != requested_symbol
+            or not start_date <= row["trade_date"] <= end_date
+        ):
+            raise DataValidationError(
+                "Intraday response does not match requested security or date range"
+            )
+        rows.append(row)
+    return rows
 
 
 def update_intraday_bars_5m(

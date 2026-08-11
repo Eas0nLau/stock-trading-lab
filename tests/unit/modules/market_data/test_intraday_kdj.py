@@ -38,6 +38,8 @@ def test_intraday_bar_uses_same_identity_for_minute_and_baostock_timestamp():
 
 @pytest.mark.parametrize("changes", [
     {"time": "bad"},
+    {"date": "2026-02-31", "time": "20260231093500000"},
+    {"time": "20260806993500000"},
     {"code": ""},
     {"close": "not-a-number"},
 ])
