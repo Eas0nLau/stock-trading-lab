@@ -1,5 +1,7 @@
 from sqlalchemy import text
 
+from stock_lab.shared.errors import DataValidationError
+
 from .helpers import normalize_symbol, normalize_ts_code, stock_code_filter
 
 
@@ -228,6 +230,55 @@ class MarketDataRepository:
 
     def upsert_jiuyan_actions(self, rows):
         return self._write("jiuyan_actions", rows, ("data_id",))
+
+    @staticmethod
+    def replace_jiuyan_actions(connection, trade_date, rows, expected_row_count):
+        trade_date = int(trade_date)
+        rows = [dict(row) for row in rows]
+        expected_row_count = int(expected_row_count)
+        if expected_row_count != len(rows):
+            raise DataValidationError(
+                "Jiuyan expected row count does not match the validated batch"
+            )
+        if any(int(row.get("trade_date", 0)) != trade_date for row in rows):
+            raise DataValidationError("Jiuyan batch contains a mismatched trade date")
+
+        connection.execute(
+            text("DELETE FROM `jiuyan_actions` WHERE `trade_date` = :trade_date"),
+            {"trade_date": trade_date},
+        )
+        if rows:
+            MarketDataRepository._execute_insert(
+                connection, "jiuyan_actions", rows, ("data_id",)
+            )
+        connection.execute(
+            text(
+                "INSERT INTO `jiuyan_collection_days` "
+                "(`trade_date`, `row_count`, `status`) "
+                "VALUES (:trade_date, :row_count, :status) "
+                "ON DUPLICATE KEY UPDATE "
+                "`row_count` = VALUES(`row_count`), `status` = VALUES(`status`)"
+            ),
+            {
+                "trade_date": trade_date,
+                "row_count": expected_row_count,
+                "status": "complete",
+            },
+        )
+        persisted_count = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM `jiuyan_actions` "
+                    "WHERE `trade_date` = :trade_date"
+                ),
+                {"trade_date": trade_date},
+            ).scalar_one()
+        )
+        if persisted_count != expected_row_count:
+            raise DataValidationError(
+                "Jiuyan persisted row count does not match the validated batch"
+            )
+        return persisted_count
 
     def _write(self, table, rows, keys):
         rows = list(rows)
