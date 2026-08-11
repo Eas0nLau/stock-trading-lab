@@ -79,6 +79,10 @@ def update_dde(
     result["processed_codes"].sort()
     result["empty_codes"].sort()
     result["failed"].sort(key=lambda item: item["stock_code"])
-    if result["failed"]:
+    if result["failed"] or (
+        codes
+        and not result["processed_codes"]
+        and len(result["empty_codes"]) == len(codes)
+    ):
         result["status"] = "failed"
     return result

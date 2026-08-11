@@ -68,6 +68,14 @@ def update_market_cap(
             source_rows = _records(source.fetch_daily_basic(trade_date))
             if not source_rows:
                 raise ValueError("Tushare daily_basic returned no data")
+            source_rows = [
+                row for row in source_rows
+                if normalize_trade_date(row.get("trade_date")) == trade_date
+            ]
+            if not source_rows:
+                raise ValueError(
+                    "Tushare daily_basic returned no rows for requested date"
+                )
             quotes = repository.daily_quotes(
                 start_date=trade_date,
                 end_date=trade_date,

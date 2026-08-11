@@ -172,7 +172,18 @@ class MarketDataRepository:
         return len(rows)
 
     def upsert_daily_quotes(self, rows):
-        return self._write("daily_quotes", rows, ("data_id",))
+        rows = list(rows)
+        if not rows:
+            return 0
+        with self._engine.begin() as connection:
+            self._execute_insert(
+                connection,
+                "daily_quotes",
+                rows,
+                ("data_id",),
+                preserve_null_columns=DAILY_QUOTE_ENRICHMENT_FIELDS,
+            )
+        return len(rows)
 
     def update_daily_quote_enrichment(self, rows, fields, only_missing=False):
         rows = [dict(row) for row in rows]
@@ -227,11 +238,23 @@ class MarketDataRepository:
         return len(rows)
 
     @staticmethod
-    def _execute_insert(connection, table, rows, keys=()):
+    def _execute_insert(
+        connection,
+        table,
+        rows,
+        keys=(),
+        preserve_null_columns=(),
+    ):
         columns = list(rows[0])
         values = ", ".join(f":{column}" for column in columns)
         updates = ", ".join(
-            f"`{column}` = VALUES(`{column}`)" for column in columns if column not in keys
+            (
+                f"`{column}` = COALESCE(VALUES(`{column}`), `{column}`)"
+                if column in preserve_null_columns
+                else f"`{column}` = VALUES(`{column}`)"
+            )
+            for column in columns
+            if column not in keys
         )
         suffix = f" ON DUPLICATE KEY UPDATE {updates}" if updates else ""
         connection.execute(

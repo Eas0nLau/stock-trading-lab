@@ -1,13 +1,15 @@
 import datetime as dt
+import math
 
 
 def _number(value, default=None):
     if value in (None, ""):
         return default
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return default
+    return number if math.isfinite(number) else default
 
 
 def normalize_ts_code(value):

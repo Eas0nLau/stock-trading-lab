@@ -1,4 +1,5 @@
 import datetime as dt
+import math
 import time
 import uuid
 
@@ -112,16 +113,24 @@ class KplDdeSource:
                 (self.today() - dt.datetime.strptime(start_date, "%Y%m%d").date()).days,
             )
             page_size = min(600, max(10, calendar_days + 10))
+            expected_items = calendar_days + 10
             target_count = None
         else:
             target_count = int(count)
             if target_count <= 0:
                 raise DataValidationError("KPL count must be greater than zero")
             page_size = min(600, max(10, target_count))
+            expected_items = target_count
 
         records = []
         index = 0
+        page_count = 0
+        max_pages = max(1, math.ceil(expected_items / page_size) + 2)
         while True:
+            if page_count >= max_pages:
+                raise InfrastructureError(
+                    f"KPL pagination limit exceeded for {stock_code}"
+                )
             payload = self._request(
                 {
                     "apiv": "w44",
@@ -140,6 +149,7 @@ class KplDdeSource:
                 timeout,
                 retries,
             )
+            page_count += 1
             page = list(zip(
                 payload.get("Date", []) or [],
                 payload.get("DDJE", []) or [],
@@ -153,6 +163,8 @@ class KplDdeSource:
                     valid_dates.append(_date_text(raw_date))
                 except DataValidationError:
                     continue
+            if not valid_dates:
+                break
             if start_date and valid_dates and min(valid_dates) <= start_date:
                 break
             if target_count is not None and len(records) >= target_count:

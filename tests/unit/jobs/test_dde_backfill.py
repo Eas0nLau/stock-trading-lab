@@ -106,3 +106,19 @@ def test_dde_backfill_tracks_empty_codes_and_force_mode():
     assert result["status"] == "success"
     assert result["empty_codes"] == ["600000.SH"]
     assert repository.updates[0][2] is False
+
+
+def test_dde_backfill_fails_when_every_pending_code_is_empty():
+    source = Source(empty={"000001.SZ", "600000.SH"})
+
+    result = update_dde(
+        20260806,
+        20260807,
+        source=source,
+        repository=Repository(),
+        max_workers=2,
+    )
+
+    assert result["status"] == "failed"
+    assert result["updated"] == 0
+    assert result["empty_codes"] == ["000001.SZ", "600000.SH"]

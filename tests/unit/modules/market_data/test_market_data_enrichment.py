@@ -56,6 +56,21 @@ def test_market_cap_normalization_preserves_tushare_units():
     }
 
 
+def test_market_cap_normalization_converts_nan_to_none():
+    row = market_cap_from_source({
+        "ts_code": "000001.SZ",
+        "trade_date": "20260807",
+        "total_mv": float("nan"),
+        "circ_mv": float("inf"),
+        "free_share": float("nan"),
+    }, close_price=12.5)
+
+    assert row["total_market_value"] is None
+    assert row["circulating_market_value"] is None
+    assert row["free_float_shares"] is None
+    assert row["free_float_market_value"] is None
+
+
 def test_dde_normalization_keeps_yuan():
     assert dde_from_source({
         "stock_code": "1",
@@ -119,3 +134,28 @@ def test_enrichment_rejects_unknown_fields():
             [{"ts_code": "000001.SZ", "trade_date": 20260807, "close_price": 10}],
             fields=("close_price",),
         )
+
+
+def test_base_quote_upsert_does_not_erase_enrichment_with_nulls():
+    engine = Engine()
+    repository = MarketDataRepository(lambda *_args, **_kwargs: [], engine)
+
+    repository.upsert_daily_quotes([{
+        "data_id": "quote-1",
+        "ts_code": "000001.SZ",
+        "trade_date": 20260807,
+        "close_price": 12.5,
+        "total_market_value": None,
+        "dde_net_amount": None,
+    }])
+
+    sql = engine.connection.calls[0][0]
+    assert (
+        "`total_market_value` = COALESCE(VALUES(`total_market_value`), "
+        "`total_market_value`)"
+    ) in sql
+    assert (
+        "`dde_net_amount` = COALESCE(VALUES(`dde_net_amount`), "
+        "`dde_net_amount`)"
+    ) in sql
+    assert "`close_price` = VALUES(`close_price`)" in sql

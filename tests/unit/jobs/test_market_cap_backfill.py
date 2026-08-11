@@ -109,3 +109,29 @@ def test_market_cap_force_updates_valid_values_but_still_preserves_nulls():
     )
 
     assert repository.updates[0][2] is False
+
+
+def test_market_cap_rejects_rows_for_a_different_trade_date():
+    class StaleSource:
+        def fetch_daily_basic(self, _trade_date):
+            return pd.DataFrame([{
+                "ts_code": "000001.SZ",
+                "trade_date": 20260806,
+                "total_mv": 10000,
+                "circ_mv": 8000,
+                "free_share": 500,
+            }])
+
+    repository = Repository()
+    result = update_market_cap(
+        20260807,
+        20260807,
+        source=StaleSource(),
+        repository=repository,
+        rate_delay=0,
+    )
+
+    assert result["status"] == "failed"
+    assert result["failed_dates"] == [20260807]
+    assert "requested date" in result["errors"][0]["error"]
+    assert repository.updates == []

@@ -134,3 +134,35 @@ def test_daily_dde_reports_exhausted_retry():
 
     with pytest.raises(InfrastructureError, match="request failed"):
         source.fetch_daily_dde("000001", count=1, retries=2)
+
+
+def test_daily_dde_stops_on_page_without_valid_dates():
+    session = Session([
+        Response({"errcode": "0", "Date": ["broken"], "DDJE": ["3"]}),
+        Response({"errcode": "0", "Date": ["20260807"], "DDJE": ["4"]}),
+    ])
+    source = KplDdeSource(session=session, limiter=Limiter())
+
+    assert source.fetch_daily_dde("000001", count=2) == []
+    assert len(session.calls) == 1
+
+
+def test_daily_dde_rejects_excessive_pagination():
+    repeated = Response({
+        "errcode": "0",
+        "Date": ["20260807"],
+        "DDJE": ["3"],
+    })
+    session = Session([repeated, repeated, repeated])
+    source = KplDdeSource(
+        session=session,
+        limiter=Limiter(),
+        today=lambda: dt.date(2026, 8, 11),
+    )
+
+    with pytest.raises(InfrastructureError, match="pagination limit"):
+        source.fetch_daily_dde(
+            "000001",
+            start_date=20260801,
+            end_date=20260807,
+        )
