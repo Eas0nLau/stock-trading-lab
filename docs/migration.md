@@ -21,6 +21,7 @@
 | `task/_7_市值信息每日更新.py` | `stock_lab.jobs.market_cap_backfill` | Tushare daily_basic enrichment 已迁移，事实写入 `daily_quotes` |
 | `task/_10_开盘啦dde读取.py` | `stock_lab.jobs.dde_backfill` | KPL DDE 已迁移，限速抓取并写入 `daily_quotes.dde_net_amount` |
 | `task/_2_分时数据获取_5分k.py` | `stock_lab.jobs.intraday_bars_5m` | 已恢复薄兼容入口；正式采集写入 `intraday_bars_5m` |
+| `task/_3_kdj.py` | `stock_lab.jobs.kdj_indicators` | 作者命名薄入口已恢复；兼容公式与 canonical 持久化公式明确分离 |
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
 | KDJ 更新与策略 SQL | `stock_lab.jobs.kdj_indicators` / `kdj_indicators` | 已切换英文任务、列名和表名 |
 | 龙虎榜溢价页面 | `stock_lab.modules.dragon_tiger` | canonical models, parsers, repositories, collectors, premium analysis, and async API are active |
@@ -66,13 +67,17 @@ the application does not import, log in to, or contact BaoStock. The official jo
 depends only on `IntradayBarSource.fetch_5m_bars()` so tests and alternate sources
 can be injected without network access. Source rows are normalized to English
 columns before `MarketDataRepository` upserts deterministic `data_id` values into
-`intraday_bars_5m`.
+`intraday_bars_5m`. Canonical timestamps are 12-digit minutes; migration `005`
+collapses any existing 12/17-digit duplicate identities before new backfills.
 
 `stock_lab.jobs.kdj_indicators` reads canonical `daily_quotes`, calculates K, D,
 and J independently for each `ts_code`, and upserts `kdj_indicators`. Active KDJ
 and five-minute strategy SQL now reads the English tables; SQL aliases preserve
 historical `J`, `J2`, `date`, `time`, `open`, and `close` consumer shapes. The
-Chinese five-minute task module contains no source or persistence implementation.
+Chinese five-minute and KDJ task modules contain no source or persistence
+implementation. `calculate_ths_kdj` preserves upstream compatibility values, while
+only canonical `calculate_kdj` writes `kdj_indicators`. Daily updates recalculate
+KDJ after market facts and before Jiuyan/emotion.
 
 前端 `IndexCycle.vue` 和 `HotBoardEmotion.vue` 已使用 `/api/v1/emotion/*` 与英文模型字段。旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 已停止注册，避免读取不再更新的旧表。
 

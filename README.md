@@ -86,14 +86,14 @@ uv run --frozen python -m task.fund_flow_backfill --days 365
 
 默认流水线依次执行：
 
-1. 更新 A 股基础信息。
-2. 更新个股日 K 数据。
-3. 更新上证指数日线。
-4. 采集韭研公社异动板块数据。
-5. 计算并写入热门板块情绪。
-6. 计算并写入指数情绪周期和市场宽度。
+1. 更新上证指数日线和交易日历。
+2. 更新 A 股基础信息和个股日 K 数据。
+3. 补齐市值、自由流通字段和 KPL DDE。
+4. 重算目标交易日的 canonical KDJ。
+5. 采集韭研公社异动板块数据。
+6. 计算并写入热门板块情绪、指数情绪周期和市场宽度。
 
-项目还实现了 5 分钟 K 线、KDJ、韭研公社异动和龙虎榜溢价分析等更新模块。5 分钟行情和 KDJ 的正式入口分别是 `stock_lab.jobs.intraday_bars_5m` 与 `stock_lab.jobs.kdj_indicators`；它们不在默认每日流水线中，需要按研究需要单独调用。同花顺板块、成分股和股票板块关系没有运行时采集器，现有数据仅作为迁移导入的归档参考数据保留。
+项目还实现了 5 分钟 K 线、KDJ、韭研公社异动和龙虎榜溢价分析等更新模块。5 分钟历史是独立高容量任务，正式入口为 `stock_lab.jobs.intraday_bars_5m`，CLI 为 `task._2_分时数据获取_5分k`；KDJ 正式入口为 `stock_lab.jobs.kdj_indicators`，已进入默认每日流水线，也可通过 `task._3_kdj` 单独重算。同花顺板块、成分股和股票板块关系没有运行时采集器，现有数据仅作为迁移导入的归档参考数据保留。
 
 ### 2.6 盘前纪要股票提取（盘前用，用来捕捉热启动的题材和隔夜消息）
 
@@ -245,7 +245,7 @@ flowchart LR
 | `output/` | 研究 CSV、策略结果和盘前纪要 INI 等生成物 |
 | `记录/` | 按月份保存的 Excel 记录 |
 
-5 分钟行情通过 `IntradayBarSource` 注入数据源，默认 `BaoStockSource` 仅在实际采集时导入并登录 BaoStock。`fetch_intraday_bars_5m()` 只采集和标准化数据，`update_intraday_bars_5m()` 写入 `intraday_bars_5m`。`update_kdj_indicators()` 从 `daily_quotes` 计算标准 KDJ 并写入 `kdj_indicators`。旧的 `task._2_分时数据获取_5分k.get_data()` 只负责把正式结果投影为历史策略使用的列表顺序。
+5 分钟行情通过 `IntradayBarSource` 注入数据源，默认 `BaoStockSource` 仅在实际采集时导入并登录 BaoStock。canonical 时间统一为 12 位分钟；运行新回补前先执行 `005_normalize_intraday_minute_identity.sql`。批量入口要求显式日期，支持证券范围、有限并发和结构化失败结果。`update_kdj_indicators()` 从 `daily_quotes` 计算 canonical KDJ 并写入 `kdj_indicators`；作者兼容 `calculate_ths_kdj()` 只复现旧数值。`task._2_分时数据获取_5分k.get_data()` 仅保留历史策略列表投影。
 
 ## 6. 数据存储分工
 

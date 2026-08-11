@@ -27,7 +27,7 @@
 | A 股日线行情和市值 | `daily_quotes` | Tushare `daily` 与 `daily_basic`；入口 `task._1_日k数据更新`、`task._7_市值信息每日更新` | `stock_zh_a_hist` | 部分可用 | AkShare 可提供 OHLCV，但不能直接保证 Tushare 市值、自由流通股本和项目全部字段同口径 | 保持当前 Tushare 规范；`total_mv`/`circ_mv` 单位万元，`free_share` 单位万股，空 enrichment 不覆盖 MySQL 非空事实 |
 | 指数日线 | `index_daily` | `BaoStockSource.fetch_index_daily()` 调用 `sh.000001` 日频后写入 canonical 表；入口 `task._4_上证指数日k` | `stock_zh_index_daily_em`；`stock_zh_index_daily`；`stock_zh_index_daily_tx` | 可直接使用 | 不同上游的成交量、成交额和历史起始时间可能不同；必须统一日期和金额单位 | 当前使用 BaoStock 并以 20 日历天缓冲计算前收、振幅和涨跌额；切换前先做样本对照 |
 | 交易日历 | `index_daily` 日期序列及任务交易日选择 | 当前项目从本地指数数据生成交易日序列 | `tool_trade_date_hist_sina` | 部分可用 | 文档数据可能滞后，不能未经检查作为未来年份唯一日历；当前日更依赖本地 `index_daily` | 以已落库 `index_daily.trade_date` 为运行日历；首次初始化后再用 AkShare 或其他来源校验缺口 |
-| 5 分钟行情 | `intraday_bars_5m`，策略回测和盘中分析 | BaoStock `query_history_k_data_plus`，入口 `update_intraday_bars_5m()` | `stock_zh_a_hist_min_em`；`stock_zh_a_minute` | 部分可用 | AkShare 1 分钟历史通常只有最近数个交易日，其他周期历史深度受上游控制；不能保证完整年度回补 | 继续使用当前 BaoStock 入口，按证券和日期范围串行补数；AkShare 仅适合短窗口核验 |
+| 5 分钟行情 | `intraday_bars_5m`，策略回测和盘中分析 | BaoStock `query_history_k_data_plus`；入口 `task._2_分时数据获取_5分k` | `stock_zh_a_hist_min_em`；`stock_zh_a_minute` | 部分可用 | AkShare 1 分钟历史通常只有最近数个交易日，其他周期历史深度受上游控制；不能保证完整年度回补 | 先执行 `005_normalize_intraday_minute_identity.sql`，再用显式日期和可选证券范围补数；canonical 时间为 12 位分钟，默认最大并发 4 |
 | 行业、概念板块当前目录 | 资金流板块目录、当前板块选择 | 东方财富实时接口；历史资金流适配器中的板块目录 | `stock_board_industry_name_em`；`stock_board_concept_name_em`；`stock_sector_fund_flow_rank` | 可直接使用 | 目录和代码会变化；`stock_sector_fund_flow_rank` 是排行结果，不是稳定的历史目录快照 | 采集时保存板块代码和名称；回补任务应使用落库目录或同次请求得到的代码，不按名称长期猜测 |
 | 当前板块成分股 | 板块展示和龙头辅助信息 | 东方财富板块接口 | `stock_board_industry_cons_em`；`stock_board_concept_cons_em` | 可直接使用 | 只表示当前成分股，没有可靠的历史 as-of 成分关系 | 只用于当前快照和辅助展示；历史回测不能把当前成分股倒灌到过去 |
 | 历史行业/概念成分关系 | `ths_boards`、`ths_board_constituents`、`ths_stock_relations` 归档参考 | 同花顺归档导入 | `stock_industry_change_cninfo` 仅能提供部分行业变更 | 不可使用 | AkShare 没有同语义的历史概念成员关系；板块 `*_hist_em` 是指数行情，不是历史成分股 | 保留归档数据；需要历史成员关系时使用原始归档或重新设计带生效日期的数据源 |
@@ -47,7 +47,7 @@
 | IPO、新股 | 当前项目扩展数据 | 项目当前未纳入必需回补链 | `stock_xgsglb_em`；`stock_ipo_ths`；`stock_new_ipo_cninfo` | 可直接使用 | API 随 AkShare 版本变化，申购、上市、发行日期字段要分开 | 记录版本和字段映射；当前锁定版本缺失的 API 不得直接写入生产任务 |
 | 分红、配股 | 当前项目扩展数据 | 项目当前未纳入必需回补链 | `stock_history_dividend`；`stock_history_dividend_detail` | 可直接使用 | 每 10 股单位、除权日期、占位日期需要归一化 | 独立落库并保留原始字段和标准化字段 |
 | 筹码分布 | 当前项目扩展数据 | 项目当前未纳入必需回补链 | `stock_cyq_em` | 部分可用 | 通常只有最近约 90 个交易日，不适合长期策略回测 | 只用于近期分析，不作为长期历史补数源 |
-| KDJ | `kdj_indicators` | 本地 `calculate_kdj()`，入口 `update_kdj_indicators()` | 无需下载同名结果 | 不可使用 | 第三方 KDJ 参数、复权口径和初始化方式可能不同 | 先完整回补 `daily_quotes`，再按 `period=9` 本地重算并 upsert |
+| KDJ | `kdj_indicators` | canonical `calculate_kdj()`；入口 `task._3_kdj` 和日更 | 无需下载同名结果 | 不可使用 | 作者兼容 `calculate_ths_kdj()` 的预热和平盘口径与 canonical 公式不同 | 正式表只写 canonical 修正公式；作者兼容函数仅供旧调用复现数值，日更在市场事实后自动重算目标日期 |
 | 市场宽度 | `index_market_breadth` | 本地 `run_index_emotion_job()` 及市场行情事实 | 无需下载同名结果 | 不可使用 | 需要项目自己的股票池、涨跌和涨停定义 | 从 `daily_quotes` 和项目规则本地计算 |
 | 指数情绪周期 | `index_emotion_daily` | 本地情绪任务 | 无需下载同名结果 | 不可使用 | 是项目规则派生值，不是外部标准行情字段 | 先补齐指数、日线和市场宽度，再调用情绪任务 |
 | 热门板块情绪 | `hot_board_emotion_daily` | 本地情绪任务，依赖 `jiuyan_actions` 和日线 | 无需下载同名结果 | 不可使用 | 依赖 Jiuyan 的前一交易日样本和项目规则 | 先补 Jiuyan、日线，再按日期重算 |
@@ -56,7 +56,7 @@
 
 - **AkShare**：批量任务必须串行调用，普通请求建议至少间隔 1 秒；连接失败使用有限次数指数退避。AkShare 不屏蔽上游限制，东方财富、同花顺、交易所等上游的断连和限流仍会直接影响任务。
 - **Tushare**：遵守 token 权限、积分和调用频率。当前 collector 遇到包含“频率”的异常时等待 65 秒后重试，并在日期间保持至少 1.3 秒间隔。
-- **BaoStock**：当前 5 分钟任务按单只证券、单个日期范围执行一次登录、查询和注销，没有内置请求重试。批量操作应串行处理证券并保存失败清单。
+- **BaoStock**：每只证券和日期范围执行一次登录、查询和注销，没有内置请求重试。批量入口使用可配置的有限并发并返回 processed、empty 和 failed 证券清单。
 - **Jiuyan**：当前实现使用全局请求时隙，默认随机间隔 60 至 105 秒，并最多尝试 2 次。出现滑块时需要人工验证，不能通过提高并发规避。
 - **同花顺**：当前龙虎榜采集器默认对连接和超时错误尝试 3 次，使用 0.5 秒线性等待，但没有统一的批量请求间隔。长区间回补应缩小批次并监控封禁响应。
 - **东方财富浏览器采集**：只用于盘中实时资金流和策略页面监听。浏览器带 Cookie 的会话可用，不代表 Python `requests` 历史接口可用；两条链路必须分别监控。

@@ -153,22 +153,24 @@ uv run --frozen python -m task._10_开盘啦dde读取 --start-date 20260101 --en
 
 ### 1. 5 分钟行情
 
-状态：**仅程序接口**。
+状态：**已支持 CLI**。
 
-入口：`stock_lab.jobs.intraday_bars_5m.update_intraday_bars_5m(start_date, end_date, ts_code)`。
+入口：`task._2_分时数据获取_5分k`；单证券程序接口仍为 `stock_lab.jobs.intraday_bars_5m.update_intraday_bars_5m(start_date, end_date, ts_code)`。
 
 示例：
 
 ```powershell
-uv run --frozen python -c "from stock_lab.jobs.intraday_bars_5m import update_intraday_bars_5m; print(update_intraday_bars_5m(20260101, 20260810, '000001.SZ'))"
+uv run --frozen python -m task._2_分时数据获取_5分k --start-date 20260101 --end-date 20260810 --stock-code 000001.SZ --max-workers 4
 ```
 
 注意：
 
 - 当前源是 BaoStock，不是 AkShare。
-- 调用按股票和日期范围执行，建议一次只处理一只股票，并把失败的 `ts_code` 写入人工清单。
+- 日期必须显式提供。重复 `--stock-code` 可限制证券；不传时读取 canonical `securities` 全市场。
+- 默认最大并发 4；每只证券独立抓取并提交，部分失败保留成功写入并在结果中列出。
 - 当前任务没有内置重试；异常时先确认 BaoStock 登录、代码后缀和日期范围，再重跑该股票。
-- 目标表是 `intraday_bars_5m`，唯一标识由代码、日期、时间和复权标记规范化生成，重复运行使用 upsert。
+- 首次运行前执行 `005_normalize_intraday_minute_identity.sql`。canonical 时间统一为 12 位 `YYYYMMDDHHMM`，唯一标识由代码、分钟和复权标记生成。
+- `task._2_分时数据获取_5分k.get_data()` 仅为现有策略保留十列旧列表投影，新代码使用 canonical job/repository。
 - AkShare 分钟接口的历史深度通常不足以完成长期 5 分钟回补，不能直接替换 BaoStock。
 
 ### 2. Jiuyan 异动
@@ -235,15 +237,15 @@ AkShare 目标改造方案是：行业使用 `stock_sector_fund_flow_hist`，概
 
 ### 1. KDJ
 
-状态：**仅程序接口**。
+状态：**已支持 CLI**，并进入默认日更关键链。
 
 入口：`stock_lab.jobs.kdj_indicators.update_kdj_indicators(start_date, end_date, stock_codes=None, repository=None, period=9)`。
 
 ```powershell
-uv run --frozen python -c "from stock_lab.jobs.kdj_indicators import update_kdj_indicators; print(update_kdj_indicators(20260101, 20260810))"
+uv run --frozen python -m task._3_kdj --start-date 20260101 --end-date 20260810 --period 9
 ```
 
-任务会读取截至 `end_date` 的完整 `daily_quotes`，用默认 `period=9` 计算，再只写入请求日期范围。先补齐日线，不要用第三方 KDJ 结果替代项目计算。目标表是 `kdj_indicators`，按 `ts_code` 和 `trade_date` upsert。
+任务会读取截至 `end_date` 的完整 `daily_quotes`，用默认 `period=9` 计算，再只写入请求日期范围；不传日期时重算 canonical 最新交易日。目标表是 `kdj_indicators`，按 `ts_code` 和 `trade_date` upsert。`calculate_ths_kdj()` 仅精确复现作者预热/平盘口径，不写正式表；正式持久化始终使用 canonical 修正公式。默认日更在市值和 DDE 后重算 KDJ，失败时不写日更完成标记。
 
 ### 2. 指数和热门板块情绪
 
