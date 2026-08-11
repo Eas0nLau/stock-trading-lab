@@ -104,10 +104,12 @@ def create_default_collector():
     from stock_lab.infrastructure.browser import close_page, create_page
 
     from .collectors import create_default_repository
+    from .jiuyan_exports import export_jiuyan_actions
 
     return JiuyanCollector(
         create_default_repository(),
         JiuyanBrowserSource(create_page, close_page),
+        exporter=export_jiuyan_actions,
     )
 
 

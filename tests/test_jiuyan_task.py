@@ -150,6 +150,6 @@ def test_collector_writes_english_action_table():
 
 
 def test_legacy_jiuyan_names_forward_to_official_parser(monkeypatch):
-    monkeypatch.setattr(legacy_jiuyan, "parse_response", lambda response, date: (response, date))
+    monkeypatch.setattr(legacy_jiuyan, "_parse_response", lambda response, date: (response, date))
 
     assert legacy_jiuyan.解析异动响应("payload", 20260806) == ("payload", 20260806)
