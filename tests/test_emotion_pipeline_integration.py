@@ -41,7 +41,13 @@ class Collector:
         return 1
 
     def collect_board_actions(self, _trade_date):
-        return 1
+        return {
+            "status": "success",
+            "updated": 1,
+            "trade_date": _trade_date,
+            "export_paths": [],
+            "warnings": [],
+        }
 
     def update_market_cap(self, _trade_date):
         return {"status": "success", "updated": 1}

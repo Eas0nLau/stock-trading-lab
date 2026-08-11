@@ -67,6 +67,10 @@ def run_daily_update(
             kdj_count = collector.update_kdj(trade_date)
         except Exception as error:
             raise JobExecutionError(f"KDJ update failed: {error}") from error
+        board_action_result = collector.collect_board_actions(trade_date)
+        board_action_count, warnings = _jiuyan_result(
+            trade_date, board_action_result
+        )
         counts = {
             "index_daily": index_count,
             "securities": securities_count,
@@ -74,7 +78,7 @@ def run_daily_update(
             "market_cap": market_cap_count,
             "dde": dde_count,
             "kdj": kdj_count,
-            "board_actions": collector.collect_board_actions(trade_date),
+            "board_actions": board_action_count,
             "hot_board_emotion": run_hot_board(trade_date, source_trade_date),
             "index_emotion": run_index(trade_date),
         }
@@ -84,6 +88,7 @@ def run_daily_update(
             "trade_date": trade_date,
             "source_trade_date": source_trade_date,
             "counts": counts,
+            "warnings": warnings,
         }
     finally:
         lock.release()
@@ -216,3 +221,18 @@ def _enrichment_count(stage, result):
     if not isinstance(result, dict) or result.get("status") != "success":
         raise JobExecutionError(f"{stage} update failed: {result}")
     return int(result.get("updated", 0))
+
+
+def _jiuyan_result(trade_date, result):
+    accepted_statuses = {"success", "succeeded_with_warnings"}
+    if not isinstance(result, dict) or result.get("status") not in accepted_statuses:
+        raise JobExecutionError(f"Jiuyan collection failed: {result}")
+    if int(result.get("trade_date", 0)) != int(trade_date):
+        raise JobExecutionError(
+            f"Jiuyan collection returned the wrong trade date: {result}"
+        )
+    updated = int(result.get("updated", 0))
+    if updated < 0:
+        raise JobExecutionError(f"Jiuyan collection returned an invalid count: {result}")
+    warnings = [str(warning) for warning in result.get("warnings") or []]
+    return updated, warnings

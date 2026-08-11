@@ -6,6 +6,7 @@ from stock_lab.jobs.daily_update import (
     daily_update_completion_key,
     run_daily_update,
 )
+from stock_lab.modules.market_data.jiuyan import HumanVerificationRequired
 from stock_lab.shared.errors import JobExecutionError
 
 
@@ -55,7 +56,13 @@ class FakeCollector:
 
     def collect_board_actions(self, trade_date):
         self.calls.append(("board_actions", trade_date))
-        return 7
+        return {
+            "status": "success",
+            "updated": 7,
+            "trade_date": trade_date,
+            "export_paths": ["7_全部.ini"],
+            "warnings": [],
+        }
 
     def update_market_cap(self, trade_date):
         self.calls.append(("market_cap", trade_date))
@@ -110,6 +117,7 @@ def test_daily_update_runs_sources_before_analysis_and_marks_completion():
             "hot_board_emotion": 8,
             "index_emotion": 9,
         },
+        "warnings": [],
     }
     completion_key = daily_update_completion_key(20260805)
     assert redis.expiries[completion_key] == 7 * 86400
@@ -222,6 +230,102 @@ def test_daily_update_rejects_kdj_failure_without_completion():
             state=redis,
             run_hot_board=lambda *_args: 1,
             run_index=lambda *_args: 1,
+        )
+
+    assert DAILY_UPDATE_LOCK_KEY not in redis.values
+    assert daily_update_completion_key(20260805) not in redis.values
+
+
+def test_daily_update_continues_after_jiuyan_export_warning():
+    redis = FakeRedis()
+    collector = FakeCollector()
+    calls = []
+    collector.collect_board_actions = lambda trade_date: {
+        "status": "succeeded_with_warnings",
+        "updated": 7,
+        "trade_date": trade_date,
+        "export_paths": [],
+        "warnings": ["export failed"],
+    }
+
+    result = run_daily_update(
+        20260805,
+        collector=collector,
+        state=redis,
+        run_hot_board=lambda *_args: calls.append("hot") or 1,
+        run_index=lambda *_args: calls.append("index") or 1,
+    )
+
+    assert calls == ["hot", "index"]
+    assert result["counts"]["board_actions"] == 7
+    assert result["warnings"] == ["export failed"]
+    assert daily_update_completion_key(20260805) in redis.values
+
+
+def test_daily_update_human_verification_releases_lock_without_completion():
+    redis = FakeRedis()
+    collector = FakeCollector()
+    collector.collect_board_actions = lambda _date: (_ for _ in ()).throw(
+        HumanVerificationRequired("slider")
+    )
+
+    with pytest.raises(HumanVerificationRequired):
+        run_daily_update(
+            20260805,
+            collector=collector,
+            state=redis,
+            run_hot_board=lambda *_args: 1,
+            run_index=lambda *_args: 1,
+        )
+
+    assert DAILY_UPDATE_LOCK_KEY not in redis.values
+    assert daily_update_completion_key(20260805) not in redis.values
+
+
+def test_daily_update_rejects_failed_jiuyan_status_without_completion():
+    redis = FakeRedis()
+    collector = FakeCollector()
+    collector.collect_board_actions = lambda trade_date: {
+        "status": "failed",
+        "updated": 0,
+        "trade_date": trade_date,
+        "warnings": [],
+    }
+
+    with pytest.raises(JobExecutionError, match="Jiuyan collection failed"):
+        run_daily_update(
+            20260805,
+            collector=collector,
+            state=redis,
+            run_hot_board=lambda *_args: 1,
+            run_index=lambda *_args: 1,
+        )
+
+    assert DAILY_UPDATE_LOCK_KEY not in redis.values
+    assert daily_update_completion_key(20260805) not in redis.values
+
+
+@pytest.mark.parametrize("failed_stage", ["hot_board", "index_emotion"])
+def test_daily_update_emotion_failure_suppresses_completion(failed_stage):
+    redis = FakeRedis()
+
+    def hot_board(*_args):
+        if failed_stage == "hot_board":
+            raise RuntimeError("hot-board failed")
+        return 1
+
+    def index_emotion(*_args):
+        if failed_stage == "index_emotion":
+            raise RuntimeError("index failed")
+        return 1
+
+    with pytest.raises(RuntimeError):
+        run_daily_update(
+            20260805,
+            collector=FakeCollector(),
+            state=redis,
+            run_hot_board=hot_board,
+            run_index=index_emotion,
         )
 
     assert DAILY_UPDATE_LOCK_KEY not in redis.values
