@@ -49,6 +49,9 @@ class Collector:
     def update_dde(self, _trade_date):
         return {"status": "success", "updated": 1, "failed": []}
 
+    def update_kdj(self, _trade_date):
+        return 1
+
 
 def test_repeating_one_day_pipeline_is_idempotent():
     redis = RedisState()

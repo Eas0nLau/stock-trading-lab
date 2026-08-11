@@ -55,7 +55,7 @@ class FakeCollector:
 
     def collect_board_actions(self, trade_date):
         self.calls.append(("board_actions", trade_date))
-        return 6
+        return 7
 
     def update_market_cap(self, trade_date):
         self.calls.append(("market_cap", trade_date))
@@ -64,6 +64,10 @@ class FakeCollector:
     def update_dde(self, trade_date):
         self.calls.append(("dde", trade_date))
         return {"status": "success", "updated": 5, "failed": []}
+
+    def update_kdj(self, trade_date):
+        self.calls.append(("kdj", trade_date))
+        return 6
 
 
 def test_daily_update_runs_sources_before_analysis_and_marks_completion():
@@ -75,8 +79,8 @@ def test_daily_update_runs_sources_before_analysis_and_marks_completion():
         "2026-08-05",
         collector=collector,
         state=redis,
-        run_hot_board=lambda date, source: calls.append(("hot_board", date, source)) or 7,
-        run_index=lambda date: calls.append(("index_emotion", date)) or 8,
+        run_hot_board=lambda date, source: calls.append(("hot_board", date, source)) or 8,
+        run_index=lambda date: calls.append(("index_emotion", date)) or 9,
     )
 
     assert calls == [
@@ -86,6 +90,7 @@ def test_daily_update_runs_sources_before_analysis_and_marks_completion():
         ("daily_quotes", 20260804, 20260805),
         ("market_cap", 20260805),
         ("dde", 20260805),
+        ("kdj", 20260805),
         ("board_actions", 20260805),
         ("hot_board", 20260805, 20260804),
         ("index_emotion", 20260805),
@@ -100,9 +105,10 @@ def test_daily_update_runs_sources_before_analysis_and_marks_completion():
             "index_daily": 3,
             "market_cap": 4,
             "dde": 5,
-            "board_actions": 6,
-            "hot_board_emotion": 7,
-            "index_emotion": 8,
+            "kdj": 6,
+            "board_actions": 7,
+            "hot_board_emotion": 8,
+            "index_emotion": 9,
         },
     }
     completion_key = daily_update_completion_key(20260805)
@@ -190,6 +196,26 @@ def test_daily_update_rejects_failed_enrichment_without_completion(failed_stage)
     )
 
     with pytest.raises(JobExecutionError, match=failed_stage):
+        run_daily_update(
+            20260805,
+            collector=collector,
+            state=redis,
+            run_hot_board=lambda *_args: 1,
+            run_index=lambda *_args: 1,
+        )
+
+    assert DAILY_UPDATE_LOCK_KEY not in redis.values
+    assert daily_update_completion_key(20260805) not in redis.values
+
+
+def test_daily_update_rejects_kdj_failure_without_completion():
+    redis = FakeRedis()
+    collector = FakeCollector()
+    collector.update_kdj = lambda _date: (_ for _ in ()).throw(
+        RuntimeError("kdj failed")
+    )
+
+    with pytest.raises(RuntimeError, match="kdj failed"):
         run_daily_update(
             20260805,
             collector=collector,

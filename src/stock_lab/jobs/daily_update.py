@@ -63,12 +63,14 @@ def run_daily_update(
         market_cap_count = _enrichment_count("market_cap", market_cap_result)
         dde_result = collector.update_dde(trade_date)
         dde_count = _enrichment_count("dde", dde_result)
+        kdj_count = collector.update_kdj(trade_date)
         counts = {
             "index_daily": index_count,
             "securities": securities_count,
             "daily_quotes": quote_count,
             "market_cap": market_cap_count,
             "dde": dde_count,
+            "kdj": kdj_count,
             "board_actions": collector.collect_board_actions(trade_date),
             "hot_board_emotion": run_hot_board(trade_date, source_trade_date),
             "index_emotion": run_index(trade_date),
@@ -155,6 +157,11 @@ class DailyUpdateCollector:
         from stock_lab.jobs.dde_backfill import update_dde
 
         return update_dde(trade_date, trade_date)
+
+    def update_kdj(self, trade_date):
+        from stock_lab.jobs.kdj_indicators import update_kdj_indicators
+
+        return update_kdj_indicators(trade_date, trade_date)
 
     def collect_board_actions(self, trade_date):
         from stock_lab.modules.market_data.jiuyan import collect_jiuyan_actions
