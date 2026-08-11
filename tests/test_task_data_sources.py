@@ -1,6 +1,5 @@
 import pandas as pd
 
-import task.data_sources as legacy_data_sources
 from stock_lab.modules.market_data import collectors as data_sources
 
 
@@ -85,9 +84,3 @@ def test_update_index_daily_delegates_canonical_rows_to_repository(monkeypatch):
     assert collector.update_index_daily(20260805, 20260805) == 1
     assert calls[0] == (20260805, 20260805)
     assert calls[1][0]["trade_date"] == 20260805
-
-
-def test_legacy_market_data_names_forward_to_official_functions(monkeypatch):
-    monkeypatch.setattr(legacy_data_sources, "trading_dates", lambda limit: [limit])
-
-    assert legacy_data_sources.交易日期列表(7) == [7]

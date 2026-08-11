@@ -18,7 +18,7 @@ class TushareSource:
             self._clients[token] = factory(token)
         return self._clients[token]
 
-    def _call(self, method_name, **kwargs):
+    def _call(self, operation_name, operation):
         if not self.tokens:
             raise InfrastructureError(
                 "Tushare token is required for stock collection"
@@ -26,30 +26,37 @@ class TushareSource:
         errors = []
         for token in self.tokens:
             try:
-                return getattr(self._client(token), method_name)(**kwargs)
+                return operation(self._client(token))
             except Exception as error:
                 errors.append(error)
         raise InfrastructureError(
-            f"Tushare {method_name} failed for all {len(self.tokens)} tokens: "
+            f"Tushare {operation_name} failed for all {len(self.tokens)} tokens: "
             f"{errors[-1]}"
         ) from errors[-1]
 
     def fetch_securities(self):
         return self._call(
-            "stock_basic",
-            exchange="",
-            list_status="L",
-            fields=(
-                "ts_code,symbol,name,area,industry,market,list_date,list_status"
+            "security list",
+            lambda client: client.stock_basic(
+                exchange="",
+                list_status="L",
+                fields=(
+                    "ts_code,symbol,name,area,industry,market,list_date,list_status"
+                ),
             ),
         )
 
     def fetch_daily_quotes(self, trade_date):
-        return self._call("daily", ts_code="", trade_date=str(trade_date))
+        return self._call(
+            "daily",
+            lambda client: client.daily(ts_code="", trade_date=str(trade_date)),
+        )
 
     def fetch_daily_basic(self, trade_date):
         return self._call(
             "daily_basic",
-            trade_date=str(trade_date),
-            fields="ts_code,trade_date,total_mv,circ_mv,free_share",
+            lambda client: client.daily_basic(
+                trade_date=str(trade_date),
+                fields="ts_code,trade_date,total_mv,circ_mv,free_share",
+            ),
         )

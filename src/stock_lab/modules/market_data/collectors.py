@@ -45,12 +45,13 @@ class MarketDataCollector:
         rows = [security_from_source(row) for row in frame.where(frame.notna(), None).to_dict("records")]
         return self.repository.replace_securities(rows)
 
-    def update_daily_quotes(self, start_date, end_date):
+    def update_daily_quotes(self, start_date, end_date, force=False):
         dates = [date for date in self.trading_dates(1000) if int(start_date) <= int(date) <= int(end_date)]
         if not dates:
             dates = [int(end_date)]
-        existing = set(self.repository.daily_quote_dates(start_date, end_date))
-        dates = [date for date in dates if int(date) not in existing]
+        if not force:
+            existing = set(self.repository.daily_quote_dates(start_date, end_date))
+            dates = [date for date in dates if int(date) not in existing]
         if not dates:
             return 0
         frames = []
@@ -114,5 +115,9 @@ def update_securities():
     return create_default_collector().update_securities()
 
 
-def update_daily_quotes(start_date, end_date):
-    return create_default_collector().update_daily_quotes(start_date, end_date)
+def update_daily_quotes(start_date, end_date, force=False):
+    return create_default_collector().update_daily_quotes(
+        start_date,
+        end_date,
+        force=force,
+    )
