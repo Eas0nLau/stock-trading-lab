@@ -80,7 +80,7 @@ def test_hot_board_service_groups_english_rows():
 
 def test_market_data_repository_can_supply_canonical_emotion_sources():
     class MarketData:
-        def index_daily(self, limit=None):
+        def index_daily(self, start_date=None, end_date=None, limit=None):
             return [
                 {"trade_date": 20260805, "close_price": 9},
                 {"trade_date": 20260806, "close_price": 10},
@@ -93,3 +93,54 @@ def test_market_data_repository_can_supply_canonical_emotion_sources():
 
     assert repository.index_daily_rows(10)[-1]["close_price"] == 10
     assert repository.daily_quote_rows(20260806, ["000001"])["000001"]["previous_close"] == 9
+
+
+def test_date_aware_history_queries_bound_before_order_and_limit():
+    query = FakeQuery([[{"trade_date": 20260805}], [{"trade_date": 20260805}]])
+    repository = EmotionRepository(query)
+
+    repository.index_daily_rows_through(20260805, 180)
+    repository.market_breadth_rows_through(20260805, 80)
+
+    index_sql, index_params, _ = query.calls[0]
+    breadth_sql, breadth_params, _ = query.calls[1]
+    assert index_sql.index("`trade_date` <= %s") < index_sql.index("ORDER BY `trade_date` DESC")
+    assert breadth_sql.index("`trade_date` <= %s") < breadth_sql.index("ORDER BY `trade_date` DESC")
+    assert index_params == (20260805,)
+    assert breadth_params == (20260805,)
+
+
+def test_trading_calendar_and_previous_date_are_parameterized():
+    query = FakeQuery([
+        [{"trade_date": 20260804}, {"trade_date": 20260805}],
+        [{"trade_date": 20260804}],
+    ])
+    repository = EmotionRepository(query)
+
+    assert repository.trading_dates(20260804, 20260805) == [20260804, 20260805]
+    assert repository.previous_trading_date(20260805) == 20260804
+    assert query.calls[0][1] == (20260804, 20260805)
+    assert "MAX(`trade_date`)" in query.calls[1][0]
+    assert query.calls[1][1] == (20260805,)
+
+
+def test_jiuyan_completeness_compares_manifest_to_action_count():
+    query = FakeQuery([[{"is_complete": 1}]])
+
+    assert EmotionRepository(query).jiuyan_date_complete(20260805) is True
+    sql, params, _ = query.calls[0]
+    assert "jiuyan_collection_days" in sql
+    assert "accepted_stock_count" in sql
+    assert "COUNT(" in sql
+    assert params == (20260805,)
+
+
+def test_board_actions_filter_main_board_and_st_names():
+    query = FakeQuery([[]])
+
+    EmotionRepository(query).board_action_rows(20260805)
+
+    sql = query.calls[0][0]
+    assert "`stock_code` BETWEEN '000001' AND '003999'" in sql
+    assert "`stock_code` BETWEEN '600000' AND '609999'" in sql
+    assert "`stock_name` IS NULL OR `stock_name` NOT LIKE '%ST%'" in sql

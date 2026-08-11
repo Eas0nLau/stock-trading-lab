@@ -12,8 +12,8 @@ def run_index_emotion_job(trade_date, repository=None, calculator=None, writer=N
         calculator = calculate_index_cycle
 
     trade_date = int(trade_date)
-    index_rows = [row for row in repository.index_daily_rows(160) if int(row["trade_date"]) <= trade_date]
-    market_rows = [row for row in repository.market_breadth_rows(80) if int(row["trade_date"]) <= trade_date]
+    index_rows = repository.index_daily_rows_through(trade_date, 180)
+    market_rows = repository.market_breadth_rows_through(trade_date, 80)
     if (
         not index_rows
         or not market_rows
@@ -55,6 +55,15 @@ def run_hot_board_emotion_job(trade_date, sample_trade_date, repository=None, an
 
     trade_date = int(trade_date)
     sample_trade_date = int(sample_trade_date)
+    expected_previous = repository.previous_trading_date(trade_date)
+    if expected_previous != sample_trade_date:
+        raise DataValidationError(
+            f"Previous trading date mismatch: expected {expected_previous}, got {sample_trade_date}"
+        )
+    if not repository.jiuyan_date_complete(sample_trade_date):
+        raise DataValidationError(f"Unverified Jiuyan actions for {sample_trade_date}")
+    if not repository.jiuyan_date_complete(trade_date):
+        raise DataValidationError(f"Unverified Jiuyan actions for {trade_date}")
     current_rows = repository.board_action_rows(trade_date)
     previous_rows = repository.board_action_rows(sample_trade_date)
     current = _group_board_actions(current_rows)
@@ -105,14 +114,28 @@ def write_tables(engine, tables):
         for table, keys, rows in tables:
             if not rows:
                 continue
+            if table == "hot_board_emotion_daily":
+                trade_dates = {int(row["trade_date"]) for row in rows}
+                if len(trade_dates) != 1:
+                    raise DataValidationError(
+                        "Hot-board replacement requires exactly one trade date"
+                    )
+                connection.execute(
+                    text(
+                        "DELETE FROM `hot_board_emotion_daily` "
+                        "WHERE `trade_date` = :trade_date"
+                    ),
+                    {"trade_date": trade_dates.pop()},
+                )
             columns = list(rows[0])
             updates = ", ".join(
                 f"`{column}` = VALUES(`{column}`)" for column in columns if column not in keys
             )
+            suffix = f" ON DUPLICATE KEY UPDATE {updates}" if updates else ""
             statement = text(
                 f"INSERT INTO `{table}` ({', '.join(f'`{column}`' for column in columns)}) "
                 f"VALUES ({', '.join(f':{column}' for column in columns)}) "
-                f"ON DUPLICATE KEY UPDATE {updates}"
+                f"{suffix}"
             )
             connection.execute(statement, rows)
 
@@ -162,7 +185,7 @@ def _group_board_actions(rows):
     for row in rows:
         board_name = str(row.get("board_name") or "").strip()
         stock_code = str(row.get("stock_code") or "").zfill(6)
-        if board_name and stock_code.isdigit():
+        if board_name and _is_main_board_action(row, stock_code):
             grouped.setdefault(board_name, {})[stock_code] = {
                 "stock_code": stock_code,
                 "stock_name": row.get("stock_name"),
@@ -172,6 +195,22 @@ def _group_board_actions(rows):
 
 def _board_count(rows, board_name):
     return max(
-        [int(row.get("board_stock_count") or 0) for row in rows if row.get("board_name") == board_name]
+        [
+            int(row.get("board_stock_count") or 0)
+            for row in rows
+            if row.get("board_name") == board_name
+            and _is_main_board_action(
+                row, str(row.get("stock_code") or "").zfill(6)
+            )
+        ]
         or [0]
     )
+
+
+def _is_main_board_action(row, stock_code):
+    if not stock_code.isdigit():
+        return False
+    numeric_code = int(stock_code)
+    if not (1 <= numeric_code <= 3999 or 600000 <= numeric_code <= 609999):
+        return False
+    return "ST" not in str(row.get("stock_name") or "").upper()
