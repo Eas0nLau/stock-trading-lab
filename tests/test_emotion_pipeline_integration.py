@@ -43,6 +43,12 @@ class Collector:
     def collect_board_actions(self, _trade_date):
         return 1
 
+    def update_market_cap(self, _trade_date):
+        return {"status": "success", "updated": 1}
+
+    def update_dde(self, _trade_date):
+        return {"status": "success", "updated": 1, "failed": []}
+
 
 def test_repeating_one_day_pipeline_is_idempotent():
     redis = RedisState()

@@ -55,7 +55,15 @@ class FakeCollector:
 
     def collect_board_actions(self, trade_date):
         self.calls.append(("board_actions", trade_date))
-        return 4
+        return 6
+
+    def update_market_cap(self, trade_date):
+        self.calls.append(("market_cap", trade_date))
+        return {"status": "success", "updated": 4, "failed_dates": []}
+
+    def update_dde(self, trade_date):
+        self.calls.append(("dde", trade_date))
+        return {"status": "success", "updated": 5, "failed": []}
 
 
 def test_daily_update_runs_sources_before_analysis_and_marks_completion():
@@ -67,15 +75,17 @@ def test_daily_update_runs_sources_before_analysis_and_marks_completion():
         "2026-08-05",
         collector=collector,
         state=redis,
-        run_hot_board=lambda date, source: calls.append(("hot_board", date, source)) or 5,
-        run_index=lambda date: calls.append(("index_emotion", date)) or 6,
+        run_hot_board=lambda date, source: calls.append(("hot_board", date, source)) or 7,
+        run_index=lambda date: calls.append(("index_emotion", date)) or 8,
     )
 
     assert calls == [
         "trading_dates",
+        ("index_daily", 20260804, 20260805),
         "securities",
         ("daily_quotes", 20260804, 20260805),
-        ("index_daily", 20260804, 20260805),
+        ("market_cap", 20260805),
+        ("dde", 20260805),
         ("board_actions", 20260805),
         ("hot_board", 20260805, 20260804),
         ("index_emotion", 20260805),
@@ -88,9 +98,11 @@ def test_daily_update_runs_sources_before_analysis_and_marks_completion():
             "securities": 1,
             "daily_quotes": 2,
             "index_daily": 3,
-            "board_actions": 4,
-            "hot_board_emotion": 5,
-            "index_emotion": 6,
+            "market_cap": 4,
+            "dde": 5,
+            "board_actions": 6,
+            "hot_board_emotion": 7,
+            "index_emotion": 8,
         },
     }
     completion_key = daily_update_completion_key(20260805)
@@ -120,10 +132,11 @@ def test_daily_update_seeds_index_dates_before_resolving_trading_window():
     )
 
     assert result["status"] == "success"
-    assert calls[:4] == [
+    assert calls[:5] == [
         "trading_dates",
         ("index_daily", 20250805, 20260805),
         "trading_dates",
+        ("index_daily", 20260804, 20260805),
         "securities",
     ]
 
@@ -154,6 +167,29 @@ def test_daily_update_failure_releases_lock_without_completion():
     collector.update_securities = lambda: (_ for _ in ()).throw(RuntimeError("source down"))
 
     with pytest.raises(RuntimeError, match="source down"):
+        run_daily_update(
+            20260805,
+            collector=collector,
+            state=redis,
+            run_hot_board=lambda *_args: 1,
+            run_index=lambda *_args: 1,
+        )
+
+    assert DAILY_UPDATE_LOCK_KEY not in redis.values
+    assert daily_update_completion_key(20260805) not in redis.values
+
+
+@pytest.mark.parametrize("failed_stage", ["market_cap", "dde"])
+def test_daily_update_rejects_failed_enrichment_without_completion(failed_stage):
+    redis = FakeRedis()
+    collector = FakeCollector()
+    setattr(
+        collector,
+        f"update_{failed_stage}",
+        lambda _date: {"status": "failed", "updated": 1},
+    )
+
+    with pytest.raises(JobExecutionError, match=failed_stage):
         run_daily_update(
             20260805,
             collector=collector,

@@ -56,10 +56,19 @@ def run_daily_update(
         date_index = trading_dates.index(trade_date)
         start_date = trading_dates[max(0, date_index - 159)]
 
+        index_count = collector.update_index_daily(start_date, trade_date)
+        securities_count = collector.update_securities()
+        quote_count = collector.update_daily_quotes(start_date, trade_date)
+        market_cap_result = collector.update_market_cap(trade_date)
+        market_cap_count = _enrichment_count("market_cap", market_cap_result)
+        dde_result = collector.update_dde(trade_date)
+        dde_count = _enrichment_count("dde", dde_result)
         counts = {
-            "securities": collector.update_securities(),
-            "daily_quotes": collector.update_daily_quotes(start_date, trade_date),
-            "index_daily": collector.update_index_daily(start_date, trade_date),
+            "index_daily": index_count,
+            "securities": securities_count,
+            "daily_quotes": quote_count,
+            "market_cap": market_cap_count,
+            "dde": dde_count,
             "board_actions": collector.collect_board_actions(trade_date),
             "hot_board_emotion": run_hot_board(trade_date, source_trade_date),
             "index_emotion": run_index(trade_date),
@@ -137,6 +146,16 @@ class DailyUpdateCollector:
 
         return update_index_daily(start_date, end_date)
 
+    def update_market_cap(self, trade_date):
+        from stock_lab.jobs.market_cap_backfill import update_market_cap
+
+        return update_market_cap(trade_date, trade_date)
+
+    def update_dde(self, trade_date):
+        from stock_lab.jobs.dde_backfill import update_dde
+
+        return update_dde(trade_date, trade_date)
+
     def collect_board_actions(self, trade_date):
         from stock_lab.modules.market_data.jiuyan import collect_jiuyan_actions
 
@@ -181,3 +200,9 @@ def _skipped_result(trade_date: int) -> dict:
         "trade_date": trade_date,
         "reason": "already completed",
     }
+
+
+def _enrichment_count(stage, result):
+    if not isinstance(result, dict) or result.get("status") != "success":
+        raise JobExecutionError(f"{stage} update failed: {result}")
+    return int(result.get("updated", 0))
