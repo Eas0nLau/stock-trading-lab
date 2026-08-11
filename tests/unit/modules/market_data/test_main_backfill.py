@@ -31,7 +31,7 @@ def test_daily_quotes_skips_existing_dates_and_fetches_only_gaps():
         "change": 1, "pct_chg": 100, "vol": 1, "amount": 1,
     }])
     collector = MarketDataCollector(
-        repository, index_source=lambda: pd.DataFrame(),
+        repository, index_source=lambda _start, _end: pd.DataFrame(),
         security_source=lambda: pd.DataFrame(), quote_source=source,
     )
 

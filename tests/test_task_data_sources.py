@@ -33,6 +33,19 @@ def test_index_payload_maps_akshare_columns():
     assert payload["change_pct"] == 7
 
 
+def test_index_payload_maps_baostock_columns():
+    payload = data_sources.normalize_index_row({
+        "date": "2026-08-05",
+        "close": 2,
+        "pctChg": 7,
+        "turn": 1.5,
+    })
+
+    assert payload["trade_date"] == 20260805
+    assert payload["change_pct"] == 7
+    assert payload["turnover_rate"] == 1.5
+
+
 def test_stock_daily_upsert_key_is_date_and_code():
     row = {
         "ts_code": "600000.SH",
@@ -53,9 +66,6 @@ def test_stock_daily_upsert_key_is_date_and_code():
 
 
 def test_update_index_daily_delegates_canonical_rows_to_repository(monkeypatch):
-    import sys
-    import types
-
     calls = []
 
     class Repository:
@@ -63,13 +73,18 @@ def test_update_index_daily_delegates_canonical_rows_to_repository(monkeypatch):
             calls.append(rows)
             return len(rows)
 
-    monkeypatch.setattr(data_sources, "create_default_repository", lambda: Repository())
-    monkeypatch.setitem(sys.modules, "akshare", types.SimpleNamespace(
-        stock_zh_index_daily=lambda symbol: pd.DataFrame([{"date": "2026-08-05", "close": 2}])
-    ))
+    collector = data_sources.MarketDataCollector(
+        Repository(),
+        index_source=lambda start, end: calls.append((start, end)) or [
+            {"date": "2026-08-05", "close": 2}
+        ],
+        security_source=lambda: pd.DataFrame(),
+        quote_source=lambda _date: pd.DataFrame(),
+    )
 
-    assert data_sources.update_index_daily(20260805, 20260805) == 1
-    assert calls[0][0]["trade_date"] == 20260805
+    assert collector.update_index_daily(20260805, 20260805) == 1
+    assert calls[0] == (20260805, 20260805)
+    assert calls[1][0]["trade_date"] == 20260805
 
 
 def test_legacy_market_data_names_forward_to_official_functions(monkeypatch):

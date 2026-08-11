@@ -9,8 +9,8 @@ from stock_lab.shared.errors import InfrastructureError
 
 
 class Result:
-    def __init__(self, rows=(), error_code="0", error_msg=""):
-        self.fields = [
+    def __init__(self, rows=(), error_code="0", error_msg="", fields=None):
+        self.fields = fields or [
             "open", "close", "date", "time", "code", "high", "low",
             "volume", "amount", "adjustflag",
         ]
@@ -159,5 +159,64 @@ def test_logout_exception_does_not_mask_query_exception():
 
     with pytest.raises(InfrastructureError, match="query exploded"):
         BaoStockSource(client=client).fetch_5m_bars("20260806", "20260806", "000001.SZ")
+
+    assert client.logout_count == 1
+
+
+def test_index_source_uses_buffer_and_computes_previous_close_fields():
+    fields = [
+        "date", "code", "open", "close", "high", "low", "volume",
+        "amount", "adjustflag", "turn", "pctChg",
+    ]
+    client = Client(Result([
+        ["2026-08-06", "sh.000001", "10", "11", "12", "9", "1000", "2000", "3", "1.2", "10"],
+        ["2026-08-07", "sh.000001", "11", "12", "13", "10", "1200", "2500", "3", "1.3", "9.09"],
+    ], fields=fields))
+
+    rows = BaoStockSource(client=client).fetch_index_daily(20260807, 20260807)
+
+    assert client.calls == [("sh.000001", ",".join(fields), {
+        "start_date": "2026-07-18",
+        "end_date": "2026-08-07",
+        "frequency": "d",
+        "adjustflag": "3",
+    })]
+    assert rows == [{
+        "date": "2026-08-07",
+        "open": 11.0,
+        "close": 12.0,
+        "high": 13.0,
+        "low": 10.0,
+        "volume": 12.0,
+        "amount": 2500.0,
+        "amplitude": pytest.approx((13.0 - 10.0) / 11.0 * 100),
+        "pct_chg": 9.09,
+        "change": 1.0,
+        "turnover": 1.3,
+    }]
+    assert client.login_count == 1
+    assert client.logout_count == 1
+
+
+def test_index_source_returns_empty_rows_without_crashing():
+    fields = [
+        "date", "code", "open", "close", "high", "low", "volume",
+        "amount", "adjustflag", "turn", "pctChg",
+    ]
+    client = Client(Result([], fields=fields))
+
+    assert BaoStockSource(client=client).fetch_index_daily(20260807, 20260807) == []
+    assert client.logout_count == 1
+
+
+def test_index_source_rejects_malformed_rows():
+    fields = [
+        "date", "code", "open", "close", "high", "low", "volume",
+        "amount", "adjustflag", "turn", "pctChg",
+    ]
+    client = Client(Result([["2026-08-07", "sh.000001"]], fields=fields))
+
+    with pytest.raises(InfrastructureError, match="malformed"):
+        BaoStockSource(client=client).fetch_index_daily(20260807, 20260807)
 
     assert client.logout_count == 1

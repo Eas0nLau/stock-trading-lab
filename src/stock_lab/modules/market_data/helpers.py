@@ -97,7 +97,7 @@ def index_daily_from_source(row):
         "volume": _number(row.get("volume", row.get("成交量"))),
         "turnover": _number(row.get("amount", row.get("成交额"))),
         "amplitude_pct": _number(row.get("amplitude", row.get("振幅"))),
-        "change_pct": _number(row.get("pct_chg", row.get("涨跌幅"))),
+        "change_pct": _number(row.get("pct_chg", row.get("pctChg", row.get("涨跌幅")))),
         "change_amount": _number(row.get("change", row.get("涨跌额"))),
-        "turnover_rate": _number(row.get("turnover", row.get("换手率"))),
+        "turnover_rate": _number(row.get("turnover", row.get("turn", row.get("换手率")))),
     }

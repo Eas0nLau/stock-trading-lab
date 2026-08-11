@@ -4,7 +4,7 @@ import pandas as pd
 
 from stock_lab.config import get_settings
 from stock_lab.infrastructure.database import create_database_client
-from stock_lab.infrastructure.market_data.akshare import AkShareSource
+from stock_lab.infrastructure.market_data.baostock import BaoStockSource
 from stock_lab.infrastructure.market_data.tushare import TushareSource
 
 from .helpers import daily_quote_from_source, index_daily_from_source, normalize_symbol, security_from_source
@@ -27,12 +27,13 @@ class MarketDataCollector:
         return self.repository.trading_dates(limit)
 
     def update_index_daily(self, start_date, end_date):
-        frame = self.index_source()
-        if frame is None or frame.empty:
-            raise RuntimeError("AkShare returned no Shanghai index daily data")
+        frame = self.index_source(start_date, end_date)
+        if frame is None or (hasattr(frame, "empty") and frame.empty) or not len(frame):
+            raise RuntimeError("BaoStock returned no Shanghai index daily data")
+        records = frame.to_dict("records") if hasattr(frame, "to_dict") else frame
         rows = [
             normalize_index_row(row)
-            for row in frame.to_dict("records")
+            for row in records
             if int(start_date) <= normalize_index_row(row)["trade_date"] <= int(end_date)
         ]
         return self.repository.upsert_index_daily(rows)
@@ -80,11 +81,11 @@ class MarketDataCollector:
 
 def create_default_collector():
     settings = get_settings()
-    akshare_source = AkShareSource()
+    index_source = BaoStockSource()
     tushare_source = TushareSource(settings.tushare_tokens)
     return MarketDataCollector(
         create_default_repository(),
-        index_source=akshare_source.fetch_index_daily,
+        index_source=index_source.fetch_index_daily,
         security_source=tushare_source.fetch_securities,
         quote_source=tushare_source.fetch_daily_quotes,
     )
