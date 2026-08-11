@@ -3,6 +3,15 @@ from sqlalchemy import text
 from .helpers import normalize_symbol, normalize_ts_code, stock_code_filter
 
 
+DAILY_QUOTE_ENRICHMENT_FIELDS = frozenset({
+    "total_market_value",
+    "circulating_market_value",
+    "free_float_shares",
+    "free_float_market_value",
+    "dde_net_amount",
+})
+
+
 class MarketDataRepository:
     def __init__(self, query, engine=None):
         self._query = query
@@ -164,6 +173,38 @@ class MarketDataRepository:
 
     def upsert_daily_quotes(self, rows):
         return self._write("daily_quotes", rows, ("data_id",))
+
+    def update_daily_quote_enrichment(self, rows, fields, only_missing=False):
+        rows = [dict(row) for row in rows]
+        fields = tuple(fields)
+        unsupported = set(fields) - DAILY_QUOTE_ENRICHMENT_FIELDS
+        if unsupported:
+            raise ValueError(
+                "Unsupported daily quote enrichment fields: "
+                + ", ".join(sorted(unsupported))
+            )
+        if not rows or not fields:
+            return 0
+        for row in rows:
+            row["ts_code"] = normalize_ts_code(row.get("ts_code"))
+            row["trade_date"] = int(row["trade_date"])
+        if only_missing:
+            assignments = ", ".join(
+                f"`{field}` = CASE WHEN `{field}` IS NULL "
+                f"THEN :{field} ELSE `{field}` END"
+                for field in fields
+            )
+        else:
+            assignments = ", ".join(
+                f"`{field}` = COALESCE(:{field}, `{field}`)" for field in fields
+            )
+        sql = (
+            f"UPDATE `daily_quotes` SET {assignments} "
+            "WHERE `ts_code` = :ts_code AND `trade_date` = :trade_date"
+        )
+        with self._engine.begin() as connection:
+            result = connection.execute(text(sql), rows)
+        return max(int(result.rowcount or 0), 0)
 
     def upsert_index_daily(self, rows):
         return self._write("index_daily", rows, ("trade_date",))

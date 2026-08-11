@@ -87,6 +87,31 @@ def daily_quote_from_source(row, stock_name=None):
     }
 
 
+def market_cap_from_source(row, close_price=None):
+    free_share = _number(row.get("free_share"))
+    close = _number(close_price)
+    return {
+        "ts_code": normalize_ts_code(row.get("ts_code", row.get("symbol"))),
+        "trade_date": normalize_trade_date(row.get("trade_date", row.get("date"))),
+        "total_market_value": _number(row.get("total_mv")),
+        "circulating_market_value": _number(row.get("circ_mv")),
+        "free_float_shares": free_share,
+        "free_float_market_value": (
+            close * free_share if close is not None and free_share is not None else None
+        ),
+    }
+
+
+def dde_from_source(row):
+    return {
+        "ts_code": normalize_ts_code(
+            row.get("ts_code", row.get("stock_code", row.get("symbol")))
+        ),
+        "trade_date": normalize_trade_date(row.get("trade_date", row.get("date"))),
+        "dde_net_amount": _number(row.get("dde", row.get("dde_net_amount"))),
+    }
+
+
 def index_daily_from_source(row):
     return {
         "trade_date": normalize_trade_date(row.get("date", row.get("日期"))),
