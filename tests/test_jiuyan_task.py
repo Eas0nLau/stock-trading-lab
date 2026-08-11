@@ -117,26 +117,34 @@ def test_collector_writes_english_action_table():
         def __init__(self):
             self.rows = None
 
-        def upsert_jiuyan_actions(self, rows):
+        def replace_jiuyan_actions(self, trade_date, rows, manifest):
             self.rows = rows
             return len(rows)
 
     repository = Repository()
     collector = jiuyan.JiuyanCollector(
         repository,
-        response_source=lambda _date: {"data": []},
-        parser=lambda _response, date: [{
-            "data_id": "id-1",
-            "date": date,
-            "板块": "机器人",
-            "板块个股数量": 20,
-            "股票代码": 1,
-            "股票名称": "平安银行",
-            "code": "000001",
-        }],
+        response_source=lambda _date, **_kwargs: {"data": []},
+        parser=lambda _response, date: jiuyan.ParsedJiuyanBatch(
+            rows=({
+                "data_id": "id-1",
+                "trade_date": date,
+                "board_name": "机器人",
+                "board_stock_count": 20,
+                "stock_code": "000001",
+                "stock_name": "平安银行",
+                "source_code": "000001",
+            },),
+            legacy_rows=(),
+            source_board_count=1,
+            source_stock_count=1,
+            accepted_stock_count=1,
+            source_fingerprint="a" * 64,
+        ),
+        monotonic=lambda: 100.0,
     )
 
-    assert collector.collect(20260806) == 1
+    assert collector.collect(20260806)["updated"] == 1
     assert repository.rows[0]["stock_code"] == "000001"
     assert all(column.isascii() for column in repository.rows[0])
 

@@ -23,32 +23,81 @@ MAX_ATTEMPTS = max(int(os.getenv("JIUYAN_MAX_ATTEMPTS", "2")), 1)
 
 
 class JiuyanCollector:
-    def __init__(self, repository, response_source, parser=parse_response, max_attempts=MAX_ATTEMPTS):
+    def __init__(
+        self,
+        repository,
+        response_source,
+        parser=parse_batch,
+        max_attempts=MAX_ATTEMPTS,
+        total_timeout_seconds=180,
+        monotonic=time.monotonic,
+        exporter=None,
+    ):
         self.repository = repository
         self.response_source = response_source
         self.parser = parser
         self.max_attempts = max(int(max_attempts), 1)
+        self.total_timeout_seconds = max(float(total_timeout_seconds), 0.0)
+        self.monotonic = monotonic
+        self.exporter = exporter
 
     def collect(self, trade_date):
+        trade_date = int(trade_date)
+        deadline = self.monotonic() + self.total_timeout_seconds
         last_error = None
+        batch = None
         for attempt in range(1, self.max_attempts + 1):
+            if self.monotonic() >= deadline:
+                break
             try:
-                rows = self.parser(self.response_source(int(trade_date)), int(trade_date))
-                canonical = [{
-                    "data_id": row.get("data_id"), "trade_date": row.get("date"),
-                    "board_name": row.get("板块"), "board_stock_count": row.get("板块个股数量"),
-                    "stock_code": str(row.get("股票代码") or "").zfill(6), "stock_name": row.get("股票名称"),
-                    "source_code": row.get("code"), "limit_up_at": row.get("涨停时间"),
-                    "board_streak": row.get("几天几板"), "change_pct": row.get("涨幅"),
-                    "limit_up_reason": row.get("涨停解析"),
-                } for row in rows]
-                return self.repository.upsert_jiuyan_actions(canonical)
+                response = self.response_source(
+                    trade_date,
+                    deadline=deadline,
+                    attempt=attempt,
+                )
+                batch = self.parser(response, trade_date)
+                break
             except HumanVerificationRequired:
                 raise
             except Exception as error:
                 last_error = error
                 logger.warning("Jiuyan collection attempt {}/{} failed: {}", attempt, self.max_attempts, error)
-        raise IncompleteJiuyanResponse(f"Jiuyan collection failed for {trade_date}: {last_error}") from last_error
+        if batch is None:
+            detail = last_error or "deadline exceeded"
+            raise IncompleteJiuyanResponse(
+                f"Jiuyan collection failed for {trade_date}: {detail}"
+            ) from last_error
+
+        manifest = {
+            "trade_date": trade_date,
+            "status": "complete",
+            "source_board_count": batch.source_board_count,
+            "source_stock_count": batch.source_stock_count,
+            "accepted_stock_count": batch.accepted_stock_count,
+            "source_fingerprint": batch.source_fingerprint,
+        }
+        updated = self.repository.replace_jiuyan_actions(
+            trade_date,
+            list(batch.rows),
+            manifest,
+        )
+        result = {
+            "status": "success",
+            "updated": updated,
+            "trade_date": trade_date,
+            "export_paths": [],
+            "warnings": [],
+        }
+        if self.exporter is not None:
+            try:
+                result["export_paths"] = [
+                    str(path)
+                    for path in self.exporter(trade_date, repository=self.repository)
+                ]
+            except Exception as error:
+                result["status"] = "succeeded_with_warnings"
+                result["warnings"].append(str(error))
+        return result
 
 
 def create_default_collector():
