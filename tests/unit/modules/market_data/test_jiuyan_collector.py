@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 
 from stock_lab.modules.market_data.jiuyan import (
@@ -69,6 +71,8 @@ def test_collector_retries_with_one_shared_deadline_then_persists_manifest() -> 
     trade_date, rows, manifest = repository.calls[0]
     assert trade_date == 20260805
     assert rows == list(_batch().rows)
+    collected_at = manifest.pop("collected_at")
+    assert isinstance(collected_at, dt.datetime)
     assert manifest == {
         "trade_date": 20260805,
         "status": "complete",

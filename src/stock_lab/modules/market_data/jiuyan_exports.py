@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import tempfile
@@ -56,6 +57,20 @@ def _safe_name(value):
     return INVALID_FILENAME_CHARS.sub("_", str(value)).strip() or "unnamed"
 
 
+def _unique_board_filename(board_name, stock_count, used_names):
+    stem = f"{stock_count}_{_safe_name(board_name)}"
+    name = f"{stem}.ini"
+    if name in used_names:
+        digest = hashlib.sha256(str(board_name).encode("utf-8")).hexdigest()[:8]
+        name = f"{stem}_{digest}.ini"
+    suffix = 2
+    while name in used_names:
+        name = f"{stem}_{suffix}.ini"
+        suffix += 1
+    used_names.add(name)
+    return name
+
+
 def _write_ini(path, rows):
     content = "\n".join(
         f"{index} = {row['stock_code']},{row.get('stock_name') or ''}"
@@ -83,7 +98,7 @@ def export_jiuyan_actions(trade_date, repository=None, output_root=Path("output"
     temporary_directory = Path(
         tempfile.mkdtemp(prefix=f".{trade_date}-", dir=output_parent)
     )
-    generated_names = []
+    board_outputs = []
     all_rows = []
     assigned_codes = set()
     try:
@@ -98,26 +113,52 @@ def export_jiuyan_actions(trade_date, repository=None, output_root=Path("output"
                 unique_rows.append(row)
             if not unique_rows:
                 continue
-            name = f"{len(unique_rows)}_{_safe_name(board_name)}.ini"
-            _write_ini(temporary_directory / name, unique_rows)
-            generated_names.append(name)
+            board_outputs.append((board_name, unique_rows))
             all_rows.extend(unique_rows)
 
         all_name = f"{len(all_rows)}_全部.ini"
+        used_names = {all_name}
+        generated_names = []
+        for board_name, unique_rows in board_outputs:
+            name = _unique_board_filename(
+                board_name, len(unique_rows), used_names
+            )
+            _write_ini(temporary_directory / name, unique_rows)
+            generated_names.append(name)
         _write_ini(temporary_directory / all_name, all_rows)
         generated_names.append(all_name)
 
-        target_directory.mkdir(parents=True, exist_ok=True)
-        for stale_path in target_directory.glob("*.ini"):
-            stale_path.unlink()
-        paths = []
-        for name in generated_names:
-            destination = target_directory / name
-            (temporary_directory / name).replace(destination)
-            paths.append(destination)
-        return paths
+        if target_directory.exists():
+            for existing in target_directory.iterdir():
+                if existing.suffix.lower() == ".ini":
+                    continue
+                destination = temporary_directory / existing.name
+                if existing.is_dir():
+                    shutil.copytree(existing, destination)
+                else:
+                    shutil.copy2(existing, destination)
+        _promote_directory(temporary_directory, target_directory)
+        return [target_directory / name for name in generated_names]
     finally:
         shutil.rmtree(temporary_directory, ignore_errors=True)
+
+
+def _promote_directory(temporary_directory, target_directory):
+    backup_directory = target_directory.with_name(
+        f".{target_directory.name}-backup"
+    )
+    if backup_directory.exists():
+        shutil.rmtree(backup_directory)
+    if target_directory.exists():
+        target_directory.replace(backup_directory)
+    try:
+        temporary_directory.replace(target_directory)
+    except Exception:
+        if backup_directory.exists() and not target_directory.exists():
+            backup_directory.replace(target_directory)
+        raise
+    else:
+        shutil.rmtree(backup_directory, ignore_errors=True)
 
 
 def front_rank_summary(trade_date=None, repository=None):

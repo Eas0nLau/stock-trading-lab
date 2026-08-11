@@ -13,8 +13,9 @@ from stock_lab.modules.market_data.jiuyan_source import (
 
 
 class _Listen:
-    def __init__(self, packets=()) -> None:
+    def __init__(self, packets=(), on_steps=None) -> None:
         self.packets = packets
+        self.on_steps = on_steps
         self.started = []
         self.timeouts = []
         self.stop_count = 0
@@ -24,6 +25,8 @@ class _Listen:
 
     def steps(self, timeout):
         self.timeouts.append(timeout)
+        if self.on_steps is not None:
+            self.on_steps()
         return iter(self.packets)
 
     def stop(self) -> None:
@@ -53,7 +56,18 @@ def _packet(body, target="/jystock-app/api/v1/action/field"):
     return SimpleNamespace(target=target, response=SimpleNamespace(body=body))
 
 
-def _source(page: _Page, *, clock=lambda: 100.0):
+class _Clock:
+    def __init__(self, value=100.0, step=0.25) -> None:
+        self.value = value
+        self.step = step
+
+    def __call__(self):
+        value = self.value
+        self.value += self.step
+        return value
+
+
+def _source(page: _Page, *, clock=None):
     names = []
     closed = []
 
@@ -64,8 +78,8 @@ def _source(page: _Page, *, clock=lambda: 100.0):
     source = JiuyanBrowserSource(
         factory,
         lambda name, owned_page: closed.append((name, owned_page)),
-        clock=clock,
-        request_slot=lambda: None,
+        clock=clock or _Clock(),
+        request_slot=lambda **_kwargs: None,
     )
     return source, names, closed
 
@@ -117,8 +131,8 @@ def test_source_uses_a_fresh_unique_page_for_each_attempt() -> None:
     source = JiuyanBrowserSource(
         factory,
         lambda *_args: None,
-        clock=lambda: 100.0,
-        request_slot=lambda: None,
+        clock=_Clock(),
+        request_slot=lambda **_kwargs: None,
     )
 
     source(20260805, deadline=110.0, attempt=1)
@@ -135,10 +149,34 @@ def test_source_does_not_create_page_after_deadline() -> None:
         lambda *args, **kwargs: created.append((args, kwargs)),
         lambda *_args: None,
         clock=lambda: 110.0,
-        request_slot=lambda: None,
+        request_slot=lambda **_kwargs: None,
     )
 
     with pytest.raises(IncompleteJiuyanResponse, match="deadline"):
         source(20260805, deadline=110.0, attempt=1)
 
     assert created == []
+
+
+def test_source_passes_absolute_deadline_to_request_slot() -> None:
+    observed = []
+    page = _Page(packets=[_packet({"date": "2026-08-05", "data": []})])
+    source = JiuyanBrowserSource(
+        lambda *args, **kwargs: page,
+        lambda *_args: None,
+        clock=_Clock(),
+        request_slot=lambda **kwargs: observed.append(kwargs),
+    )
+
+    source(20260805, deadline=110.0, attempt=1)
+
+    assert observed == [{"deadline": 110.0}]
+
+
+def test_slider_appearing_while_listener_waits_is_not_reported_as_timeout() -> None:
+    page = _Page()
+    page.listen = _Listen(on_steps=lambda: setattr(page, "slider", True))
+    source, _names, _closed = _source(page)
+
+    with pytest.raises(HumanVerificationRequired):
+        source(20260805, deadline=110.0, attempt=1)

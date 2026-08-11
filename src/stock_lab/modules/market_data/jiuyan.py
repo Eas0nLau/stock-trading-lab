@@ -1,3 +1,4 @@
+import datetime as dt
 import os
 
 from loguru import logger
@@ -75,6 +76,7 @@ class JiuyanCollector:
             "source_stock_count": batch.source_stock_count,
             "accepted_stock_count": batch.accepted_stock_count,
             "source_fingerprint": batch.source_fingerprint,
+            "collected_at": dt.datetime.now(dt.UTC).replace(tzinfo=None),
         }
         updated = self.repository.replace_jiuyan_actions(
             trade_date,

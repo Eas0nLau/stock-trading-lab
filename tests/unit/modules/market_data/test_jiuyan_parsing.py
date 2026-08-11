@@ -167,3 +167,24 @@ def test_parse_flat_canonical_response_requires_and_preserves_date_proof() -> No
 
     assert batch.rows[0]["stock_code"] == "000001"
     assert batch.rows[0]["limit_up_at"] == "2026-08-05 09:35:00"
+
+
+def test_parse_batch_accepts_missing_limit_up_time_but_rejects_malformed_time() -> None:
+    stock = _stock("sz000001")
+    stock["article"]["action_info"].pop("time")
+
+    batch = parse_batch({"data": [_group(stocks=[stock])]}, 20260805)
+
+    assert batch.rows[0]["limit_up_at"] is None
+
+
+def test_source_board_count_tracks_groups_even_when_names_repeat() -> None:
+    response = {
+        "date": "2026-08-05",
+        "data": [
+            _group(name="Robotics", stocks=[_stock("sz000001")]),
+            _group(name="Robotics", stocks=[_stock("sh600000")]),
+        ],
+    }
+
+    assert parse_batch(response, 20260805).source_board_count == 2

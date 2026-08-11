@@ -117,7 +117,6 @@ def test_daily_update_runs_sources_before_analysis_and_marks_completion():
             "hot_board_emotion": 8,
             "index_emotion": 9,
         },
-        "warnings": [],
     }
     completion_key = daily_update_completion_key(20260805)
     assert redis.expiries[completion_key] == 7 * 86400

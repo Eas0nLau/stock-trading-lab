@@ -83,13 +83,15 @@ def run_daily_update(
             "index_emotion": run_index(trade_date),
         }
         state.set(completion_key, str(int(time.time())), ex=COMPLETION_TTL_SECONDS)
-        return {
+        result = {
             "status": "success",
             "trade_date": trade_date,
             "source_trade_date": source_trade_date,
             "counts": counts,
-            "warnings": warnings,
         }
+        if warnings:
+            result["warnings"] = warnings
+        return result
     finally:
         lock.release()
 

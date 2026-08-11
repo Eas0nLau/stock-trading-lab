@@ -56,6 +56,20 @@ def test_request_rate_limiter_waits_between_page_requests(monkeypatch):
     assert sleeps == [30.0]
 
 
+def test_request_rate_limiter_refuses_to_sleep_past_deadline(monkeypatch):
+    monkeypatch.setattr(jiuyan_source.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(
+        jiuyan_source.time,
+        "sleep",
+        lambda _seconds: (_ for _ in ()).throw(AssertionError("slept past deadline")),
+    )
+    monkeypatch.setattr(jiuyan_source.random, "uniform", lambda low, high: 60.0)
+    jiuyan_source._last_request_time = 100.0
+
+    with pytest.raises(jiuyan.IncompleteJiuyanResponse, match="request slot deadline"):
+        jiuyan_source.wait_for_request_slot(deadline=110.0)
+
+
 def test_parse_grouped_action_fields_and_scaled_range():
     response = {
         "data": [

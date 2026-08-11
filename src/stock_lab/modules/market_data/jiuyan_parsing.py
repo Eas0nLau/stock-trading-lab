@@ -79,8 +79,10 @@ def _symbol(source_code) -> tuple[str, str]:
     return symbol, raw
 
 
-def _limit_up_at(trade_date: int, value) -> str:
+def _limit_up_at(trade_date: int, value) -> str | None:
     raw = str(value or "").strip()
+    if not raw:
+        return None
     if not re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", raw):
         _fail("missing or malformed limit-up time")
     parsed = None
@@ -194,7 +196,7 @@ def parse_batch(response: object, trade_date) -> ParsedJiuyanBatch:
     canonical_rows = []
     legacy_rows = []
     source_stock_count = 0
-    board_names = set()
+    source_board_count = 0
     for record in records:
         board_name = str(
             _value(record, "name", "板块", "板块名称", "board", "board_name", default="")
@@ -205,7 +207,7 @@ def parse_batch(response: object, trade_date) -> ParsedJiuyanBatch:
             _value(record, "count", "板块个股数量", "板块数量", "board_stock_count"),
             "Jiuyan board must report a positive board count",
         )
-        board_names.add(board_name)
+        source_board_count += 1
 
         grouped = "list" in record
         stocks = record.get("list") if grouped else [record]
@@ -286,7 +288,7 @@ def parse_batch(response: object, trade_date) -> ParsedJiuyanBatch:
     return ParsedJiuyanBatch(
         rows=tuple(canonical_rows),
         legacy_rows=tuple(legacy_rows),
-        source_board_count=len(board_names),
+        source_board_count=source_board_count,
         source_stock_count=source_stock_count,
         accepted_stock_count=len(canonical_rows),
         source_fingerprint=fingerprint,

@@ -111,6 +111,47 @@ def test_export_keeps_stale_files_when_temporary_generation_fails(
     assert stale.read_text(encoding="utf-8") == "old"
 
 
+def test_export_rolls_back_target_directory_when_promotion_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "韭研公社异动板块" / "20260805"
+    target.mkdir(parents=True)
+    stale = target / "stale.ini"
+    stale.write_text("old", encoding="utf-8")
+    original_replace = Path.replace
+
+    def fail_new_directory(self, destination):
+        destination = Path(destination)
+        if (
+            self.name.startswith(".20260805-")
+            and "backup" not in self.name
+            and destination == target
+        ):
+            raise OSError("promotion failed")
+        return original_replace(self, destination)
+
+    monkeypatch.setattr(Path, "replace", fail_new_directory)
+
+    with pytest.raises(OSError, match="promotion failed"):
+        export_jiuyan_actions(20260805, _Repository(_rows()), tmp_path)
+
+    assert stale.read_text(encoding="utf-8") == "old"
+
+
+def test_export_disambiguates_sanitized_board_name_collisions(tmp_path: Path) -> None:
+    rows = [
+        _row("A/B", 1, "000001", "One", "", "09:35:00"),
+        _row("A:B", 1, "000002", "Two", "", "09:36:00"),
+    ]
+
+    paths = export_jiuyan_actions(20260805, _Repository(rows), tmp_path)
+
+    names = [path.name for path in paths]
+    assert len(names) == len(set(names)) == 3
+    assert "2_全部.ini" in names
+    assert sum(name.startswith("1_A_B") for name in names) == 2
+
+
 def test_export_requires_complete_manifest(tmp_path: Path) -> None:
     repository = _Repository(_rows(), {"trade_date": 20260805, "status": "partial"})
 

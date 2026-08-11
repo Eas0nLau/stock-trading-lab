@@ -31,17 +31,29 @@ _request_lock = threading.Lock()
 _last_request_time = 0.0
 
 
-def wait_for_request_slot():
+def wait_for_request_slot(*, deadline=None):
     global _last_request_time
-    with _request_lock:
+    if deadline is None:
+        _request_lock.acquire()
+    else:
+        remaining = float(deadline) - time.monotonic()
+        if remaining <= 0 or not _request_lock.acquire(timeout=remaining):
+            raise IncompleteJiuyanResponse("Jiuyan request slot deadline exceeded")
+    try:
         now = time.monotonic()
         interval = random.uniform(
             MIN_REQUEST_INTERVAL_SECONDS, MAX_REQUEST_INTERVAL_SECONDS
         )
         wait_seconds = max(0.0, interval - (now - _last_request_time))
         if wait_seconds:
+            if deadline is not None and wait_seconds >= float(deadline) - now:
+                raise IncompleteJiuyanResponse(
+                    "Jiuyan request slot deadline exceeded"
+                )
             time.sleep(wait_seconds)
         _last_request_time = time.monotonic()
+    finally:
+        _request_lock.release()
 
 
 def format_page_date(trade_date):
@@ -113,7 +125,7 @@ class JiuyanBrowserSource:
     def __call__(self, trade_date, *, deadline, attempt):
         trade_date = int(trade_date)
         self._remaining(trade_date, deadline)
-        self.request_slot()
+        self.request_slot(deadline=deadline)
         self._remaining(trade_date, deadline)
         name = (
             f"jiuyan-action-{trade_date}-{int(attempt)}-"
@@ -134,18 +146,20 @@ class JiuyanBrowserSource:
             tab = page.ele("text=全部异动解析", timeout=min(1.0, remaining))
             if tab:
                 tab.click()
-            remaining = self._remaining(trade_date, deadline)
-            for packet in page.listen.steps(timeout=min(15.0, remaining)):
+            while True:
+                remaining = self._remaining(trade_date, deadline)
+                for packet in page.listen.steps(timeout=min(1.0, remaining)):
+                    self._raise_if_verification_required(
+                        page, trade_date, deadline
+                    )
+                    if LISTEN_TARGET not in str(getattr(packet, "target", "")):
+                        continue
+                    response = decode_response(
+                        getattr(packet.response, "body", None)
+                    )
+                    if response is not None:
+                        return response
                 self._raise_if_verification_required(page, trade_date, deadline)
-                if LISTEN_TARGET not in str(getattr(packet, "target", "")):
-                    continue
-                response = decode_response(getattr(packet.response, "body", None))
-                if response is not None:
-                    return response
-            self._remaining(trade_date, deadline)
-            raise IncompleteJiuyanResponse(
-                f"Jiuyan response timed out for {trade_date}"
-            )
         finally:
             if page is not None:
                 try:
