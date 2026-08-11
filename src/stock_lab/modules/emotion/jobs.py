@@ -2,6 +2,7 @@ import json
 
 from sqlalchemy import text
 
+from stock_lab.modules.market_data.helpers import validated_trade_date
 from stock_lab.shared.errors import DataValidationError
 
 def run_index_emotion_job(trade_date, repository=None, calculator=None, writer=None):
@@ -95,10 +96,109 @@ def run_hot_board_emotion_job(trade_date, sample_trade_date, repository=None, an
     return len(rows)
 
 
+def backfill_index_emotion(
+    start_date=None,
+    end_date=None,
+    *,
+    repository=None,
+    runner=run_index_emotion_job,
+):
+    repository = repository or _create_repository()
+    dates = _range_dates(repository, start_date, end_date)
+    result = _range_result()
+    for trade_date in dates:
+        try:
+            result["updated"] += int(runner(trade_date, repository=repository))
+            result["processed_dates"].append(trade_date)
+        except Exception as error:
+            result["status"] = "failed"
+            result["failed_dates"].append(trade_date)
+            result["errors"].append({"trade_date": trade_date, "error": str(error)})
+    return result
+
+
+def backfill_hot_board_emotion(
+    start_date=None,
+    end_date=None,
+    *,
+    repository=None,
+    runner=run_hot_board_emotion_job,
+):
+    repository = repository or _create_repository()
+    dates = _range_dates(repository, start_date, end_date)
+    result = _range_result()
+    for trade_date in dates:
+        previous_trade_date = repository.previous_trading_date(trade_date)
+        if previous_trade_date is None:
+            continue
+        try:
+            result["updated"] += int(
+                runner(
+                    trade_date,
+                    previous_trade_date,
+                    repository=repository,
+                )
+            )
+            result["processed_dates"].append(trade_date)
+        except Exception as error:
+            result["status"] = "failed"
+            result["failed_dates"].append(trade_date)
+            result["errors"].append({"trade_date": trade_date, "error": str(error)})
+    return result
+
+
+def _range_dates(repository, start_date, end_date):
+    if start_date is None and end_date is None:
+        dates = repository.trading_dates()
+        if not dates:
+            raise DataValidationError("No canonical trading dates are available")
+        return [int(dates[-1])]
+    if start_date is None:
+        start_date = end_date
+    if end_date is None:
+        end_date = start_date
+    start_date = validated_trade_date(start_date, "emotion start date")
+    end_date = validated_trade_date(end_date, "emotion end date")
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    dates = repository.trading_dates(start_date, end_date)
+    if not dates:
+        raise DataValidationError("No canonical trading dates are available")
+    return sorted({int(date) for date in dates})
+
+
+def _range_result():
+    return {
+        "status": "success",
+        "updated": 0,
+        "processed_dates": [],
+        "failed_dates": [],
+        "errors": [],
+    }
+
+
 def _dependencies(repository, writer):
     if repository is not None and writer is not None:
         return repository, writer
 
+    database = None
+    if repository is None:
+        repository, database = _create_repository_dependencies()
+    if writer is not None:
+        return repository, writer
+
+    from stock_lab.infrastructure.database import create_database_client
+
+    database = database or create_database_client()
+    return repository, lambda tables: write_tables(database.engine, tables)
+
+
+def _create_repository():
+    repository, _ = _create_repository_dependencies()
+    return repository
+
+
+def _create_repository_dependencies():
     from stock_lab.infrastructure.database import create_database_client
     from stock_lab.modules.market_data.repository import MarketDataRepository
 
@@ -106,7 +206,7 @@ def _dependencies(repository, writer):
 
     database = create_database_client()
     market_data = MarketDataRepository(database.query, database.engine)
-    return repository or EmotionRepository(database.query, market_data=market_data), writer or (lambda tables: write_tables(database.engine, tables))
+    return EmotionRepository(database.query, market_data=market_data), database
 
 
 def write_tables(engine, tables):
