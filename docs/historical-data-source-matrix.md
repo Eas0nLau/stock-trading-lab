@@ -37,7 +37,7 @@
 | 大盘资金流历史 | 市场级资金流研究 | 东方财富 | `stock_market_fund_flow` | 部分可用 | 历史深度受上游控制，字段与板块资金流不完全相同 | 需要时单独落库并保留来源字段；不能与板块或个股资金流混用 |
 | `dde_net_amount` | `daily_quotes.dde_net_amount`，策略信号 | KPL/LonghuVIP `GetDaDanKLine2New`；入口 `task._10_开盘啦dde读取` | 个股主力资金流相关接口 | 语义不一致 | 主力净流入、大单净流入和 KPL DDE 是不同算法定义 | 保持 KPL DDE 元单位；全局请求间隔默认 0.5 秒、并发默认 4，只更新 MySQL，失败证券结构化返回 |
 | 涨停池 | 热门板块情绪的辅助数据 | Jiuyan actions 和项目情绪任务 | `stock_zt_pool_em`；`stock_zt_pool_previous_em` 等 | 部分可用 | 主要支持近期日期；没有项目所需的完整长期编辑语义 | AkShare 只能做近期辅助校验；项目 `jiuyan_actions` 仍用 Jiuyan |
-| Jiuyan 异动与涨停原因 | `jiuyan_actions`、热门板块情绪 | Jiuyan 页面和 `/jystock-app/api/v1/action/field`，入口 `collect_jiuyan_actions()` | 无对应 API | 不可使用 | AkShare 没有韭研公社编辑内容、`limit_up_reason` 和项目板块归类语义；可能触发滑块验证 | 保留 Jiuyan 浏览器/网络采集；严格校验返回日期匹配请求日期 |
+| Jiuyan 异动与涨停原因 | `jiuyan_actions`、`jiuyan_collection_days`、热门板块情绪 | Jiuyan 页面和 `/jystock-app/api/v1/action/field`，入口 `task._5_韭研公社异动` | 无对应 API | 不可使用 | AkShare 没有韭研公社编辑内容、`limit_up_reason` 和项目板块归类语义；可能触发滑块验证 | 每次尝试使用新页面，最多 2 次且总截止 180 秒；严格校验日期和完整结构后事务替换当日事实与 manifest，滑块立即失败 |
 | 龙虎榜明细 | `dragon_tiger` | 同花顺采集器，经 `/api/v1/dragon-tiger/collection-jobs` 启动 | `stock_lhb_detail_em`；`stock_lhb_stock_detail_em` | 语义不一致 | AkShare 东方财富龙虎榜字段和同花顺字段、业务键、营业部列不保证一致 | 继续使用当前同花顺规范；AkShare 只能作为对照或另建供应商字段 |
 | 营业部与上榜历史 | `brokers`、`broker_listing_history` | 同花顺营业部目录和历史页面 | `stock_lhb_yyb_detail_em` | 部分可用 | 营业部 ID、分页深度和历史定义可能不同；Redis 页面缓存无 TTL 有陈旧风险 | 继续使用当前同花顺采集和稳定业务键；批量任务限制日期与营业部范围 |
 | 财务报表和财务指标 | 当前策略的未来扩展 | 项目当前未纳入必需回补链 | `stock_financial_analysis_indicator_em`；`stock_balance_sheet_by_report_em`；利润表、现金流量表接口 | 可直接使用 | 字段量大、报告期和公告日语义不同；上游字段可能变化 | 新增规范表和字段映射后再接入，不作为当前历史回补的隐式步骤 |
@@ -49,15 +49,15 @@
 | 筹码分布 | 当前项目扩展数据 | 项目当前未纳入必需回补链 | `stock_cyq_em` | 部分可用 | 通常只有最近约 90 个交易日，不适合长期策略回测 | 只用于近期分析，不作为长期历史补数源 |
 | KDJ | `kdj_indicators` | canonical `calculate_kdj()`；入口 `task._3_kdj` 和日更 | 无需下载同名结果 | 不可使用 | 作者兼容 `calculate_ths_kdj()` 的预热和平盘口径与 canonical 公式不同 | 正式表只写 canonical 修正公式；作者兼容函数仅供旧调用复现数值，日更在市场事实后自动重算目标日期 |
 | 市场宽度 | `index_market_breadth` | 本地 `run_index_emotion_job()` 及市场行情事实 | 无需下载同名结果 | 不可使用 | 需要项目自己的股票池、涨跌和涨停定义 | 从 `daily_quotes` 和项目规则本地计算 |
-| 指数情绪周期 | `index_emotion_daily` | 本地情绪任务 | 无需下载同名结果 | 不可使用 | 是项目规则派生值，不是外部标准行情字段 | 先补齐指数、日线和市场宽度，再调用情绪任务 |
-| 热门板块情绪 | `hot_board_emotion_daily` | 本地情绪任务，依赖 `jiuyan_actions` 和日线 | 无需下载同名结果 | 不可使用 | 依赖 Jiuyan 的前一交易日样本和项目规则 | 先补 Jiuyan、日线，再按日期重算 |
+| 指数情绪周期 | `index_emotion_daily` | 本地情绪任务；范围入口 `task._8_指数情绪周期每日更新` | 无需下载同名结果 | 不可使用 | 是项目规则派生值，不是外部标准行情字段 | 先补齐指数、日线和市场宽度，再按 canonical 交易日范围本地重算 |
+| 热门板块情绪 | `hot_board_emotion_daily` | 本地情绪任务；范围入口 `task._9_热门板块情绪每日更新` | 无需下载同名结果 | 不可使用 | 只接受相邻且 manifest 完整的 Jiuyan 日期，股票池限沪深主板非 ST | 先重新采集并验证 Jiuyan 日期，再按 canonical 交易日范围重算；单日失败不会阻断后续日期 |
 
 ## 请求频率与稳定性
 
 - **AkShare**：批量任务必须串行调用，普通请求建议至少间隔 1 秒；连接失败使用有限次数指数退避。AkShare 不屏蔽上游限制，东方财富、同花顺、交易所等上游的断连和限流仍会直接影响任务。
 - **Tushare**：遵守 token 权限、积分和调用频率。当前 collector 遇到包含“频率”的异常时等待 65 秒后重试，并在日期间保持至少 1.3 秒间隔。
 - **BaoStock**：每只证券和日期范围执行一次登录、查询和注销，没有内置请求重试。批量入口使用可配置的有限并发并返回 processed、empty 和 failed 证券清单。
-- **Jiuyan**：当前实现使用全局请求时隙，默认随机间隔 60 至 105 秒，并最多尝试 2 次。出现滑块时需要人工验证，不能通过提高并发规避。
+- **Jiuyan**：当前实现使用全局请求时隙，默认随机间隔 60 至 105 秒，最多尝试 2 次并共享 180 秒总截止时间。每次尝试创建并清理独立页面/listener；出现滑块时立即返回人工验证失败，不能通过提高并发规避。
 - **同花顺**：当前龙虎榜采集器默认对连接和超时错误尝试 3 次，使用 0.5 秒线性等待，但没有统一的批量请求间隔。长区间回补应缩小批次并监控封禁响应。
 - **东方财富浏览器采集**：只用于盘中实时资金流和策略页面监听。浏览器带 Cookie 的会话可用，不代表 Python `requests` 历史接口可用；两条链路必须分别监控。
 
@@ -71,6 +71,7 @@
 - [KDJ 重算任务](../src/stock_lab/jobs/kdj_indicators.py)
 - [资金流历史任务](../src/stock_lab/jobs/fund_flow_backfill.py)
 - [Jiuyan 采集器](../src/stock_lab/modules/market_data/jiuyan.py)
+- [Jiuyan 导出与前排查询](../src/stock_lab/modules/market_data/jiuyan_exports.py)
 - [龙虎榜采集器](../src/stock_lab/infrastructure/market_data/dragon_tiger.py)
 - [情绪任务](../src/stock_lab/modules/emotion/jobs.py)
 

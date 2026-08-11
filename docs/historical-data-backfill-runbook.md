@@ -60,7 +60,9 @@ uv run --frozen python app.py
 3. 检查 16 组 gate、行数、业务键、日期范围、金额/数量聚合和 JSON 有效性。
 4. 切换应用并完成测试、抽样和资金流 MySQL 回补。
 5. `db/migrations/004_upsert_legacy_data.sql`
-6. 确认 `004_legacy_containment_v1/succeeded`、全部 gate、全量备份和人工抽样后，才允许单独执行 `db/migrations/003_drop_legacy_schema.sql`。
+6. `db/migrations/005_normalize_intraday_minute_identity.sql`
+7. `db/migrations/006_create_jiuyan_collection_days.sql`
+8. 确认 `004_legacy_containment_v1/succeeded`、全部 gate、全量备份和人工抽样后，才允许单独执行 `db/migrations/003_drop_legacy_schema.sql`。
 
 执行迁移后必须能够回滚到迁移前完整备份。详细 gate 和回滚要求见[数据库重建与迁移](database-migrations.md)。
 
@@ -175,22 +177,26 @@ uv run --frozen python -m task._2_分时数据获取_5分k --start-date 20260101
 
 ### 2. Jiuyan 异动
 
-状态：**仅程序接口**、**受上游限制**。
+状态：**已支持 CLI**、**受上游限制**。
 
-入口：`task._5_韭研公社异动.韭研公社异动采集(date)`。
+入口：`task._5_韭研公社异动`。
 
 示例：
 
 ```powershell
-uv run --frozen python -c "from task._5_韭研公社异动 import 韭研公社异动采集; print(韭研公社异动采集(20260810))"
+uv run --frozen python -m task._5_韭研公社异动 --date 20260810
+uv run --frozen python -m task._5_韭研公社异动 --date 20260810 --export-only
+uv run --frozen python -m task._5_韭研公社异动 --date 20260810 --front-rank
 ```
 
 注意：
 
-- 目标表是 `jiuyan_actions`，主键 `data_id` 按日期和板块/股票规范化生成。
-- 返回数据的日期必须和请求日期一致；日期不一致时视为失败。
-- 当前实现请求时隙默认随机等待 60 至 105 秒，最多尝试 2 次。
-- 出现滑块或人工验证时暂停任务，在浏览器完成验证后重新执行失败日期。
+- 目标事实是 `jiuyan_actions` 和 `jiuyan_collection_days`。执行 `006` 前的历史日期没有 manifest，保持未验证，必须重新采集后才能用于新的热门板块回补。
+- 返回数据必须有日期证明且和请求日期一致；每个原始股票先通过结构校验，再应用 9.5% 至 10.2% 过滤。
+- 当前实现请求时隙默认随机等待 60 至 105 秒，最多尝试 2 次，共享 180 秒总截止时间；每次尝试使用并清理新页面和 listener。
+- 出现滑块或人工验证时立即失败。完成浏览器验证条件后重新执行失败日期，进程不会无限等待。
+- MySQL 先在同一事务中替换当日 actions 并写 complete manifest，之后才从已提交数据生成 INI。导出失败返回 warning，不撤销事实提交。
+- INI 输出到 `output/韭研公社异动板块/<日期>/`；`--export-only` 可独立重建，`--front-rank` 只查询已提交事实。
 - AkShare 没有 Jiuyan 编辑内容、涨停原因和项目板块归类的同语义接口，不能替换此任务。
 
 ### 3. 龙虎榜
@@ -249,19 +255,20 @@ uv run --frozen python -m task._3_kdj --start-date 20260101 --end-date 20260810 
 
 ### 2. 指数和热门板块情绪
 
-状态：**仅程序接口**。
+状态：**已支持 CLI**。
 
 ```powershell
-uv run --frozen python -c "from task.emotion_analysis import 落库指数周期; print(落库指数周期(20260810))"
-uv run --frozen python -c "from task.emotion_analysis import 落库热门板块情绪; print(落库热门板块情绪(20260810, 20260807))"
+uv run --frozen python -m task._8_指数情绪周期每日更新 --start-date 20260801 --end-date 20260810
+uv run --frozen python -m task._9_热门板块情绪每日更新 --start-date 20260801 --end-date 20260810
 ```
 
-入口分别是 `task.emotion_analysis.落库指数周期(date)` 和 `task.emotion_analysis.落库热门板块情绪(date, source_date)`。
+范围入口分别是 `task._8_指数情绪周期每日更新` 和 `task._9_热门板块情绪每日更新`；旧 `task.emotion_analysis` 单日转发仍保留。
 
 - 指数情绪依赖 `index_daily`、`daily_quotes` 和市场宽度事实。
-- 热门板块情绪依赖当前日期的 `jiuyan_actions` 和前一交易日 `source_date` 的样本。
+- 参数范围包含首尾日期，反向范围自动交换；只处理本地 `index_daily` 中存在的 canonical 交易日。单日失败记录在 `failed_dates/errors` 后继续处理后续日期。
+- 热门板块情绪严格使用紧邻前一交易日，并要求两日 `jiuyan_collection_days` 均为 complete 且计数与 actions 一致；股票池只含沪深主板非 ST。
 - 目标表是 `index_market_breadth`、`index_emotion_daily` 和 `hot_board_emotion_daily`。
-- 派生任务使用 upsert，缺少基础事实时不能通过重复运行解决，必须先补基础表。
+- 指数情绪按日期 upsert；热门板块每次先计算完整结果，再事务替换目标日全部板块，修正重跑不会残留旧板块。缺少基础事实时必须先补基础表。
 
 ## 七、MySQL 验收 SQL
 

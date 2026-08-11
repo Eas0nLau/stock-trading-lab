@@ -68,4 +68,6 @@ KDJ 与 5 分钟行情的正式写入和活跃策略读取已切换到 `kdj_indi
 
 在继续运行新的 5 分钟历史任务前，停止相关写入并执行 `005_normalize_intraday_minute_identity.sql`。该迁移在 SERIALIZABLE 事务中把 BaoStock 17 位时间和旧迁移的 12 位时间统一为 `YYYYMMDDHHMM`，通过临时表折叠同一证券、分钟和复权标记的重复行，并在源/归一化/目标计数全部通过后记录 `migration_validations` 与 `schema_migrations`；异常会回滚并记录失败。
 
+在启用新的韭研采集和热门板块范围回补前执行 `006_create_jiuyan_collection_days.sql`。迁移只创建 manifest 表并记录版本，不会把旧 `jiuyan_actions` 日期自动声明为完整。新采集在同一 MySQL 事务中替换目标日 actions、写入来源计数与 SHA-256 指纹并核对持久化行数；只有该 manifest 能授权新的热门板块计算，Redis 标记不能替代。
+
 应用代码切换已经完成：韭研、情绪、资金流向、策略选股、龙虎榜、研究策略和兼容脚本均不再读取旧表或旧 Redis 键，正式代码也不反向导入中文实现。该状态由 `tests/test_cutover_contracts.py` 强制检查。执行 `003_drop_legacy_schema.sql` 前仍必须停止应用、完成全库备份、确认 `001`/`002`/`004`、`004_legacy_containment_v1/succeeded` 和 16 条表级 gate，并完成人工抽样。数据库 guard 是必要条件，不替代这些步骤。

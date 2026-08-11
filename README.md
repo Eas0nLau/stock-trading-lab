@@ -91,7 +91,8 @@ uv run --frozen python -m task.fund_flow_backfill --days 365
 3. 补齐市值、自由流通字段和 KPL DDE。
 4. 重算目标交易日的 canonical KDJ。
 5. 采集韭研公社异动板块数据。
-6. 计算并写入热门板块情绪、指数情绪周期和市场宽度。
+6. 从已提交韭研事实生成可重建 INI；导出 warning 不阻断后续分析。
+7. 计算并写入热门板块情绪、指数情绪周期和市场宽度。
 
 项目还实现了 5 分钟 K 线、KDJ、韭研公社异动和龙虎榜溢价分析等更新模块。5 分钟历史是独立高容量任务，正式入口为 `stock_lab.jobs.intraday_bars_5m`，CLI 为 `task._2_分时数据获取_5分k`；KDJ 正式入口为 `stock_lab.jobs.kdj_indicators`，已进入默认每日流水线，也可通过 `task._3_kdj` 单独重算。同花顺板块、成分股和股票板块关系没有运行时采集器，现有数据仅作为迁移导入的归档参考数据保留。
 
@@ -114,17 +115,22 @@ uv run --frozen python -m task.fund_flow_backfill --days 365
 正式模块 `stock_lab.modules.market_data.jiuyan` 用于按交易日采集韭研公社异动榜单；`task/_5_韭研公社异动.py` 仅保留直接脚本兼容：
 
 - 打开指定日期的异动页面，监听 `/jystock-app/api/v1/action/field` 接口响应。
+- 最多尝试 2 次并共享 180 秒总截止时间；每次尝试使用独立页面/listener，滑块验证立即失败并清理页面。
 - 解析板块名称、板块个股数量、题材说明，以及股票代码、股票名称、涨停时间、几天几板、涨幅和涨停解析。
 - 仅保留涨幅在 9.5% 至 10.2% 之间的涨停附近股票，并写入 MySQL 表 `jiuyan_actions`。
+- 同一事务替换目标日事实并写入 `jiuyan_collection_days` 完整性 manifest；执行 `006` 前的旧日期必须重新采集才可供新的热门板块计算。
 - 按连板身位、非连板板数和涨停时间排序，为每个板块生成单独的通达信 INI 股票名单。
 - 为每个板块生成包含去重股票的行情软件导入名单。
 - 文件输出到 `output/韭研公社异动板块/<日期>/`，采集结果同时为热门板块情绪分析提供基础数据。
 
 该步骤已进入默认每日更新流水线，也可通过兼容入口单独调用：
 
-```python
-_5_韭研公社异动.韭研公社异动采集(start_date)
+```powershell
+uv run --frozen python -m task._5_韭研公社异动 --date 20260804
+uv run --frozen python -m task._5_韭研公社异动 --date 20260804 --export-only
+uv run --frozen python -m task._5_韭研公社异动 --date 20260804 --front-rank
 ```
+指数情绪和热门板块情绪历史重算分别使用 `task._8_指数情绪周期每日更新` 与 `task._9_热门板块情绪每日更新` 的可选 `--start-date/--end-date`。范围包含首尾日期，单日失败会记录后继续；热门板块只接受紧邻且 manifest 完整的 Jiuyan 日期，并限定沪深主板非 ST。默认日更仍只处理目标日期，Redis 完成标记只是 7 天兼容状态，不是 MySQL 完整性证明。上游 `_6` 同花顺行为留待独立子项目。
 运行后会生成.ini格式的文件，可以直接用同花顺导入，非常方便和高效，不需要截图或者挨个去添加到板块中。
 
 如20260804，直接导入

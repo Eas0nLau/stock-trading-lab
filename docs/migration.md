@@ -22,6 +22,9 @@
 | `task/_10_开盘啦dde读取.py` | `stock_lab.jobs.dde_backfill` | KPL DDE 已迁移，限速抓取并写入 `daily_quotes.dde_net_amount` |
 | `task/_2_分时数据获取_5分k.py` | `stock_lab.jobs.intraday_bars_5m` | 已恢复薄兼容入口；正式采集写入 `intraday_bars_5m` |
 | `task/_3_kdj.py` | `stock_lab.jobs.kdj_indicators` | 作者命名薄入口已恢复；兼容公式与 canonical 持久化公式明确分离 |
+| `task/_5_韭研公社异动.py` | `stock_lab.modules.market_data.jiuyan` / `jiuyan_exports` | 薄入口已恢复；采集、manifest 事务、可重建 INI 和日内前排由正式模块拥有 |
+| `task/_8_指数情绪周期每日更新.py` | `stock_lab.modules.emotion.jobs.backfill_index_emotion` | 薄范围入口已恢复；按 canonical 交易日回补并结构化报告部分失败 |
+| `task/_9_热门板块情绪每日更新.py` | `stock_lab.modules.emotion.jobs.backfill_hot_board_emotion` | 薄范围入口已恢复；验证相邻完整 Jiuyan 日期和沪深主板非 ST 样本 |
 | `stock_lab.modules.market_data` | `securities` / `daily_quotes` / `index_daily` | canonical repository and model contract established |
 | KDJ 更新与策略 SQL | `stock_lab.jobs.kdj_indicators` / `kdj_indicators` | 已切换英文任务、列名和表名 |
 | 龙虎榜溢价页面 | `stock_lab.modules.dragon_tiger` | canonical models, parsers, repositories, collectors, premium analysis, and async API are active |
@@ -78,6 +81,23 @@ Chinese five-minute and KDJ task modules contain no source or persistence
 implementation. `calculate_ths_kdj` preserves upstream compatibility values, while
 only canonical `calculate_kdj` writes `kdj_indicators`. Daily updates recalculate
 KDJ after market facts and before Jiuyan/emotion.
+
+Jiuyan and emotion range migration
+-----------------------------------
+
+`stock_lab.modules.market_data.jiuyan` owns finite collection coordination: two
+fresh-page attempts share a 180-second deadline, slider verification fails
+immediately, and every page/listener is cleaned up. Strict parsing creates a
+source fingerprint and complete-day manifest. MySQL replacement commits before
+`jiuyan_exports` rebuilds INI files; export failures are warnings rather than
+fact rollback.
+
+`stock_lab.modules.emotion.jobs` keeps the existing formulas as single-date
+primitives and adds inclusive canonical trading-date backfills. Hot-board jobs
+require the immediately previous complete Jiuyan date, filter to Shanghai and
+Shenzhen main-board non-ST stocks, and transactionally replace the target day's
+complete board result. `_6` remains the deferred THS subproject and is not mixed
+into Jiuyan exports.
 
 前端 `IndexCycle.vue` 和 `HotBoardEmotion.vue` 已使用 `/api/v1/emotion/*` 与英文模型字段。旧 `/api/emotion/*` 和 `/api/hot-board-emotion/*` 已停止注册，避免读取不再更新的旧表。
 
