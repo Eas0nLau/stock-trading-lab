@@ -313,6 +313,17 @@ CREATE TABLE IF NOT EXISTS `jiuyan_actions` (
   KEY `idx_jiuyan_board_date` (`board_name`, `trade_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `jiuyan_collection_days` (
+  `trade_date` int NOT NULL,
+  `status` varchar(16) NOT NULL,
+  `source_board_count` int NOT NULL,
+  `source_stock_count` int NOT NULL,
+  `accepted_stock_count` int NOT NULL,
+  `source_fingerprint` varchar(64) NOT NULL,
+  `collected_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`trade_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `dragon_tiger` (
   `data_id` varchar(64) NOT NULL,
   `trade_date` int DEFAULT NULL,
@@ -601,6 +612,11 @@ BEGIN
     'jiuyan_actions',
     'data_id:varchar(64):NO|trade_date:int:NO|board_name:varchar(64):NO|board_stock_count:int:NO|stock_code:varchar(16):NO|stock_name:varchar(64):YES|source_code:varchar(16):YES|limit_up_at:datetime:YES|board_streak:varchar(32):YES|change_pct:decimal(10,2):YES|limit_up_reason:varchar(1024):YES',
     'idx_jiuyan_board_date:1(board_name,trade_date)|idx_jiuyan_trade_date:1(trade_date)|PRIMARY:0(data_id)'
+  );
+  CALL assert_table_compatible(
+    'jiuyan_collection_days',
+    'trade_date:int:NO|status:varchar(16):NO|source_board_count:int:NO|source_stock_count:int:NO|accepted_stock_count:int:NO|source_fingerprint:varchar(64):NO|collected_at:datetime:NO',
+    'PRIMARY:0(trade_date)'
   );
   CALL assert_table_compatible(
     'dragon_tiger',

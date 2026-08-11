@@ -10,6 +10,7 @@ MIGRATE_PATH = ROOT / "db" / "migrations" / "002_migrate_legacy_data.sql"
 DROP_PATH = ROOT / "db" / "migrations" / "003_drop_legacy_schema.sql"
 UPSERT_PATH = ROOT / "db" / "migrations" / "004_upsert_legacy_data.sql"
 NORMALIZE_INTRADAY_PATH = ROOT / "db" / "migrations" / "005_normalize_intraday_minute_identity.sql"
+JIUYAN_MANIFEST_PATH = ROOT / "db" / "migrations" / "006_create_jiuyan_collection_days.sql"
 INIT_PATH = ROOT / "init" / "stock_trading_lab_v2.sql"
 OLD_INIT_PATH = ROOT / "init" / "stock_trading_lab.sql"
 LEGACY_INIT_PATH = ROOT / "init" / "LEGACY_stock_trading_lab_chinese_schema.sql"
@@ -187,6 +188,28 @@ def test_005_normalizes_existing_intraday_rows_to_minute_identity():
     assert "t_stock_5_min_k" not in sql
 
 
+def test_006_creates_jiuyan_collection_manifest():
+    sql = JIUYAN_MANIFEST_PATH.read_text(encoding="utf-8")
+    init_sql = INIT_PATH.read_text(encoding="utf-8")
+    table = """CREATE TABLE IF NOT EXISTS `jiuyan_collection_days` (
+  `trade_date` int NOT NULL,
+  `status` varchar(16) NOT NULL,
+  `source_board_count` int NOT NULL,
+  `source_stock_count` int NOT NULL,
+  `accepted_stock_count` int NOT NULL,
+  `source_fingerprint` varchar(64) NOT NULL,
+  `collected_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`trade_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"""
+
+    assert "SET NAMES utf8mb4" in sql
+    assert table in sql
+    assert table in init_sql
+    assert "006_create_jiuyan_collection_days" in sql
+    assert "INSERT INTO `schema_migrations`" in sql
+    assert all(identifier.isascii() for identifier in sql_identifiers(sql))
+
+
 def test_schema_mapping_contains_exactly_the_16_migrations():
     mapping = load_mapping()["tables"]
 
@@ -211,6 +234,7 @@ def test_001_is_resumable_but_validates_compatibility_before_recording():
         "strategy_pick_snapshots",
         "strategy_pick_stocks",
         "strategy_pick_events",
+        "jiuyan_collection_days",
     }
     compatibility_calls = re.findall(
         r"CALL assert_table_compatible\(\s*'([^']+)',\s*'([^']*)',\s*'([^']*)'\s*\)",

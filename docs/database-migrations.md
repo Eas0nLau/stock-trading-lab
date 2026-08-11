@@ -18,6 +18,7 @@
 8. 资金流向完成 MySQL 回补后，校验 `fund_flow_snapshots`、`fund_flow_records` 的日期覆盖、行数、唯一键和金额样本；使用 `stock_lab.jobs.fund_flow_backfill.migrate_legacy_redis` 将旧 V1 Redis 快照按 万元到亿元校正一次并从 canonical 数据重建缓存。
 9. 所有模块完成后执行 `004_upsert_legacy_data.sql`，将旧表数据单向新增或更新到英文表，保留英文表独有业务键，并记录 16 条结构化包含校验。
 10. `004_legacy_containment_v1/succeeded`、16 条表级 gate、全量备份和人工抽样全部确认后，另行执行 `003_drop_legacy_schema.sql`。
+11. 在运行新的韭研采集与情绪回补前，依次执行 `005_normalize_intraday_minute_identity.sql` 和 `006_create_jiuyan_collection_days.sql`。`006` 只建立日期完整性清单，不把既有韭研日期追认为完整；旧日期必须重新采集后才能供新的热门板块情绪计算使用。
 
 ## 回滚
 
@@ -46,6 +47,8 @@ db/migrations/004_upsert_legacy_data.sql
 - `fund_flow_records.net_inflow_100m` 必须为 `DECIMAL(20,6)`，单位为亿元；EastMoney `f62` 原始单位为元，只在 canonical 边界除以 `100000000` 一次。
 
 `002` 开始时先提交 `migration_validations(validation_version='002_parity_v1', status='running')`，再开启数据复制事务并在事务内移除陈旧的 `002` 版本/validation。SQL 异常 handler 会回滚复制 DML、写入 `failed` 及 MySQL 错误信息并重新抛出；全部 gate 成功后才在同一事务中写入 `succeeded` 和 `schema_migrations`。因此中断、失败和成功都可跨进程观察，应用 lifespan 会拒绝 `running`/`failed` 状态。仅看脚本输出或仅看迁移版本不构成删除授权，`003` 同时检查两类状态。
+
+`jiuyan_collection_days` 是韭研日期完整性的唯一事实来源。采集事务同时替换当日 `jiuyan_actions` 并写入来源计数、接受计数和响应指纹；Redis 状态或通知不能替代该清单。没有 `status='complete'` 清单的历史日期保持未验证状态。
 
 ## 当前切换状态
 

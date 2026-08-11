@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy import text
 
 from stock_lab.shared.errors import DataValidationError
@@ -231,11 +233,17 @@ class MarketDataRepository:
     def upsert_jiuyan_actions(self, rows):
         return self._write("jiuyan_actions", rows, ("data_id",))
 
-    @staticmethod
-    def replace_jiuyan_actions(connection, trade_date, rows, expected_row_count):
+    def replace_jiuyan_actions(self, trade_date, rows, manifest):
         trade_date = int(trade_date)
         rows = [dict(row) for row in rows]
-        expected_row_count = int(expected_row_count)
+        manifest = dict(manifest)
+        if int(manifest.get("trade_date", 0)) != trade_date:
+            raise DataValidationError("Jiuyan manifest trade date does not match target")
+        if manifest.get("status") != "complete":
+            raise DataValidationError("Jiuyan manifest status must be complete")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("source_fingerprint", ""))):
+            raise DataValidationError("Jiuyan source fingerprint must be lowercase SHA-256")
+        expected_row_count = int(manifest.get("accepted_stock_count", -1))
         if expected_row_count != len(rows):
             raise DataValidationError(
                 "Jiuyan expected row count does not match the validated batch"
@@ -243,42 +251,59 @@ class MarketDataRepository:
         if any(int(row.get("trade_date", 0)) != trade_date for row in rows):
             raise DataValidationError("Jiuyan batch contains a mismatched trade date")
 
-        connection.execute(
-            text("DELETE FROM `jiuyan_actions` WHERE `trade_date` = :trade_date"),
-            {"trade_date": trade_date},
-        )
-        if rows:
-            MarketDataRepository._execute_insert(
-                connection, "jiuyan_actions", rows, ("data_id",)
-            )
-        connection.execute(
-            text(
-                "INSERT INTO `jiuyan_collection_days` "
-                "(`trade_date`, `row_count`, `status`) "
-                "VALUES (:trade_date, :row_count, :status) "
-                "ON DUPLICATE KEY UPDATE "
-                "`row_count` = VALUES(`row_count`), `status` = VALUES(`status`)"
-            ),
-            {
-                "trade_date": trade_date,
-                "row_count": expected_row_count,
-                "status": "complete",
-            },
-        )
-        persisted_count = int(
+        with self._engine.begin() as connection:
             connection.execute(
-                text(
-                    "SELECT COUNT(*) FROM `jiuyan_actions` "
-                    "WHERE `trade_date` = :trade_date"
-                ),
+                text("DELETE FROM `jiuyan_actions` WHERE `trade_date` = :trade_date"),
                 {"trade_date": trade_date},
-            ).scalar_one()
-        )
-        if persisted_count != expected_row_count:
-            raise DataValidationError(
-                "Jiuyan persisted row count does not match the validated batch"
             )
+            if rows:
+                self._execute_insert(connection, "jiuyan_actions", rows, ("data_id",))
+            self._execute_insert(
+                connection,
+                "jiuyan_collection_days",
+                [manifest],
+                ("trade_date",),
+            )
+            persisted_count = int(
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM `jiuyan_actions` "
+                        "WHERE `trade_date` = :trade_date"
+                    ),
+                    {"trade_date": trade_date},
+                ).scalar_one()
+            )
+            if persisted_count != expected_row_count:
+                raise DataValidationError(
+                    f"Persisted Jiuyan count mismatch for {trade_date}"
+                )
         return persisted_count
+
+    def jiuyan_actions_for_date(self, trade_date):
+        return self._query(
+            "SELECT * FROM `jiuyan_actions` WHERE `trade_date` = %s "
+            "ORDER BY `board_name`, `stock_code`",
+            params=(int(trade_date),),
+            fetch=True,
+        ) or []
+
+    def jiuyan_collection_day(self, trade_date):
+        rows = self._query(
+            "SELECT * FROM `jiuyan_collection_days` WHERE `trade_date` = %s",
+            params=(int(trade_date),),
+            fetch=True,
+        ) or []
+        return dict(rows[0]) if rows else None
+
+    def latest_complete_jiuyan_date(self):
+        rows = self._query(
+            "SELECT MAX(`trade_date`) AS `trade_date` "
+            "FROM `jiuyan_collection_days` WHERE `status` = %s",
+            params=("complete",),
+            fetch=True,
+        ) or []
+        value = rows[0].get("trade_date") if rows else None
+        return int(value) if value is not None else None
 
     def _write(self, table, rows, keys):
         rows = list(rows)
