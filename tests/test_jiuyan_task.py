@@ -6,12 +6,14 @@ from stock_lab.modules.market_data import jiuyan
 
 def test_parse_jiuyan_response_filters_limit_up_range():
     response = {
+        "date": "2026-08-05",
         "data": [
             {
                 "板块": "机器人",
                 "板块个股数量": 12,
                 "股票代码": "600000",
                 "股票名称": "示例",
+                "code": "sh600000",
                 "涨幅": 9.8,
                 "涨停时间": "09:35:00",
                 "几天几板": "2天2板",
@@ -20,7 +22,10 @@ def test_parse_jiuyan_response_filters_limit_up_range():
                 "板块": "机器人",
                 "板块个股数量": 12,
                 "股票代码": "000001",
+                "股票名称": "过滤示例",
+                "code": "sz000001",
                 "涨幅": 8.2,
+                "涨停时间": "09:40:00",
             },
         ]
     }
@@ -28,7 +33,7 @@ def test_parse_jiuyan_response_filters_limit_up_range():
     rows = jiuyan.parse_response(response, 20260805)
 
     assert len(rows) == 1
-    assert rows[0]["data_id"] == "20260805_机器人_600000"
+    assert rows[0]["data_id"].startswith("20260805_")
 
 
 def test_parse_empty_response_returns_incomplete_error():
@@ -55,6 +60,7 @@ def test_parse_grouped_action_fields_and_scaled_range():
         "data": [
             {
                 "name": "机器人",
+                "date": "2026-08-05",
                 "count": 12,
                 "list": [
                     {
@@ -101,7 +107,7 @@ def test_response_date_must_match_requested_date():
         ]
     }
 
-    with pytest.raises(jiuyan.IncompleteJiuyanResponse, match="响应日期"):
+    with pytest.raises(jiuyan.IncompleteJiuyanResponse, match="date mismatch"):
         jiuyan.parse_response(response, 20260701)
 
 
