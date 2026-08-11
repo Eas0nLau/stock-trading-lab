@@ -21,7 +21,7 @@ def test_missing_chinese_task_import_returns_historical_list_shape():
 
     rows = module.get_data(20260806, 20260806, "000001.SZ", source=Source())
 
-    assert rows == [["10", "10.5", "2026-08-06", "20260806093500000", "sz.000001", "11", "9", "100", "1050", "3"]]
+    assert rows == [["10", "10.5", "2026-08-06", "202608060935", "sz.000001", "11", "9", "100", "1050", "3"]]
 
 
 def test_active_stock_keyword_consumer_uses_historical_signature():
@@ -106,3 +106,85 @@ def test_active_strategy_calls_wrapper_stock_keyword_with_injected_source(monkey
     strategy.simulated_buy()
 
     assert calls == [(20260807, 20260807, "000001.SZ", None)]
+
+
+def test_intraday_task_main_forwards_scope_and_worker_limit(monkeypatch):
+    module = importlib.import_module("task._2_分时数据获取_5分k")
+    calls = []
+    monkeypatch.setattr(
+        module,
+        "_main",
+        lambda start_date, end_date, **kwargs: calls.append({
+            "start_date": start_date,
+            "end_date": end_date,
+            **kwargs,
+        }) or {"status": "success"},
+    )
+
+    assert module.main(
+        20260801,
+        20260807,
+        stock_codes=["000001.SZ"],
+        max_workers=2,
+    ) == {"status": "success"}
+    assert calls == [{
+        "start_date": 20260801,
+        "end_date": 20260807,
+        "stock_codes": ["000001.SZ"],
+        "max_workers": 2,
+    }]
+
+
+def test_intraday_task_process_stock_batch_runs_serial_scope(monkeypatch):
+    module = importlib.import_module("task._2_分时数据获取_5分k")
+    calls = []
+    monkeypatch.setattr(
+        module,
+        "_process_stock_batch",
+        lambda args: calls.append(args) or {"status": "success"},
+    )
+
+    result = module.process_stock_batch((
+        ["000001.SZ"],
+        20260801,
+        20260807,
+    ))
+
+    assert result == {"status": "success"}
+    assert calls == [(["000001.SZ"], 20260801, 20260807)]
+
+
+def test_intraday_task_cli_parses_required_range_and_repeated_codes(monkeypatch, capsys):
+    module = importlib.import_module("task._2_分时数据获取_5分k")
+    calls = []
+    monkeypatch.setattr(
+        module,
+        "main",
+        lambda start_date, end_date, stock_codes=None, max_workers=4: calls.append(
+            (start_date, end_date, stock_codes, max_workers)
+        ) or {"status": "success", "updated": 2},
+    )
+
+    exit_code = module._cli([
+        "--start-date", "20260801",
+        "--end-date", "20260807",
+        "--stock-code", "000001.SZ",
+        "--stock-code", "600000.SH",
+        "--max-workers", "2",
+    ])
+
+    assert exit_code == 0
+    assert calls == [(
+        20260801,
+        20260807,
+        ["000001.SZ", "600000.SH"],
+        2,
+    )]
+    assert '"updated": 2' in capsys.readouterr().out
+
+
+def test_intraday_task_cli_requires_both_dates():
+    module = importlib.import_module("task._2_分时数据获取_5分k")
+
+    with pytest.raises(SystemExit):
+        module._cli(["--start-date", "20260801"])

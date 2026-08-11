@@ -36,6 +36,7 @@ LEGACY_STORAGE_MIGRATION_FILES = {
 }
 LEGACY_STORAGE_TABLE_ALLOWLIST = {}
 WRAPPER_LIMITS = {
+    "task/_2_分时数据获取_5分k.py": 140,
     "task/_5_韭研公社异动.py": 80,
     "utils/热门板块情绪算法.py": 100,
 }

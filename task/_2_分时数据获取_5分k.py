@@ -1,40 +1,41 @@
-"""Compatibility wrapper for :mod:`stock_lab.jobs.intraday_bars_5m`."""
+"""Compatibility wrapper for canonical five-minute history jobs."""
 
 from stock_lab.jobs.intraday_bars_5m import fetch_intraday_bars_5m
-from stock_lab.modules.market_data.helpers import normalize_ts_code
-
-
-def _legacy_number(value):
-    return format(value, "g")
-
-
-def _legacy_code(value):
-    ts_code = normalize_ts_code(value)
-    symbol, separator, exchange = ts_code.partition(".")
-    if not separator:
-        if symbol.startswith(("4", "8")):
-            exchange = "BJ"
-        else:
-            exchange = "SH" if symbol.startswith(("5", "6", "9")) else "SZ"
-    return f"{exchange.lower()}.{symbol}"
+from stock_lab.jobs.intraday_compatibility import (
+    get_data as _get_data,
+    main as _main,
+    process_stock_batch as _process_stock_batch,
+    run_cli as _run_cli,
+)
 
 
 def get_data(start_date, end_date, code=None, source=None, *, stock=None):
-    if code is not None and stock is not None:
-        raise TypeError("Pass either code or stock, not both")
-    code = code if code is not None else stock
-    if code is None:
-        raise TypeError("Pass either code or stock")
-    rows = fetch_intraday_bars_5m(start_date, end_date, code, source=source)
-    return [[
-        _legacy_number(row["open_price"]),
-        _legacy_number(row["close_price"]),
-        f"{str(row['trade_date'])[:4]}-{str(row['trade_date'])[4:6]}-{str(row['trade_date'])[6:]}",
-        str(row["trade_time"]),
-        _legacy_code(code),
-        _legacy_number(row["high_price"]),
-        _legacy_number(row["low_price"]),
-        _legacy_number(row["volume"]),
-        _legacy_number(row["turnover"]),
-        str(row["adjustment_flag"]),
-    ] for row in rows]
+    return _get_data(
+        start_date,
+        end_date,
+        code,
+        source,
+        stock=stock,
+        fetcher=fetch_intraday_bars_5m,
+    )
+
+
+def process_stock_batch(args):
+    return _process_stock_batch(args)
+
+
+def main(start_date, end_date, stock_codes=None, max_workers=4):
+    return _main(
+        start_date,
+        end_date,
+        stock_codes=stock_codes,
+        max_workers=max_workers,
+    )
+
+
+def _cli(argv=None):
+    return _run_cli(argv, main_fn=main)
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())
