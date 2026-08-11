@@ -171,6 +171,12 @@ def test_005_normalizes_existing_intraday_rows_to_minute_identity():
     assert "DECLARE EXIT HANDLER FOR SQLEXCEPTION" in sql
     assert "CREATE TEMPORARY TABLE `intraday_bars_5m_minute_normalized`" in sql
     assert "LEFT(CAST(`trade_time` AS CHAR), 12)" in sql
+    assert "CHAR_LENGTH(CAST(`trade_time` AS CHAR)) NOT IN (12, 17)" in sql
+    assert "STR_TO_DATE" in sql
+    assert "REGEXP '^[0-9]{6}$'" in sql
+    assert "invalid_source_count" in sql
+    assert "invalid_target_count" in sql
+    assert "CONCAT(" in sql and "<> `data_id`" in sql
     assert "ON DUPLICATE KEY UPDATE" in sql
     assert "DELETE FROM `intraday_bars_5m`" in sql
     assert "SIGNAL SQLSTATE '45000'" in sql

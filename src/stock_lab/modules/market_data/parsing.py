@@ -13,14 +13,14 @@ def _required_float(row, name):
         raise DataValidationError(f"Invalid intraday {name}: {value!r}") from error
 
 
-def _source_symbol(value):
-    raw = str(value or "").strip()
-    if raw.lower().startswith(("sh.", "sz.", "bj.")):
-        raw = raw.split(".", 1)[1]
-    symbol = normalize_symbol(raw)
+def normalize_intraday_source_ts_code(value):
+    raw = str(value or "").strip().lower()
+    if not raw.startswith(("sh.", "sz.", "bj.")):
+        raise DataValidationError(f"Invalid intraday stock code: {value!r}")
+    exchange, symbol = raw.split(".", 1)
     if len(symbol) != 6 or not symbol.isdigit():
         raise DataValidationError(f"Invalid intraday stock code: {value!r}")
-    return symbol
+    return f"{symbol}.{exchange.upper()}"
 
 
 def normalize_intraday_bar(row):
@@ -36,7 +36,7 @@ def normalize_intraday_bar(row):
         raise DataValidationError("Invalid intraday date or time") from error
     if parsed_time != trade_date:
         raise DataValidationError("Intraday date and time do not match")
-    symbol = _source_symbol(row.get("code"))
+    symbol = normalize_symbol(normalize_intraday_source_ts_code(row.get("code")))
     try:
         adjustment_flag = int(row.get("adjustflag"))
     except (TypeError, ValueError) as error:

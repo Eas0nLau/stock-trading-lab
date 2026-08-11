@@ -57,6 +57,7 @@ def test_intraday_job_uses_injected_source_and_repository():
 
 @pytest.mark.parametrize("change", [
     {"code": "sh.600000"},
+    {"code": "sh.000001"},
     {"date": "2026-08-07", "time": "20260807093500000"},
 ])
 def test_intraday_job_rejects_rows_outside_requested_scope(change):

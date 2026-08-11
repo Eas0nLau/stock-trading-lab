@@ -9,8 +9,10 @@ import pytest
 
 class Source:
     def fetch_5m_bars(self, start_date, end_date, ts_code):
+        symbol, exchange = ts_code.split(".")
         return [{
-            "date": "2026-08-06", "time": "20260806093500000", "code": "sz.000001",
+            "date": "2026-08-06", "time": "20260806093500000",
+            "code": f"{exchange.lower()}.{symbol}",
             "open": "10", "high": "11", "low": "9", "close": "10.5",
             "volume": "100", "amount": "1050", "adjustflag": "3",
         }]

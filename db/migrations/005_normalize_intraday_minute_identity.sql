@@ -7,6 +7,8 @@ BEGIN
   DECLARE source_count BIGINT DEFAULT 0;
   DECLARE normalized_count BIGINT DEFAULT 0;
   DECLARE target_count BIGINT DEFAULT 0;
+  DECLARE invalid_source_count BIGINT DEFAULT 0;
+  DECLARE invalid_target_count BIGINT DEFAULT 0;
 
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
@@ -33,6 +35,27 @@ BEGIN
 
   CREATE TEMPORARY TABLE `intraday_bars_5m_minute_normalized`
   LIKE `intraday_bars_5m`;
+
+  SELECT COUNT(*) INTO invalid_source_count
+  FROM `intraday_bars_5m`
+  WHERE CHAR_LENGTH(CAST(`trade_time` AS CHAR)) NOT IN (12, 17)
+     OR COALESCE(
+          DATE_FORMAT(
+            STR_TO_DATE(
+              LEFT(CAST(`trade_time` AS CHAR), 12),
+              '%Y%m%d%H%i'
+            ),
+            '%Y%m%d%H%i'
+          ),
+          ''
+        ) <> LEFT(CAST(`trade_time` AS CHAR), 12)
+     OR CAST(LEFT(CAST(`trade_time` AS CHAR), 8) AS UNSIGNED) <> `trade_date`
+     OR `stock_code` NOT REGEXP '^[0-9]{6}$';
+
+  IF invalid_source_count <> 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Invalid source intraday identity';
+  END IF;
 
   INSERT INTO `intraday_bars_5m_minute_normalized` (
     `data_id`, `trade_date`, `trade_time`, `stock_code`, `open_price`,
@@ -65,6 +88,27 @@ BEGIN
   SELECT COUNT(*) INTO source_count FROM `intraday_bars_5m`;
   SELECT COUNT(*) INTO normalized_count
   FROM `intraday_bars_5m_minute_normalized`;
+
+  SELECT COUNT(*) INTO invalid_target_count
+  FROM `intraday_bars_5m_minute_normalized`
+  WHERE CHAR_LENGTH(CAST(`trade_time` AS CHAR)) <> 12
+     OR COALESCE(
+          DATE_FORMAT(
+            STR_TO_DATE(CAST(`trade_time` AS CHAR), '%Y%m%d%H%i'),
+            '%Y%m%d%H%i'
+          ),
+          ''
+        ) <> CAST(`trade_time` AS CHAR)
+     OR CAST(LEFT(CAST(`trade_time` AS CHAR), 8) AS UNSIGNED) <> `trade_date`
+     OR `stock_code` NOT REGEXP '^[0-9]{6}$'
+     OR CONCAT(
+          `stock_code`, '_', `trade_time`, '_', `adjustment_flag`
+        ) <> `data_id`;
+
+  IF invalid_target_count <> 0 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Invalid normalized intraday identity';
+  END IF;
 
   IF normalized_count > source_count
      OR (source_count > 0 AND normalized_count = 0) THEN
@@ -99,7 +143,9 @@ BEGIN
     CONCAT(
       'source=', source_count,
       ', normalized=', normalized_count,
-      ', target=', target_count
+      ', target=', target_count,
+      ', invalid_source=', invalid_source_count,
+      ', invalid_target=', invalid_target_count
     )
   )
   ON DUPLICATE KEY UPDATE

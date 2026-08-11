@@ -8,7 +8,10 @@ from stock_lab.modules.market_data.helpers import (
     normalize_ts_code,
     validated_trade_date,
 )
-from stock_lab.modules.market_data.parsing import normalize_intraday_bar
+from stock_lab.modules.market_data.parsing import (
+    normalize_intraday_bar,
+    normalize_intraday_source_ts_code,
+)
 from stock_lab.modules.market_data.repository import MarketDataRepository
 from stock_lab.shared.errors import DataValidationError
 
@@ -26,7 +29,8 @@ def fetch_intraday_bars_5m(
         raise DataValidationError(
             f"Invalid intraday date range: {start_date}-{end_date}"
         )
-    requested_symbol = normalize_symbol(ts_code)
+    requested_ts_code = normalize_ts_code(ts_code)
+    requested_symbol = normalize_symbol(requested_ts_code)
     if len(requested_symbol) != 6 or not requested_symbol.isdigit():
         raise DataValidationError(f"Invalid intraday stock code: {ts_code!r}")
     source = source or BaoStockSource()
@@ -36,6 +40,12 @@ def fetch_intraday_bars_5m(
         end_date,
         ts_code,
     ):
+        if normalize_intraday_source_ts_code(
+            source_row.get("code")
+        ) != requested_ts_code:
+            raise DataValidationError(
+                "Intraday response does not match requested security or date range"
+            )
         row = normalize_intraday_bar(source_row)
         if (
             row["stock_code"] != requested_symbol
